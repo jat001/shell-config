@@ -1,0 +1,41 @@
+{
+  "common": {},
+  "environments": {
+    "windows": {
+      "aliases": {
+        "code": "${HOME}/scoop/apps/vscode/current/bin/code.cmd"
+      }
+    },
+    "wsl": {
+      "environment": {
+        "PNPM_HOME": "${HOME}/.local/share/pnpm",
+        "SSH_AUTH_SOCK": "${HOME}/.cache/ssh/wsl2-ssh-agent.sock"
+      },
+      "path_prepend": [
+        "${HOME}/.local/bin",
+        "${PNPM_HOME}/bin"
+      ],
+      "aliases": {
+        "code": "/mnt/c/Users/Jat/scoop/apps/vscode/current/bin/code"
+      },
+      "startup": [
+        {
+          "command": "${HOME}/.local/bin/wsl2-ssh-agent",
+          "arguments": [
+            "--socket",
+            "${SSH_AUTH_SOCK}"
+          ]
+        }
+      ]
+    },
+    "msys2": {
+      "path_prepend": [
+        "${MSYSTEM_PREFIX}/bin",
+        "/ucrt64/bin"
+      ],
+      "aliases": {
+        "code": "/c/Users/Jat/scoop/apps/vscode/current/bin/code"
+      }
+    }
+  }
+}

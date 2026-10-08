@@ -1,0 +1,3 @@
+ohmyposh.theme = ~/.config/oh-my-posh/config.omp.json
+
+history.shared = True
