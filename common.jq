@@ -65,13 +65,6 @@ else
     def luaquote:
         @json;
 
-    def command_sh:
-        ([.command] + .arguments | map(@sh) | join(" "));
-
-    def command_ps:
-        "& " + (.command | psquote) + " "
-        + (.arguments | map(psquote) | join(" "));
-
     .common as $common
     | .environments[$platform] as $specific
     | if $specific == null then
@@ -123,15 +116,7 @@ else
         | with_entries(.value |= (expand($variables) | native_alias_path))
       ) as $aliases
 
-    | (
-        ($common.startup // []) + ($specific.startup // [])
-        | map(
-            .command |= expand($variables)
-            | .arguments |= map(expand($variables))
-        )
-      ) as $startup
-
-    | {environment: $environment, aliases: $aliases, startup: $startup}
+    | {environment: $environment, aliases: $aliases}
 
     | if $mode == "plan" then
         .environment |= (if has("PATH") then .PATH = $path else . end)
@@ -146,11 +131,6 @@ else
             .aliases
             | to_entries[]
             | "alias " + .key + "=" + (.value | @sh)
-        ),
-        (
-            .startup[]
-            | "if [ -x " + (.command | @sh) + " ]; then "
-              + command_sh + " >/dev/null; fi"
         )
 
       elif $mode == "fish" then
@@ -167,12 +147,6 @@ else
             .aliases
             | to_entries[]
             | "alias " + .key + " " + (.value | @json)
-        ),
-        (
-            .startup[]
-            | "if test -x " + (.command | @json) + "\n    "
-              + ([.command] + .arguments | map(@json) | join(" "))
-              + " >/dev/null\nend"
         )
 
       elif $mode == "pwsh" then
@@ -186,11 +160,6 @@ else
             | to_entries[]
             | "Set-Alias -Name " + (.key | psquote)
               + " -Value " + (.value | psquote)
-        ),
-        (
-            .startup[]
-            | "if (Test-Path -LiteralPath " + (.command | psquote) + ") { "
-              + command_ps + " | Out-Null }"
         )
 
       elif $mode == "nu-aliases" then

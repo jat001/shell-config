@@ -9,7 +9,7 @@
     "wsl": {
       "environment": {
         "PNPM_HOME": "${HOME}/.local/share/pnpm",
-        "SSH_AUTH_SOCK": "${HOME}/.cache/ssh/wsl2-ssh-agent.sock"
+        "SSH_AUTH_SOCK": "${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock"
       },
       "path_prepend": [
         "${HOME}/.local/bin",
@@ -17,16 +17,7 @@
       ],
       "aliases": {
         "code": "/mnt/c/Users/Jat/scoop/apps/vscode/current/bin/code"
-      },
-      "startup": [
-        {
-          "command": "${HOME}/.local/bin/wsl2-ssh-agent",
-          "arguments": [
-            "--socket",
-            "${SSH_AUTH_SOCK}"
-          ]
-        }
-      ]
+      }
     },
     "msys2": {
       "path_prepend": [

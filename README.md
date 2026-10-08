@@ -66,7 +66,7 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 
 ## 维护原则
 
-- 所有平台共用的环境变量、外部命令 alias 和启动命令，集中定义在 `common.json`。
+- 所有平台共用的环境变量和外部命令 alias，集中定义在 `common.json`。
 - 各 shell 的历史、按键、补全、提示符和插件初始化，写在对应的 common 文件中。
 - 平台识别规则集中在 `common.jq`；各 shell 负责传入自身的平台信息。
 - 只保留改变实际行为的设置；删除默认值前，先核对对应平台的实际默认行为。
@@ -79,14 +79,15 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 |---|---|
 | `install.ps1` | 生成 Windows 入口、部署 WSL/MSYS2 链接，支持预览和重复运行。 |
 | `zsh_plugins.txt` | zsh 插件清单源码；各环境的标准清单路径链接到此文件。 |
-| `common.json` | 共享数据：环境变量、PATH 前置目录、外部命令 alias、启动命令。 |
+| `systemd/wsl2-ssh-agent.service` | 上游用户服务副本，直接移除了 root 条件。 |
+| `common.json` | 共享数据：环境变量、PATH 前置目录和外部命令 alias。 |
 | `common.jq` | 平台识别、变量展开，以及 Bash/zsh、fish、PowerShell、Nushell、Clink 的配置转换。 |
 | `common.sh` | Bash/zsh 共用的环境加载、初始化文件查找，以及提示符主题选择。 |
 | `common.bash` | Bash 交互初始化、历史设置、Oh My Posh 和 ble.sh 配置。传入 `ble` 时只设置 ble.sh。 |
 | `common.zsh` | zsh 历史、按键、补全、Oh My Posh 和插件。传入 `environment` 时只加载共享环境。 |
 | `common.fish` | fish 的环境加载、前缀历史搜索、按键和 Oh My Posh 初始化。 |
 | `common.ps1` | Windows PowerShell 5.1、Windows/WSL PowerShell 7 的环境、PSReadLine、PSCompletions 和提示符。 |
-| `common-env.nu` | Nushell 环境加载、启动命令执行，以及 alias 文件生成。 |
+| `common-env.nu` | Nushell 环境加载和 alias 文件生成。 |
 | `common.nu` | Nushell 平台检查、生成的 alias 文件加载，以及 Oh My Posh 初始化。 |
 | `common.lua` | CMD/Clink 主题位置发现、初始化、UTF-8 代码页、Windows PATH 排序和共享 alias 加载。 |
 | `common.clink_settings` | Clink 的提示符选择、主题路径和历史共享设置。 |
@@ -175,11 +176,9 @@ Oh My Posh 直接通过 PATH 查找，脚本中不指定它的二进制路径。
 | `environment` | 环境变量名称与字符串值。 |
 | `path_prepend` | 加到 PATH 前面的目录列表。生成时删除空目录项和重复项。 |
 | `aliases` | alias 名称与外部命令名称或可执行文件路径。 |
-| `startup` | 启动命令列表，每项包含 `command` 和 `arguments`。 |
 
 同名的环境变量和 alias 由环境专属定义覆盖共享定义；
-PATH 前置目录和启动命令按共享定义、环境专属定义的顺序合并。
-启动命令的目标存在时才调用；Bash/zsh/fish 还会检查可执行权限。
+PATH 前置目录按共享定义、环境专属定义的顺序合并。
 
 字符串可以引用 `${HOME}`、`${PNPM_HOME}` 等变量。
 `HOME` 来自当前 shell；其他引用来自继承的环境及已展开的环境变量。
@@ -245,6 +244,33 @@ Antidote 仓库缓存的位置由 `antidote home` 查询，以管理器实际配
 
 `jq` 通过 PATH 查找。生成插件缓存时使用已解析的 Git 程序所在目录前置 PATH，
 保证 Git 子进程优先找到同一安装中的依赖，不固定为 `/usr/bin:/bin`。
+
+## WSL SSH agent
+
+WSL 使用 AUR 的 `wsl2-ssh-agent-bin`，程序由 pacman 管理。
+包中只有预编译二进制，因此仓库保存从
+[上游](https://github.com/mame/wsl2-ssh-agent/blob/main/extras/systemd/user/wsl2-ssh-agent.service)
+复制的 `systemd/wsl2-ssh-agent.service`。
+为支持当前默认 root 用户，直接删除了原文件的 `ConditionUser=!root`；
+没有另设 drop-in。
+
+先安装 bin 包，再执行安装脚本。
+安装脚本遍历仓库 `systemd/` 下的用户单元文件，链接到各 WSL 用户的
+`~/.config/systemd/user/`。支持 service、socket、timer、path、target；
+带 `[Install]` 的普通单元会被启用并启动，静态单元只部署，
+`name@.service` 这类模板也只部署，实例由使用者指定。
+新增单元只需添加对应文件，脚本不写死服务名、数量或程序路径。
+单元运行所需程序由包管理器安装；启动失败时脚本直接报告错误。
+共享环境只设置 `SSH_AUTH_SOCK=${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock`，
+各 shell 不再启动 agent。
+
+查看和管理服务：
+
+```sh
+systemctl --user status wsl2-ssh-agent.service
+systemctl --user restart wsl2-ssh-agent.service
+journalctl --user -u wsl2-ssh-agent.service
+```
 
 ## ble.sh 历史搜索退出
 

@@ -17,6 +17,7 @@ $repository = [IO.Path]::GetFullPath($PSScriptRoot)
 $WindowsHome = [IO.Path]::GetFullPath($WindowsHome)
 $utf8 = [Text.UTF8Encoding]::new($false)
 $plans = [Collections.Generic.List[object]]::new()
+$services = [Collections.Generic.List[object]]::new()
 
 $entries = @(
     @{
@@ -373,6 +374,35 @@ if (-not $SkipWsl) {
             Add-SharedLayout $homeResult.Output $sourceHome.Output `
                 $sourceRepository.Output $distribution
             Add-UnixEntries $homeResult.Output $sourceHome.Output $distribution
+
+            $unitDirectory = Join-Path $repository 'systemd'
+            if (-not [IO.Directory]::Exists($unitDirectory)) { continue }
+
+            $unitExtensions = @('.service', '.socket', '.timer', '.path', '.target')
+
+            foreach ($unit in Get-ChildItem -LiteralPath $unitDirectory -File) {
+                if ($unit.Extension -notin $unitExtensions) { continue }
+
+                $content = [IO.File]::ReadAllText($unit.FullName).
+                    Replace([string][char]13, '').TrimEnd([char]10)
+                $linkArguments = @(
+                    "$($homeResult.Output)/.config/systemd/user/$($unit.Name)"
+                    "$($sourceRepository.Output)/systemd/$($unit.Name)"
+                    'File'
+                    $content
+                    $distribution
+                )
+
+                Add-LinkPlan @linkArguments
+
+                if ($content -match '(?m)^\[Install\]\s*$' -and
+                    $unit.BaseName -notmatch '@$') {
+                    $services.Add(@{
+                        Distribution = $distribution
+                        Name = $unit.Name
+                    })
+                }
+            }
         }
     } elseif ($WslDistribution) {
         throw 'wsl.exe was not found.'
@@ -464,6 +494,56 @@ if ($WindowsHome -eq [Environment]::GetFolderPath('UserProfile')) {
     )) {
         [Environment]::SetEnvironmentVariable('HOME', $WindowsHome, 'User')
         $env:HOME = $WindowsHome
+    }
+}
+
+foreach ($group in ($services | Group-Object -Property { $_.Distribution })) {
+    $distribution = $group.Name
+    $enable = [Collections.Generic.List[string]]::new()
+    $restart = [Collections.Generic.List[string]]::new()
+
+    foreach ($service in $group.Group) {
+        $name = $service.Name
+        $active = Invoke-WslCommand $distribution @(
+            'systemctl', '--user', 'is-active', '--quiet', $name
+        ) -AllowFailure
+
+        if ($active.Code -ne 0) {
+            $enable.Add($name)
+            continue
+        }
+
+        $enabled = Invoke-WslCommand $distribution @(
+            'systemctl', '--user', 'is-enabled', '--quiet', $name
+        ) -AllowFailure
+        $reload = Invoke-WslCommand $distribution @(
+            'systemctl', '--user', 'show', $name
+            '-p', 'NeedDaemonReload', '--value'
+        )
+
+        if ($enabled.Code -ne 0 -or $reload.Output -eq 'yes') {
+            $enable.Add($name)
+        }
+        if ($reload.Output -eq 'yes') {
+            $restart.Add($name)
+        }
+    }
+
+    if (-not $enable.Count) { continue }
+
+    if ($PSCmdlet.ShouldProcess(
+        "$($distribution):$($enable -join ', ')", 'Enable and start user units'
+    )) {
+        $null = Invoke-WslCommand $distribution @(
+            'systemctl', '--user', 'daemon-reload'
+        )
+        $arguments = @('systemctl', '--user', 'enable', '--now') + $enable.ToArray()
+        $null = Invoke-WslCommand $distribution $arguments
+
+        if ($restart.Count) {
+            $arguments = @('systemctl', '--user', 'restart') + $restart.ToArray()
+            $null = Invoke-WslCommand $distribution $arguments
+        }
     }
 }
 

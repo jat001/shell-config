@@ -26,12 +26,6 @@ let shared = (
 
 load-env $shared.environment
 
-for initialization in $shared.startup {
-    if ($initialization.command | path exists) {
-        ^$initialization.command ...$initialization.arguments | ignore
-    }
-}
-
 (
     ^jq -r
         --arg platform $platform
