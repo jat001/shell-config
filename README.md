@@ -8,7 +8,8 @@ Windows、WSL 和 MSYS2 按运行环境加载同一套配置。
 
 仓库根目录是 `C:\Users\Jat\.config\shell`，不是整个 `.config`。
 仓库保存共用脚本、zsh 插件清单、OMP 主题、安装脚本和维护说明。
-根目录的 `.gitignore` 仅允许这些配置源码，生成文件、缓存和其他应用配置不进入仓库。
+`.gitignore` 只忽略本地配置、备份和临时文件，新增配置源码会被 Git 正常发现。
+历史、运行缓存和生成文件保存在仓库之外。
 
 OMP 实际文件位于仓库中的 `oh-my-posh/`。
 Windows 的 `~/.config/oh-my-posh` 是指向该目录的目录符号链接；
