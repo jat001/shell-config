@@ -116,7 +116,15 @@ else
         | with_entries(.value |= (expand($variables) | native_alias_path))
       ) as $aliases
 
-    | {environment: $environment, aliases: $aliases}
+    | (
+        ($common.links // {}) + ($specific.links // {})
+        | with_entries(
+            .key |= expand($variables)
+            | .value |= expand($variables)
+        )
+      ) as $links
+
+    | {environment: $environment, aliases: $aliases, links: $links}
 
     | if $mode == "plan" then
         .environment |= (if has("PATH") then .PATH = $path else . end)

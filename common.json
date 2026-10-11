@@ -17,6 +17,9 @@
       ],
       "aliases": {
         "code": "/mnt/c/Users/Jat/scoop/apps/vscode/current/bin/code"
+      },
+      "links": {
+        "${HOME}/.local/bin/git.exe": "/mnt/c/Users/Jat/scoop/apps/git-without-openssh/current/cmd/git.exe"
       }
     },
     "msys2": {

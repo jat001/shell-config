@@ -168,6 +168,13 @@ function Test-Plan {
         return $true
     }
 
+    if ($Plan.Kind -eq 'External') {
+        if ($state.Type -eq 'Link' -and $state.Target -eq $Plan.Target) {
+            return $false
+        }
+        throw "An existing path occupies a configured link: $($Plan.Path)"
+    }
+
     if ($Plan.Type -eq 'Directory') {
         if ($state.Type -eq 'Directory' -or $state.Directory) {
             return $false
@@ -374,6 +381,30 @@ if (-not $SkipWsl) {
             Add-SharedLayout $homeResult.Output $sourceHome.Output `
                 $sourceRepository.Output $distribution
             Add-UnixEntries $homeResult.Output $sourceHome.Output $distribution
+
+            $sharedResult = Invoke-WslCommand $distribution @(
+                'jq', '--arg', 'platform', 'wsl'
+                '--arg', 'home', $homeResult.Output
+                '--arg', 'mode', 'plan'
+                '-f', "$($sourceRepository.Output)/common.jq"
+                "$($sourceRepository.Output)/common.json"
+            )
+            $shared = $sharedResult.Output | ConvertFrom-Json
+
+            foreach ($link in $shared.links.PSObject.Properties) {
+                if ($link.Name -notmatch '^/' -or $link.Value -notmatch '^/') {
+                    throw "Configured link paths must be absolute: $($link.Name)"
+                }
+
+                $target = Invoke-WslCommand $distribution @(
+                    'test', '-e', $link.Value
+                ) -AllowFailure
+                if ($target.Code -ne 0) {
+                    throw "Configured link target does not exist: $($link.Value)"
+                }
+
+                Add-LinkPlan $link.Name $link.Value 'External' $null $distribution
+            }
 
             $unitDirectory = Join-Path $repository 'systemd'
             if (-not [IO.Directory]::Exists($unitDirectory)) { continue }

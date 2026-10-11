@@ -176,6 +176,7 @@ Oh My Posh 直接通过 PATH 查找，脚本中不指定它的二进制路径。
 | `environment` | 环境变量名称与字符串值。 |
 | `path_prepend` | 加到 PATH 前面的目录列表。生成时删除空目录项和重复项。 |
 | `aliases` | alias 名称与外部命令名称或可执行文件路径。 |
+| `links` | 符号链接路径与目标路径；目前由安装脚本部署 WSL 条目。 |
 
 同名的环境变量和 alias 由环境专属定义覆盖共享定义；
 PATH 前置目录按共享定义、环境专属定义的顺序合并。
@@ -186,6 +187,13 @@ PATH 前置目录按共享定义、环境专属定义的顺序合并。
 
 `aliases` 用于外部命令名称或路径。带参数、管道或复杂逻辑的命令，
 应写成对应 shell 的 common 文件中的函数。
+
+`links` 与 `aliases` 独立，只有安装脚本创建文件系统链接。
+链接路径和目标可以引用共享变量；现有相同链接不变，其他同名路径会报冲突。
+当前 WSL 的 `links` 将 `${HOME}/.local/bin/git.exe` 链接到 Scoop Windows Git。
+Oh My Posh 在 Windows 挂载盘上通过该链接调用 `git.exe`；该命令目录已在 PATH 中，
+无需加入 Windows Git 安装目录。普通 `git` 继续调用 Linux Git。
+修改 `links` 后重新运行安装脚本；修改 `aliases` 后重新加载 shell 配置。
 
 Windows 外部命令 alias 的绝对路径在生成时规范为反斜杠。
 以 `${HOME}/` 开头的 alias，在 Nushell 中保留 HOME 和 `path join` 表达式。
