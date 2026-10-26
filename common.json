@@ -9,6 +9,9 @@
     "wsl": {
       "environment": {
         "PNPM_HOME": "${HOME}/.local/share/pnpm",
+        "PNPM_CONFIG_CACHE_DIR": "${HOME}/.cache/pnpm",
+        "PNPM_CONFIG_STATE_DIR": "${HOME}/.local/state/pnpm",
+        "PNPM_CONFIG_STORE_DIR": "${PNPM_HOME}/store",
         "SSH_AUTH_SOCK": "${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock"
       },
       "path_prepend": [
