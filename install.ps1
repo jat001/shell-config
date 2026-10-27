@@ -4,7 +4,10 @@ param(
     [string]$Msys2Root,
     [string[]]$WslDistribution,
     [switch]$SkipMsys2,
-    [switch]$SkipWsl
+    [switch]$SkipWsl,
+    [switch]$WslDevDriveOnly,
+    [Parameter(DontShow)]
+    [switch]$RegisterWslDevDriveTaskOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,12 +15,124 @@ $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') {
     throw 'Run this installer from Windows PowerShell or PowerShell on Windows.'
 }
+if ($WslDevDriveOnly -and $SkipWsl) {
+    throw '-WslDevDriveOnly cannot be combined with -SkipWsl.'
+}
 
 $repository = [IO.Path]::GetFullPath($PSScriptRoot)
 $WindowsHome = [IO.Path]::GetFullPath($WindowsHome)
 $utf8 = [Text.UTF8Encoding]::new($false)
 $plans = [Collections.Generic.List[object]]::new()
 $services = [Collections.Generic.List[object]]::new()
+
+function Get-WslDevDriveTaskPlan {
+    $configuration = [IO.File]::ReadAllText(
+        (Join-Path $repository 'common.json')
+    ) | ConvertFrom-Json
+    $drive = $configuration.environments.wsl.dev_drive
+    if (-not $drive) { return }
+
+    foreach ($key in @('vhd', 'mountpoint', 'filesystem', 'uuid', 'task', 'schtasks')) {
+        if (-not $drive.$key) { throw "Missing WSL development drive setting: $key" }
+    }
+    if ($drive.mountpoint -notmatch '^/[^\s]+/([A-Za-z0-9][A-Za-z0-9._-]*)$') {
+        throw 'The WSL development drive mountpoint must be an absolute Linux path.'
+    }
+    $name = $Matches[1]
+    if ($drive.filesystem -notmatch '^[a-z0-9]+$' -or
+        $drive.uuid -notmatch '^[0-9a-fA-F-]{36}$' -or
+        $drive.task -notmatch '^[A-Za-z0-9][A-Za-z0-9 ._-]*$' -or
+        $drive.options -match '["\r\n]' -or $drive.vhd -match '["\r\n]') {
+        throw 'Invalid WSL development drive configuration.'
+    }
+
+    $vhd = [IO.Path]::GetFullPath((Join-Path $WindowsHome $drive.vhd))
+    if (-not [IO.File]::Exists($vhd)) {
+        throw "Configured WSL development VHDX does not exist: $vhd"
+    }
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $arguments = '--mount --vhd "{0}" --type {1} --name {2}' -f
+        $vhd, $drive.filesystem, $name
+    if ($drive.options) { $arguments += ' --options "{0}"' -f $drive.options }
+
+    @{
+        Name = $drive.task
+        Execute = Join-Path $env:SystemRoot 'System32/wsl.exe'
+        Arguments = $arguments
+        UserId = $identity.User.Value
+        Description = 'Shared shell configuration: attach the WSL development VHDX.'
+    }
+}
+
+function Test-WslDevDriveTask {
+    param($Plan)
+
+    $existing = Get-ScheduledTask -TaskName $Plan.Name -TaskPath '\' `
+        -ErrorAction SilentlyContinue
+    if (-not $existing) { return $true }
+
+    $actions = @($existing.Actions)
+    $sameAction = $actions.Count -eq 1 -and
+        $actions[0].Execute -eq $Plan.Execute -and
+        $actions[0].Arguments -eq $Plan.Arguments
+    if ($existing.Description -ne $Plan.Description -and -not $sameAction) {
+        throw "An unrelated scheduled task already uses this name: $($Plan.Name)"
+    }
+
+    $userId = $existing.Principal.UserId
+    if ($userId -notmatch '^S-1-') {
+        $account = [Security.Principal.NTAccount]::new($userId)
+        $userId = $account.Translate([Security.Principal.SecurityIdentifier]).Value
+    }
+
+    -not ($sameAction -and $userId -eq $Plan.UserId -and
+        $existing.Principal.RunLevel -eq 'Highest' -and
+        $existing.Principal.LogonType -eq 'Interactive' -and
+        $existing.Settings.Enabled -and $existing.Settings.AllowDemandStart -and
+        -not $existing.Settings.DisallowStartIfOnBatteries -and
+        -not $existing.Settings.StopIfGoingOnBatteries -and
+        $existing.Settings.MultipleInstances -eq 'IgnoreNew' -and
+        $existing.Settings.ExecutionTimeLimit -eq 'PT1M')
+}
+
+function Register-WslDevDriveTask {
+    param($Plan)
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f
+            (Join-Path $repository 'install.ps1')
+        $arguments += ' -WindowsHome "{0}" -RegisterWslDevDriveTaskOnly' -f $WindowsHome
+        $process = Start-Process -FilePath (
+            Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        ) -Verb RunAs -WindowStyle Hidden -ArgumentList $arguments -PassThru -Wait
+        if ($process.ExitCode -ne 0) {
+            throw "Elevated scheduled task registration failed ($($process.ExitCode))."
+        }
+        return
+    }
+
+    $action = New-ScheduledTaskAction -Execute $Plan.Execute -Argument $Plan.Arguments
+    $taskPrincipal = New-ScheduledTaskPrincipal -UserId $Plan.UserId `
+        -LogonType Interactive -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 1)
+    $null = Register-ScheduledTask -TaskName $Plan.Name -TaskPath '\' `
+        -Action $action -Principal $taskPrincipal -Settings $settings `
+        -Description $Plan.Description -Force
+}
+
+if ($RegisterWslDevDriveTaskOnly) {
+    $taskPlan = Get-WslDevDriveTaskPlan
+    if ($taskPlan -and (Test-WslDevDriveTask $taskPlan) -and
+        $PSCmdlet.ShouldProcess($taskPlan.Name, 'Register WSL development drive task')) {
+        Register-WslDevDriveTask $taskPlan
+    }
+    return
+}
 
 $entries = @(
     @{
@@ -320,7 +435,7 @@ Add-LinkPlan "$WindowsHome/AppData/Local/clink/clink_settings" `
             Replace([string][char]13, '').TrimEnd([char]10)
     )
 
-if (-not $SkipMsys2) {
+if (-not $SkipMsys2 -and -not $WslDevDriveOnly) {
     if (-not $Msys2Root) {
         $scoop = [Environment]::GetEnvironmentVariable('SCOOP', 'User')
         if (-not $scoop) {
@@ -354,7 +469,7 @@ if (-not $SkipWsl) {
     $wslCommand = Get-Command wsl.exe -ErrorAction SilentlyContinue
 
     if ($wslCommand) {
-        $wsl = $wslCommand.Source
+        $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
 
         if (-not $WslDistribution) {
             $registered = & $wsl --list --quiet
@@ -378,32 +493,37 @@ if (-not $SkipWsl) {
                 'wslpath', '-a', '-u', $repository
             )
 
-            Add-SharedLayout $homeResult.Output $sourceHome.Output `
-                $sourceRepository.Output $distribution
-            Add-UnixEntries $homeResult.Output $sourceHome.Output $distribution
+            if (-not $WslDevDriveOnly) {
+                Add-SharedLayout $homeResult.Output $sourceHome.Output `
+                    $sourceRepository.Output $distribution
+                Add-UnixEntries $homeResult.Output $sourceHome.Output $distribution
 
-            $sharedResult = Invoke-WslCommand $distribution @(
-                'jq', '--arg', 'platform', 'wsl'
-                '--arg', 'home', $homeResult.Output
-                '--arg', 'mode', 'plan'
-                '-f', "$($sourceRepository.Output)/common.jq"
-                "$($sourceRepository.Output)/common.json"
-            )
-            $shared = $sharedResult.Output | ConvertFrom-Json
+                $sharedResult = Invoke-WslCommand $distribution @(
+                    'jq', '--arg', 'platform', 'wsl'
+                    '--arg', 'home', $homeResult.Output
+                    '--arg', 'mode', 'plan'
+                    '-f', "$($sourceRepository.Output)/common.jq"
+                    "$($sourceRepository.Output)/common.json"
+                )
+                $shared = $sharedResult.Output | ConvertFrom-Json
 
-            foreach ($link in $shared.links.PSObject.Properties) {
-                if ($link.Name -notmatch '^/' -or $link.Value -notmatch '^/') {
-                    throw "Configured link paths must be absolute: $($link.Name)"
+                foreach ($link in $shared.links.PSObject.Properties) {
+                    if ($link.Name -notmatch '^/' -or $link.Value -notmatch '^/') {
+                        throw "Configured link paths must be absolute: $($link.Name)"
+                    }
+
+                    $target = Invoke-WslCommand $distribution @(
+                        'test', '-e', $link.Value
+                    ) -AllowFailure
+                    if ($target.Code -ne 0) {
+                        throw "Configured link target does not exist: $($link.Value)"
+                    }
+
+                    Add-LinkPlan $link.Name $link.Value 'External' $null $distribution
                 }
-
-                $target = Invoke-WslCommand $distribution @(
-                    'test', '-e', $link.Value
-                ) -AllowFailure
-                if ($target.Code -ne 0) {
-                    throw "Configured link target does not exist: $($link.Value)"
-                }
-
-                Add-LinkPlan $link.Name $link.Value 'External' $null $distribution
+            } else {
+                Add-LinkPlan "$($homeResult.Output)/.config/shell" `
+                    $sourceRepository.Output 'Directory' $null $distribution
             }
 
             $unitDirectory = Join-Path $repository 'systemd'
@@ -413,6 +533,9 @@ if (-not $SkipWsl) {
 
             foreach ($unit in Get-ChildItem -LiteralPath $unitDirectory -File) {
                 if ($unit.Extension -notin $unitExtensions) { continue }
+                if ($WslDevDriveOnly -and $unit.Name -ne 'wsl-dev-drive.service') {
+                    continue
+                }
 
                 $content = [IO.File]::ReadAllText($unit.FullName).
                     Replace([string][char]13, '').TrimEnd([char]10)
@@ -440,6 +563,10 @@ if (-not $SkipWsl) {
     }
 }
 
+if ($WslDevDriveOnly) {
+    $plans = @($plans | Where-Object { $_.Distribution })
+}
+
 foreach ($plan in $plans) {
     if (-not $plan.Distribution) {
         $plan.Path = [IO.Path]::GetFullPath($plan.Path)
@@ -450,7 +577,22 @@ foreach ($plan in $plans) {
     $plan.Change = Test-Plan $plan
 }
 
+$taskPlan = if (-not $SkipWsl -and $WslDistribution) {
+    Get-WslDevDriveTaskPlan
+}
+if ($taskPlan) { $taskPlan.Change = Test-WslDevDriveTask $taskPlan }
+if ($WslDevDriveOnly -and -not $taskPlan) {
+    throw 'No WSL development drive or target distribution is configured.'
+}
+
 $applied = 0
+
+if ($taskPlan -and $taskPlan.Change -and $PSCmdlet.ShouldProcess(
+    $taskPlan.Name, 'Register WSL development drive task'
+)) {
+    Register-WslDevDriveTask $taskPlan
+    $applied++
+}
 
 foreach ($plan in $plans) {
     if (-not $plan.Change) { continue }
@@ -518,7 +660,8 @@ foreach ($plan in $plans) {
     $applied++
 }
 
-if ($WindowsHome -eq [Environment]::GetFolderPath('UserProfile')) {
+if (-not $WslDevDriveOnly -and
+    $WindowsHome -eq [Environment]::GetFolderPath('UserProfile')) {
     $currentHome = [Environment]::GetEnvironmentVariable('HOME', 'User')
     if ($currentHome -ne $WindowsHome -and $PSCmdlet.ShouldProcess(
         'User:HOME', "Set HOME to $WindowsHome"
@@ -580,4 +723,5 @@ foreach ($group in ($services | Group-Object -Property { $_.Distribution })) {
 
 $global:LASTEXITCODE = 0
 $pending = @($plans | Where-Object { $_.Change }).Count
+if ($taskPlan -and $taskPlan.Change) { $pending++ }
 Write-Output "Installed $applied change(s); planned $pending change(s)."

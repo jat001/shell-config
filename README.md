@@ -43,6 +43,8 @@ $installation = @{
 ```
 
 `-SkipMsys2`、`-SkipWsl` 用于跳过对应环境。
+`-WslDevDriveOnly` 只部署下文的 WSL 共享开发盘任务和用户服务，
+可与 `-WslDistribution` 一起使用，跳过 shell 入口、MSYS2 和其他用户服务。
 `-WindowsHome` 可指定配置部署的 Windows 用户主目录；
 只有目标为当前账户主目录时，脚本才设置该账户的用户级 `HOME`。
 Windows 目录和文件链接均使用 SymbolicLink；
@@ -80,6 +82,8 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 | `install.ps1` | 生成 Windows 入口、部署 WSL/MSYS2 链接，支持预览和重复运行。 |
 | `zsh_plugins.txt` | zsh 插件清单源码；各环境的标准清单路径链接到此文件。 |
 | `systemd/wsl2-ssh-agent.service` | 上游用户服务副本，直接移除了 root 条件。 |
+| `systemd/wsl-dev-drive.service` | 启动时请求 Windows 任务附加共享开发盘，确认 UUID 和文件系统就绪。 |
+| `wsl-dev-drive.sh` | 读取共享开发盘配置、触发挂载并等待结果。 |
 | `common.json` | 共享数据：环境变量、PATH 前置目录和外部命令 alias。 |
 | `common.jq` | 平台识别、变量展开，以及 Bash/zsh、fish、PowerShell、Nushell、Clink 的配置转换。 |
 | `common.sh` | Bash/zsh 共用的环境加载、初始化文件查找，以及提示符主题选择。 |
@@ -267,7 +271,7 @@ WSL 使用 AUR 的 `wsl2-ssh-agent-bin`，程序由 pacman 管理。
 `~/.config/systemd/user/`。支持 service、socket、timer、path、target；
 带 `[Install]` 的普通单元会被启用并启动，静态单元只部署，
 `name@.service` 这类模板也只部署，实例由使用者指定。
-新增单元只需添加对应文件，脚本不写死服务名、数量或程序路径。
+普通安装按文件发现单元；开发盘专用模式只选择 `wsl-dev-drive.service`。
 单元运行所需程序由包管理器安装；启动失败时脚本直接报告错误。
 共享环境只设置 `SSH_AUTH_SOCK=${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock`，
 各 shell 不再启动 agent。
@@ -278,6 +282,49 @@ WSL 使用 AUR 的 `wsl2-ssh-agent-bin`，程序由 pacman 管理。
 systemctl --user status wsl2-ssh-agent.service
 systemctl --user restart wsl2-ssh-agent.service
 journalctl --user -u wsl2-ssh-agent.service
+```
+
+## WSL 共享开发盘
+
+`common.json` 的 `environments.wsl.dev_drive` 保存共享开发盘配置。
+当前指向 Windows 用户主目录下的 `AppData/Local/wsl/dev.vhdx`，
+挂载到 `/mnt/wsl/dev`，使用 Btrfs 和 `compress=zstd:1`。
+`vhd` 相对于 `-WindowsHome`；`schtasks` 是该发行版访问 Windows 任务工具的完整路径。
+如果发行版使用其他 Windows 挂载根目录，应相应调整 `schtasks` 和 `mountpoint`。
+配置中的 UUID 必须与已有文件系统一致；重新创建数据盘后应更新 UUID。
+
+普通安装会一并部署此功能，也可以只安装开发盘部分：
+
+```powershell
+& "$HOME/.config/shell/install.ps1" -WslDevDriveOnly -WhatIf
+& "$HOME/.config/shell/install.ps1" -WslDevDriveOnly
+```
+
+安装器注册当前 Windows 账户的 `WSL Attach Dev VHDX` 高权限按需任务。
+任务直接执行系统目录的 `wsl.exe --mount --vhd ...`，没有登录或定时触发器。
+只有任务缺失或配置变化时才注册；普通权限安装会为此步骤触发一次 UAC，
+提升后的子进程只负责注册任务。`-WhatIf` 不创建任务或触发 UAC。
+同名但执行其他操作的任务会被视为冲突并保留。
+
+安装器同时部署并启用 `wsl-dev-drive.service` 用户服务。
+发行版中对应用户的 systemd 用户管理器启动时，服务检查挂载点的 UUID 和文件系统。
+已经正确挂载时直接成功；其他文件系统占用该挂载点时失败。
+尚未挂载时，通过 Windows 任务请求附加，最多等待 60 秒确认挂载成功；
+失败由 systemd 重试，五分钟内最多启动三次，结果记录到用户日志。
+服务停止时保留共享挂载，避免影响其他发行版。
+
+这项功能需要 systemd、WSL Windows 互操作、jq、findmnt，以及内核对应文件系统支持。
+它只附加已有 VHDX，不创建虚拟磁盘或格式化文件系统。
+运行时重建盘后，需同步更新配置中的 UUID。
+Windows 账户必须已登录，才能运行 Interactive 类型的计划任务。
+服务按 WSL 用户部署；其他发行版可通过 `-WslDistribution` 一并安装，
+各发行版共用同一个 Windows 挂载任务。
+
+```sh
+systemctl --user status wsl-dev-drive.service
+systemctl --user restart wsl-dev-drive.service
+journalctl --user -u wsl-dev-drive.service
+findmnt -M /mnt/wsl/dev
 ```
 
 ## ble.sh 历史搜索退出

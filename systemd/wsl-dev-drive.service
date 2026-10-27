@@ -1,0 +1,15 @@
+[Unit]
+Description=WSL shared development drive
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh %h/.config/shell/wsl-dev-drive.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=75
+
+[Install]
+WantedBy=default.target

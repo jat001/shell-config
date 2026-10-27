@@ -7,6 +7,15 @@
       }
     },
     "wsl": {
+      "dev_drive": {
+        "vhd": "AppData/Local/wsl/dev.vhdx",
+        "mountpoint": "/mnt/wsl/dev",
+        "filesystem": "btrfs",
+        "options": "compress=zstd:1",
+        "uuid": "7a914196-e7cf-4bef-8cee-ca4030787a4a",
+        "task": "WSL Attach Dev VHDX",
+        "schtasks": "/mnt/c/Windows/System32/schtasks.exe"
+      },
       "environment": {
         "PNPM_HOME": "${HOME}/.local/share/pnpm",
         "PNPM_CONFIG_CACHE_DIR": "${HOME}/.cache/pnpm",
