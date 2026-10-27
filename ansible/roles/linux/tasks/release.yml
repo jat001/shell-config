@@ -30,6 +30,7 @@
     shell_release_asset: "{{ shell_release.asset | replace('{version}', shell_release_version) }}"
     shell_release_directory: "{{ shell_release_root }}/{{ shell_release.name }}/{{ shell_release_tag }}"
     shell_release_url: "https://github.com/{{ shell_release.repository }}/releases/download/{{ shell_release_tag }}/{{ shell_release_asset }}"
+    shell_release_download: "{{ shell_release_cache }}/{{ shell_release.name }}/{{ shell_release_tag }}/{{ shell_release_asset }}"
     shell_release_binary: "{{ shell_release_directory }}/{{
       ((shell_release.archive | replace('{version}', shell_release_version)) ~ '/')
       if shell_release.archive | default('') else '' }}{{ shell_release.command }}"
@@ -45,10 +46,29 @@
         state: directory
         mode: "0755"
 
+    - name: "Create {{ shell_release.name }} download directory"
+      ansible.builtin.file:
+        path: "{{ shell_release_download | dirname }}"
+        state: directory
+        mode: "0755"
+      when: not shell_release_installed.stat.exists
+
     - name: "Download {{ shell_release.name }}"
       ansible.builtin.get_url:
         url: "{{ shell_release_url }}"
+        dest: "{{ shell_release_download }}"
+        mode: "0644"
+      register: shell_network_result
+      until: shell_network_result is succeeded
+      retries: 3
+      delay: 10
+      when: not shell_release_installed.stat.exists
+
+    - name: "Install {{ shell_release.name }} binary"
+      ansible.builtin.copy:
+        src: "{{ shell_release_download }}"
         dest: "{{ shell_release_binary }}"
+        remote_src: true
         mode: "0755"
       when:
         - shell_release.archive is not defined
@@ -56,7 +76,7 @@
 
     - name: "Extract {{ shell_release.name }}"
       ansible.builtin.unarchive:
-        src: "{{ shell_release_url }}"
+        src: "{{ shell_release_download }}"
         dest: "{{ shell_release_directory }}"
         remote_src: true
       when:
@@ -82,5 +102,20 @@
         path: "{{ item.path }}"
         state: absent
       loop: "{{ shell_release_previous.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: "Find previous {{ shell_release.name }} downloads"
+      ansible.builtin.find:
+        paths: "{{ shell_release_cache }}/{{ shell_release.name }}"
+        file_type: directory
+        excludes: ["{{ shell_release_tag }}"]
+      register: shell_release_stale
+
+    - name: "Remove previous {{ shell_release.name }} downloads"
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ shell_release_stale.files }}"
       loop_control:
         label: "{{ item.path }}"

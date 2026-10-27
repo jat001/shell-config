@@ -183,3 +183,10 @@
         name: WSL Attach Dev VHDX
       register: dev_drive_task
       failed_when: not dev_drive_task.task_exists
+
+    - name: Inspect Developer Mode
+      ansible.windows.win_reg_stat:
+        path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock
+        name: AllowDevelopmentWithoutDevLicense
+      register: developer_mode
+      failed_when: developer_mode.value | default(0) != 1

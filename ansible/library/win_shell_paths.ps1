@@ -24,6 +24,22 @@ $spec = @{
 $module = [Ansible.Basic.AnsibleModule]::Create($args, $spec)
 $utf8 = [Text.UTF8Encoding]::new($false)
 
+Add-Type -Namespace ShellPaths -Name Native -MemberDefinition @'
+[DllImport("kernel32.dll", EntryPoint = "CreateSymbolicLinkW", CharSet = CharSet.Unicode, SetLastError = true)]
+[return: MarshalAs(UnmanagedType.U1)]
+public static extern bool CreateSymbolicLink(string link, string target, int flags);
+'@
+
+function New-SymbolicLink {
+    param([string]$Path, [string]$Target, [bool]$Directory)
+
+    $flags = 2
+    if ($Directory) { $flags = $flags -bor 1 }
+    if (-not [ShellPaths.Native]::CreateSymbolicLink($Path, $Target, $flags)) {
+        throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+    }
+}
+
 function Get-PathState {
     param([string]$Path)
 
@@ -139,13 +155,15 @@ function Install-Item {
         }
     }
 
+    $directory = $Item.type -eq 'directory' -or
+        ($Item.type -eq 'external' -and [IO.Directory]::Exists($Item.src))
     try {
-        $null = New-Item -ItemType SymbolicLink -Path $Item.path -Target $Item.src
+        New-SymbolicLink $Item.path $Item.src $directory
     } catch {
         if ($state.Type -eq 'File') {
             [IO.File]::WriteAllText($Item.path, $Item.content + [char]10, $utf8)
         } elseif ($state.Type -eq 'Link') {
-            $null = New-Item -ItemType SymbolicLink -Path $Item.path -Target $state.Target
+            New-SymbolicLink $Item.path $state.Target ([bool]$state.Directory)
         } elseif ($state.Type -eq 'Directory') {
             $null = [IO.Directory]::CreateDirectory($Item.path)
         }

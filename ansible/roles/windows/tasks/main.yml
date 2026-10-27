@@ -1,3 +1,7 @@
+- name: Gather Windows facts
+  ansible.builtin.setup:
+  tags: [always]
+
 - name: Resolve Windows layout
   ansible.builtin.set_fact:
     shell_home: "{{ (shell_windows_home | default(ansible_facts.env.USERPROFILE)) | replace('/', shell_backslash) }}"
@@ -10,6 +14,30 @@
   ansible.builtin.set_fact:
     shell_repository: "{{ shell_home }}\\.config\\shell"
   tags: [always]
+
+- name: Read Windows token
+  ansible.windows.win_whoami:
+  register: shell_whoami
+  tags: [always]
+
+- name: Read Developer Mode
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock
+    name: AllowDevelopmentWithoutDevLicense
+  register: shell_developer_mode
+  tags: [always]
+
+- name: Resolve Windows privileges
+  ansible.builtin.set_fact:
+    shell_elevated: "{{ shell_whoami.label.sid in ['S-1-16-12288', 'S-1-16-16384'] }}"
+    shell_symlinks: "{{ shell_whoami.label.sid in ['S-1-16-12288', 'S-1-16-16384'] or
+      (shell_developer_mode.value | default(0)) == 1 }}"
+  tags: [always]
+
+- name: Enable Developer Mode for symbolic links
+  ansible.builtin.import_tasks: developer_mode.yml
+  when: shell_mode != 'update'
+  tags: [developer_mode]
 
 - name: Install Windows packages
   ansible.builtin.import_tasks: packages.yml

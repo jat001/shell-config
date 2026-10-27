@@ -10,14 +10,19 @@
         quiet: true
       tags: [always]
 
-- name: Configure Windows and MSYS2
-  hosts: windows
-  gather_facts: true
-  roles:
-    - windows
-
-- name: Configure WSL distributions
-  hosts: linux:wsl
+- name: Configure Windows, MSYS2 and Linux hosts
+  hosts: windows:linux:wsl
   gather_facts: false
-  roles:
-    - linux
+  strategy: free
+  tasks:
+    - name: Configure Windows and MSYS2
+      ansible.builtin.include_role:
+        name: windows
+      when: "'windows' in group_names"
+      tags: [always]
+
+    - name: Configure Linux
+      ansible.builtin.include_role:
+        name: linux
+      when: "'windows' not in group_names"
+      tags: [always]

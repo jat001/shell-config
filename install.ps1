@@ -8,15 +8,12 @@ param(
     [switch]$SkipMsys2,
     [switch]$SkipWsl,
     [switch]$WslDevDriveOnly,
-    [string]$WindowsUser = $env:USERNAME,
     [string]$Inventory,
     [string]$StateDirectory = (Join-Path $env:LOCALAPPDATA 'shell-ansible'),
     [string]$Network,
     [string]$Playbook = 'site.yml',
     [string[]]$AnsibleArgument,
-    [switch]$PrepareOnly,
-    [Parameter(DontShow)]
-    [switch]$BootstrapWinRM
+    [switch]$PrepareOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,43 +28,13 @@ if ($WslDevDriveOnly -and $SkipWsl) {
 $repository = [IO.Path]::GetFullPath($PSScriptRoot)
 $utf8 = [Text.UTF8Encoding]::new($false)
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
-$clientCertificate = Join-Path $StateDirectory 'winrm-client.pem'
-$serverCertificate = Join-Path $StateDirectory 'winrm-server.pem'
-$credentialFile = Join-Path $StateDirectory 'winrm-credential.xml'
-$powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
-$elevated = ([Security.Principal.WindowsPrincipal]::new(
-    [Security.Principal.WindowsIdentity]::GetCurrent()
-)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-if ($BootstrapWinRM) {
-    try {
-        $bootstrap = @{
-            ClientCertificate = $clientCertificate
-            ServerCertificate = $serverCertificate
-            User = $WindowsUser
-        }
-        if ([IO.File]::Exists($credentialFile)) { $bootstrap.CredentialFile = $credentialFile }
-        & (Join-Path $repository 'ansible/bootstrap/winrm.ps1') @bootstrap
-    } catch {
-        [IO.File]::WriteAllText((Join-Path $StateDirectory 'winrm-bootstrap.log'), ($_ | Out-String), $utf8)
-        exit 1
-    }
-    return
-}
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 
 function Invoke-Wslc {
     $global:LASTEXITCODE = 0
     & wslc.exe @args
     if ($LASTEXITCODE -ne 0) { throw "wslc $($args[0]) failed ($LASTEXITCODE)." }
-}
-
-function Invoke-Elevated {
-    param([string]$Command)
-
-    $process = Start-Process -FilePath $powershell -Verb RunAs -WindowStyle Hidden -PassThru -Wait `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass $Command" -WhatIf:$false
-    if ($process.ExitCode -ne 0) { throw "Elevated command failed ($($process.ExitCode)): $Command" }
 }
 
 function Invoke-Wsl {
@@ -146,114 +113,83 @@ if (-not [IO.File]::Exists((Join-Path $StateDirectory 'id_ed25519'))) {
     Invoke-Wslc run --rm -v "${StateDirectory}:/state" $image sh -c `
         "ssh-keygen -q -t ed25519 -N '' -C shell-ansible -f /state/id_ed25519"
 }
-if (-not [IO.File]::Exists($clientCertificate)) {
-    if ($WindowsUser -notmatch '^[A-Za-z0-9._-]+$') { throw "Unsupported Windows user name: $WindowsUser" }
-    Invoke-Wslc run --rm -v "${StateDirectory}:/state" $image openssl req -x509 -nodes `
-        -newkey rsa:2048 -days 3650 -subj "/CN=$WindowsUser" `
-        -keyout /state/winrm-client.key -out /state/winrm-client.pem `
-        -addext "subjectAltName=otherName:1.3.6.1.4.1.311.20.2.3;UTF8:$WindowsUser@localhost" `
-        -addext 'extendedKeyUsage=clientAuth' -addext 'keyUsage=digitalSignature,keyEncipherment'
-}
-if ($PrepareOnly) { return }
+if ($PrepareOnly) { return $image }
 
-$startedWinRM = $false
 $servers = [Collections.Generic.List[object]]::new()
 
 try {
     if (-not $Inventory) {
-        $thumbprint = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-            $clientCertificate
-        ).Thumbprint
-        $marker = Join-Path $StateDirectory 'winrm-ready'
-        $ready = $Mode -ne 'init' -and [IO.File]::Exists($serverCertificate) -and
-            [IO.File]::Exists($marker) -and [IO.File]::ReadAllText($marker).Trim() -eq $thumbprint
-        $startedWinRM = (Get-Service WinRM).Status -ne 'Running'
-
-        if (-not $ready) {
-            $credential = Get-Credential -UserName "$env:COMPUTERNAME\$WindowsUser" `
-                -Message 'Windows password for mapping the Ansible WinRM certificate'
-            if (-not $credential) { throw 'A Windows credential is required for the WinRM bootstrap.' }
-            $credential | Export-Clixml -LiteralPath $credentialFile -WhatIf:$false
-            try {
-                $command = '-File "{0}" -BootstrapWinRM -StateDirectory "{1}" -WindowsUser "{2}"' -f
-                    $PSCommandPath, $StateDirectory, $WindowsUser
-                if ($elevated) {
-                    & $powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath `
-                        -BootstrapWinRM -StateDirectory $StateDirectory -WindowsUser $WindowsUser
-                    if ($LASTEXITCODE -ne 0) { throw 'WinRM bootstrap failed.' }
-                } else {
-                    Invoke-Elevated $command
-                }
-            } catch {
-                $log = Join-Path $StateDirectory 'winrm-bootstrap.log'
-                if ([IO.File]::Exists($log)) { throw "$_`n$([IO.File]::ReadAllText($log))" }
-                throw
-            } finally {
-                Remove-Item -LiteralPath $credentialFile -Force -ErrorAction SilentlyContinue -WhatIf:$false
+        if (-not [IO.File]::Exists($wsl)) { throw 'wsl.exe was not found.' }
+        $env:WSL_UTF8 = '1'
+        $registered = @(& $wsl --list --quiet | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
+            Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
+        if (-not $WslDistribution) {
+            if ($registered.Count) {
+                $WslDistribution = @(& $wsl --exec printenv WSL_DISTRO_NAME)
+                if ($LASTEXITCODE -ne 0) { throw 'Could not discover the default WSL distribution.' }
             }
-            [IO.File]::WriteAllText($marker, $thumbprint + [char]10, $utf8)
-        } elseif ($startedWinRM) {
-            if ($elevated) { Start-Service WinRM -WhatIf:$false } else { Invoke-Elevated '-Command Start-Service WinRM' }
+        }
+        $WslDistribution = @($WslDistribution | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
+            Where-Object { $_ })
+        if (-not $WslDistribution) {
+            throw 'A WSL distribution is required; it also carries the Windows connection.'
         }
 
         $profileHome = if ($WindowsHome) { [IO.Path]::GetFullPath($WindowsHome) } else {
             [Environment]::GetFolderPath('UserProfile')
         }
-        $hosts = [ordered]@{}
-        $hosts['windows-host'] = [ordered]@{
-            ansible_host = 'host.wslc.internal'
-            ansible_port = 5986
-            ansible_connection = 'psrp'
-            ansible_psrp_protocol = 'https'
-            ansible_psrp_auth = 'certificate'
-            ansible_psrp_certificate_pem = '/state/winrm-client.pem'
-            ansible_psrp_certificate_key_pem = '/state/winrm-client.key'
-            ansible_psrp_ca_cert = '/state/winrm-server.pem'
-        }
+        $key = [IO.File]::ReadAllText((Join-Path $StateDirectory 'id_ed25519.pub')).Trim()
+        $windowsHosts = [ordered]@{}
         $wslHosts = [ordered]@{}
 
-        if (-not $SkipWsl -and [IO.File]::Exists($wsl)) {
-            $env:WSL_UTF8 = '1'
-            if (-not $WslDistribution) {
-                $registered = & $wsl --list --quiet
-                if ($LASTEXITCODE -eq 0 -and ($registered -join '').Trim()) {
-                    $WslDistribution = @(& $wsl --exec printenv WSL_DISTRO_NAME)
-                    if ($LASTEXITCODE -ne 0) { throw 'Could not discover the default WSL distribution.' }
-                }
+        foreach ($distribution in $WslDistribution) {
+            $transport = $windowsHosts.Count -eq 0
+            if ($SkipWsl -and -not $transport) { break }
+
+            $source = Invoke-Wsl $distribution @('wslpath', '-a', '-u', $repository)
+            $user = Invoke-Wsl $distribution @('id', '-un')
+            $port = Get-FreePort $distribution
+            $bootstrap = @('sh', "$source/ansible/bootstrap/wsl.sh", [string]$port, '127.0.0.1', $key)
+            if ($transport) {
+                $bootstrap += @(
+                    (Invoke-Wsl $distribution @('wslpath', '-a', '-u', $windowsPowerShell))
+                    (Invoke-Wsl $distribution @('wslpath', '-a', '-u', [Environment]::GetFolderPath('UserProfile')))
+                    (@(
+                        [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
+                        [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+                    ) -ne $null -join ';')
+                )
             }
-            $key = [IO.File]::ReadAllText((Join-Path $StateDirectory 'id_ed25519.pub')).Trim()
+            $sshd = (Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1
+            $process = Start-Process -FilePath $wsl -WindowStyle Hidden -PassThru -WhatIf:$false `
+                -ArgumentList @('-d', $distribution, '-u', 'root', '--exec', $sshd,
+                    '-D', '-e', '-f', '/etc/shell-ansible/sshd_config')
+            $servers.Add(@{ Distribution = $distribution; Process = $process })
+            Wait-Port $port
 
-            foreach ($distribution in $WslDistribution) {
-                $distribution = $distribution.Replace([string][char]0, '').Trim()
-                if (-not $distribution) { continue }
-
-                $source = Invoke-Wsl $distribution @('wslpath', '-a', '-u', $repository)
-                $user = Invoke-Wsl $distribution @('id', '-un')
-                $port = Get-FreePort $distribution
-                $sshd = (Invoke-Wsl $distribution @(
-                    'sh', "$source/ansible/bootstrap/wsl.sh", [string]$port, '127.0.0.1', $key
-                ) -Root) -split "`n" | Select-Object -Last 1
-                $process = Start-Process -FilePath $wsl -WindowStyle Hidden -PassThru -WhatIf:$false `
-                    -ArgumentList @('-d', $distribution, '-u', 'root', '--exec', $sshd,
-                        '-D', '-e', '-f', '/etc/shell-ansible/sshd_config')
-                $servers.Add(@{ Distribution = $distribution; Process = $process })
-                Wait-Port $port
-
-                $wslHosts["wsl-$($distribution -replace '[^A-Za-z0-9_-]', '-')"] = [ordered]@{
-                    ansible_host = 'host.wslc.internal'
-                    ansible_port = $port
-                    ansible_user = 'root'
-                    ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
-                    shell_user = $user
-                    shell_windows_home_native = $profileHome
-                }
+            $connection = [ordered]@{
+                ansible_host = 'host.wslc.internal'
+                ansible_port = $port
+                ansible_user = 'root'
+                ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
+            }
+            if ($transport) {
+                $windows = [ordered]@{}
+                foreach ($entry in $connection.GetEnumerator()) { $windows[$entry.Key] = $entry.Value }
+                $windows.ansible_shell_type = 'powershell'
+                $windowsHosts['windows-host'] = $windows
+            }
+            if (-not $SkipWsl) {
+                $connection.shell_user = $user
+                $connection.shell_windows_home_native = $profileHome
+                $wslHosts["wsl-$($distribution -replace '[^A-Za-z0-9_-]', '-')"] = $connection
             }
         }
 
         $document = @{
             all = @{
                 children = [ordered]@{
-                    windows = @{ hosts = $hosts }
+                    windows = @{ hosts = $windowsHosts }
                     wsl = @{ hosts = $wslHosts }
                 }
             }
@@ -286,6 +222,9 @@ try {
         $image, 'sh', '/work/ansible/run.sh', '-e', '@/state/variables.json'
         '-i', ('/state/' + $inventoryPath.Substring($StateDirectory.Length + 1).Replace('\', '/'))
     )
+    $passthrough = Get-ChildItem Env: | Where-Object Name -Match '^(ANSIBLE|PROFILE_TASKS)_'
+    $environment = foreach ($variable in $passthrough) { '-e'; "$($variable.Name)=$($variable.Value)" }
+    $arguments = @($arguments[0..1]) + @($environment) + @($arguments[2..($arguments.Count - 1)])
     if ($WslDevDriveOnly) { $arguments += @('--tags', 'dev_drive') }
     if ($WhatIfPreference) { $arguments += @('--check', '--diff') }
     if ($AnsibleArgument) { $arguments += $AnsibleArgument }
@@ -295,11 +234,8 @@ try {
 } finally {
     foreach ($server in $servers) {
         & $wsl -d $server.Distribution -u root --exec sh -c `
-            'kill "$(cat /etc/shell-ansible/sshd.pid)" 2>/dev/null; rm -f /etc/shell-ansible/sshd.pid' *> $null
+            'kill "$(cat /etc/shell-ansible/sshd.pid)" 2>/dev/null' *> $null
         if (-not $server.Process.HasExited) { Stop-Process -Id $server.Process.Id -Force -WhatIf:$false }
-    }
-    if ($startedWinRM) {
-        if ($elevated) { Stop-Service WinRM -WhatIf:$false } else { Invoke-Elevated '-Command Stop-Service WinRM' }
     }
 }
 

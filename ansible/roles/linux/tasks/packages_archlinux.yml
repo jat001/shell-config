@@ -87,10 +87,18 @@
     validate: visudo -cf %s
   when: shell_aur_missing.rc == 127 or shell_mode == 'update'
 
+- name: Create AUR build cache
+  ansible.builtin.file:
+    path: "{{ shell_aur_cache }}"
+    state: directory
+    owner: "{{ shell_aur_builder }}"
+    mode: "0755"
+  when: shell_aur_missing.rc == 127 or shell_mode == 'update'
+
 - name: Install AUR packages
   ansible.builtin.command:
     argv: "{{ ['sudo', '-u', shell_aur_builder, '-H', 'yay', '-S', '--needed', '--noconfirm',
-      '--answerdiff', 'None', '--answerclean', 'None', '--removemake']
+      '--answerdiff', 'None', '--answerclean', 'None', '--removemake', '--builddir', shell_aur_cache]
       + shell_aur_missing.stdout_lines }}"
   register: shell_network_result
   until: shell_network_result is succeeded
@@ -109,7 +117,7 @@
 - name: Update AUR packages
   ansible.builtin.command:
     argv: [sudo, -u, "{{ shell_aur_builder }}", -H, yay, -Sua, --noconfirm,
-           --answerdiff, None, --answerclean, None, --removemake]
+           --answerdiff, None, --answerclean, None, --removemake, --builddir, "{{ shell_aur_cache }}"]
   changed_when: false
   when: shell_mode == 'update'
 

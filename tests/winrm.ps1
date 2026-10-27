@@ -8,7 +8,8 @@ param(
     [string[]]$Name = @('host.wslc.internal'),
     [string]$Address = 'IP:127.0.0.1',
     [int]$Port = 5986,
-    [string]$CredentialFile
+    [string]$CredentialFile,
+    [switch]$FullToken
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,9 +17,9 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 
 if ((Get-Service WinRM).Status -ne 'Running') { Start-Service WinRM }
 
-$policy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-if ((Get-ItemProperty $policy).LocalAccountTokenFilterPolicy -ne 1) {
-    Set-ItemProperty -Path $policy -Name LocalAccountTokenFilterPolicy -Value 1 -Type DWord
+if ($FullToken) {
+    Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
+        -Name LocalAccountTokenFilterPolicy -Value 1 -Type DWord
 }
 Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
 

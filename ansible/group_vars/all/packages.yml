@@ -34,6 +34,7 @@ shell_antidote_repository: https://github.com/mattmc3/antidote.git
 
 shell_archlinuxcn_server: https://repo.archlinuxcn.org/$arch
 shell_aur_builder: aurbuilder
+shell_aur_cache: /var/cache/aurbuilder
 
 shell_pacman_packages:
   - base-devel
@@ -69,6 +70,7 @@ shell_apt_packages:
   - zsh-syntax-highlighting
 
 shell_release_root: /opt/shell-releases
+shell_release_cache: /var/cache/shell-releases
 
 shell_releases:
   - name: oh-my-posh

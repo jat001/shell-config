@@ -1,3 +1,11 @@
+- name: Require symbolic link support
+  ansible.builtin.assert:
+    that: shell_symlinks | bool
+    fail_msg: >-
+      Creating symbolic links without elevation requires Windows Developer Mode;
+      run the init mode to enable it, or enable it in Settings > System > For developers.
+    quiet: true
+
 - name: Install Windows entries and links
   win_shell_paths:
     items: "{{ shell_entries | shell_windows_items(shell_home, shell_repository,
