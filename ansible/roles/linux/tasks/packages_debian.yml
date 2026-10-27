@@ -1,0 +1,35 @@
+- name: Install or update Debian packages
+  ansible.builtin.apt:
+    name: "{{ shell_apt_packages }}"
+    state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
+    update_cache: true
+    cache_valid_time: 3600
+    install_recommends: false
+  register: shell_network_result
+  until: shell_network_result is succeeded
+  retries: 3
+  delay: 10
+
+- name: Find ICU runtime package
+  ansible.builtin.shell: >-
+    apt-cache search --names-only '^libicu[0-9]+$' | cut -d' ' -f1 | sort -V | tail -n1
+  register: shell_icu_package
+  changed_when: false
+  check_mode: false
+
+- name: Install ICU runtime for PowerShell
+  ansible.builtin.apt:
+    name: "{{ shell_icu_package.stdout | trim }}"
+    state: present
+  register: shell_network_result
+  until: shell_network_result is succeeded
+  retries: 3
+  delay: 10
+  when: shell_icu_package.stdout | trim | length > 0
+
+- name: Install or update release binaries
+  ansible.builtin.include_tasks: release.yml
+  loop: "{{ shell_releases }}"
+  loop_control:
+    loop_var: shell_release
+    label: "{{ shell_release.name }}"

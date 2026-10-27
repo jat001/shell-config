@@ -1,0 +1,50 @@
+- name: Convert Windows home
+  ansible.builtin.command:
+    argv: [wslpath, -a, -u, "{{ shell_windows_home_native }}"]
+  register: shell_windows_home_converted
+  changed_when: false
+  check_mode: false
+  when:
+    - shell_windows_home is not defined
+    - shell_windows_home_native is defined
+
+- name: Discover Windows home
+  ansible.builtin.shell: wslpath -a -u "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
+  register: shell_windows_home_discovered
+  changed_when: false
+  check_mode: false
+  when:
+    - shell_windows_home is not defined
+    - shell_windows_home_native is not defined
+
+- name: Read configuration account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ shell_user | default(ansible_facts.user_id) }}"
+
+- name: Resolve shared paths
+  ansible.builtin.set_fact:
+    shell_become: "{{ ansible_facts.user_uid | int != 0 }}"
+    shell_account: "{{ shell_user | default(ansible_facts.user_id) }}"
+    shell_account_become: "{{ (shell_user | default(ansible_facts.user_id)) != ansible_facts.user_id }}"
+    shell_account_uid: "{{ ansible_facts.getent_passwd[shell_user | default(ansible_facts.user_id)][1] }}"
+    shell_user_home: "{{ ansible_facts.getent_passwd[shell_user | default(ansible_facts.user_id)][4] }}"
+    shell_windows_home_path: "{{ shell_windows_home
+      | default(shell_windows_home_converted.stdout | default(''))
+      | default(shell_windows_home_discovered.stdout, true) | trim }}"
+
+- name: Resolve shared repository
+  ansible.builtin.set_fact:
+    shell_repository: "{{ shell_windows_home_path }}/.config/shell"
+
+- name: Inspect shared repository
+  ansible.builtin.stat:
+    path: "{{ shell_repository }}/common.json"
+  register: shell_repository_state
+
+- name: Require shared repository
+  ansible.builtin.assert:
+    that: shell_repository_state.stat.exists
+    fail_msg: "The shared repository is not available at {{ shell_repository }}"
+    quiet: true
+  when: shell_mode != 'init'

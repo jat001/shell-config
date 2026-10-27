@@ -1,0 +1,10 @@
+- name: Install or update Scoop applications
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'scoop.ps1') }}"
+    parameters:
+      Root: "{{ shell_scoop_root }}"
+      Mode: "{{ shell_mode }}"
+      Bootstrap: "{{ shell_scoop_bootstrap }}"
+      Buckets: "{{ shell_scoop_buckets }}"
+      Apps: "{{ shell_scoop_apps }}"
+  register: shell_scoop

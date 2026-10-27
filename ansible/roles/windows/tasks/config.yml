@@ -1,0 +1,11 @@
+- name: Install Windows entries and links
+  win_shell_paths:
+    items: "{{ shell_entries | shell_windows_items(shell_home, shell_repository,
+      shell_fish_directories, shell_plugin_content, shell_clink_content) }}"
+
+- name: Set user HOME
+  ansible.windows.win_environment:
+    name: HOME
+    value: "{{ shell_home }}"
+    level: user
+  when: shell_current_home | bool

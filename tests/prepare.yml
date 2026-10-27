@@ -1,0 +1,43 @@
+- name: Create the Windows side of the simulated WSL hosts
+  hosts: linux
+  gather_facts: false
+  vars_files:
+    - ../ansible/group_vars/all/main.yml
+  vars:
+    windows_home: /mnt/c/Users/Jat
+  tasks:
+    - name: Create Windows entry directories
+      ansible.builtin.file:
+        path: "{{ (windows_home ~ '/' ~ item) | dirname }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ shell_entries | map(attribute='path') | list }}"
+
+    - name: Create Windows entries
+      ansible.builtin.copy:
+        dest: "{{ windows_home }}/{{ item.path }}"
+        content: "{{ item.content }}\n"
+        mode: "0644"
+      loop: "{{ shell_entries }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Create Windows fish directories
+      ansible.builtin.file:
+        path: "{{ windows_home }}/.config/fish/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ shell_fish_directories }}"
+
+    - name: Create Scoop Git directory
+      ansible.builtin.file:
+        path: "{{ windows_home }}/scoop/apps/git-without-openssh/current/cmd"
+        state: directory
+        mode: "0755"
+
+    - name: Create Scoop Git placeholder
+      ansible.builtin.copy:
+        dest: "{{ windows_home }}/scoop/apps/git-without-openssh/current/cmd/git.exe"
+        content: ""
+        mode: "0755"
+        force: false

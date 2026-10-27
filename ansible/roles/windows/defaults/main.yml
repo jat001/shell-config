@@ -1,0 +1,3 @@
+shell_msys2: true
+shell_dev_drive_task: auto
+shell_backslash: '\'

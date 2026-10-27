@@ -1,0 +1,71 @@
+- name: Link shared repository
+  shell_paths:
+    items:
+      - path: "{{ shell_user_home }}/.config/shell"
+        state: link
+        src: "{{ shell_repository }}"
+  tags: [dev_drive]
+
+- name: Install entries and shared links
+  shell_paths:
+    items: "{{ shell_entries | shell_unix_items(shell_user_home, shell_windows_home_path,
+      shell_repository, shell_fish_directories, shell_plugin_content) }}"
+
+- name: Plan configured links
+  ansible.builtin.command:
+    argv:
+      - jq
+      - --arg
+      - platform
+      - wsl
+      - --arg
+      - home
+      - "{{ shell_user_home }}"
+      - --arg
+      - mode
+      - plan
+      - -f
+      - "{{ shell_repository }}/common.jq"
+      - "{{ shell_repository }}/common.json"
+  environment:
+    XDG_RUNTIME_DIR: "{{ '/run/user/' ~ shell_account_uid }}"
+  register: shell_link_plan
+  changed_when: false
+  check_mode: false
+
+- name: Resolve configured links
+  ansible.builtin.set_fact:
+    shell_links: "{{ (shell_link_plan.stdout | from_json).links | default({}) }}"
+
+- name: Require absolute configured links
+  ansible.builtin.assert:
+    that:
+      - item.key is match('/')
+      - item.value is match('/')
+    fail_msg: "Configured link paths must be absolute: {{ item.key }}"
+    quiet: true
+  loop: "{{ shell_links | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Inspect configured link targets
+  ansible.builtin.stat:
+    path: "{{ item.value }}"
+  loop: "{{ shell_links | dict2items }}"
+  loop_control:
+    label: "{{ item.value }}"
+  register: shell_link_targets
+
+- name: Require configured link targets
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Configured link target does not exist: {{ item.item.value }}"
+    quiet: true
+  loop: "{{ shell_link_targets.results }}"
+  loop_control:
+    label: "{{ item.item.value }}"
+
+- name: Install configured links
+  shell_paths:
+    items: "{{ shell_links | shell_link_items }}"
+  when: shell_links | length > 0

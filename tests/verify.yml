@@ -1,0 +1,185 @@
+- name: Verify simulated WSL hosts
+  hosts: linux
+  gather_facts: true
+  gather_subset: [min]
+  vars_files:
+    - ../ansible/group_vars/all/main.yml
+  vars:
+    windows_home: /mnt/c/Users/Jat
+    home: "{{ ansible_facts.user_dir }}"
+    shell_environment:
+      WSL_DISTRO_NAME: test
+      XDG_RUNTIME_DIR: /run/user/0
+      TERM: xterm-256color
+    expected_links:
+      .config/shell: "{{ windows_home }}/.config/shell"
+      .config/oh-my-posh: "{{ windows_home }}/.config/shell/oh-my-posh"
+      .zsh_plugins.txt: "{{ windows_home }}/.config/shell/zsh_plugins.txt"
+      .bashrc: "{{ windows_home }}/.bashrc"
+      .zshrc: "{{ windows_home }}/.zshrc"
+      .inputrc: "{{ windows_home }}/.inputrc"
+      .config/fish/config.fish: "{{ windows_home }}/.config/fish/config.fish"
+      .config/fish/functions: "{{ windows_home }}/.config/fish/functions"
+      .config/powershell/Microsoft.PowerShell_profile.ps1: "{{ windows_home }}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
+      .config/nushell/config.nu: "{{ windows_home }}/AppData/Roaming/nushell/config.nu"
+      .local/bin/git.exe: "{{ windows_home }}/scoop/apps/git-without-openssh/current/cmd/git.exe"
+      .config/systemd/user/wsl2-ssh-agent.service: "{{ windows_home }}/.config/shell/systemd/wsl2-ssh-agent.service"
+      .config/systemd/user/wsl-dev-drive.service: "{{ windows_home }}/.config/shell/systemd/wsl-dev-drive.service"
+  tasks:
+    - name: Inspect links
+      ansible.builtin.stat:
+        path: "{{ home }}/{{ item.key }}"
+      loop: "{{ expected_links | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: links
+
+    - name: Check links
+      ansible.builtin.assert:
+        that:
+          - item.stat.islnk | default(false)
+          - item.stat.lnk_source == item.item.value
+        fail_msg: "{{ item.item.key }} is not linked to {{ item.item.value }}"
+        quiet: true
+      loop: "{{ links.results }}"
+      loop_control:
+        label: "{{ item.item.key }}"
+
+    - name: Check software
+      ansible.builtin.shell: |
+        set -e
+        for command in jq zsh fish nu pwsh oh-my-posh git wsl2-ssh-agent; do
+            command -v "$command"
+        done
+        for file in blesh/ble.sh zsh-antidote/antidote.zsh; do
+            test -f "/usr/share/$file"
+        done
+      changed_when: false
+
+    - name: Load shared environment in each shell
+      ansible.builtin.command:
+        argv: "{{ item.argv }}"
+      environment: "{{ shell_environment }}"
+      loop:
+        - name: bash
+          argv: [bash, -ic, 'printf %s "$PNPM_HOME"']
+        - name: zsh
+          argv: [zsh, -ic, 'printf %s "$PNPM_HOME"']
+        - name: fish
+          argv: [fish, -c, 'printf %s "$PNPM_HOME"']
+        - name: pwsh
+          argv: [pwsh, -NoLogo, -Command, '[Console]::Write($env:PNPM_HOME)']
+        - name: nu
+          argv: [nu, --env-config, "{{ home }}/.config/nushell/env.nu",
+                 --config, "{{ home }}/.config/nushell/config.nu", -c, 'print -n $env.PNPM_HOME']
+      loop_control:
+        label: "{{ item.name }}"
+      register: shells
+      changed_when: false
+
+    - name: Check shared environment
+      ansible.builtin.assert:
+        that: (item.stdout_lines | last | default('')) is search(home ~ '/.local/share/pnpm$')
+        fail_msg: "{{ item.item.name }} printed {{ item.stdout }} / {{ item.stderr }}"
+        quiet: true
+      loop: "{{ shells.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+- name: Verify Windows Sandbox
+  hosts: windows
+  gather_facts: true
+  vars_files:
+    - ../ansible/group_vars/all/main.yml
+  vars:
+    shell_backslash: '\'
+    home: "{{ ansible_facts.env.USERPROFILE }}"
+    msys2_home: C:\msys64\home\{{ ansible_facts.env.USERNAME }}
+    scoop: "{{ ansible_facts.env.USERPROFILE }}\\scoop"
+  tasks:
+    - name: Read Windows entries
+      ansible.builtin.slurp:
+        src: "{{ home }}\\{{ item.path | replace('/', shell_backslash) }}"
+      loop: "{{ shell_entries }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: entries
+
+    - name: Check Windows entries
+      ansible.builtin.assert:
+        that: (item.content | b64decode) == item.item.content ~ '\n'
+        fail_msg: "{{ item.item.path }} has unexpected content"
+        quiet: true
+      loop: "{{ entries.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Inspect Windows and MSYS2 links
+      ansible.windows.win_stat:
+        path: "{{ item.path }}"
+      loop:
+        - path: "{{ home }}\\.config\\oh-my-posh"
+          target: "{{ home }}\\.config\\shell\\oh-my-posh"
+        - path: "{{ home }}\\.zsh_plugins.txt"
+          target: "{{ home }}\\.config\\shell\\zsh_plugins.txt"
+        - path: "{{ home }}\\AppData\\Local\\clink\\clink_settings"
+          target: "{{ home }}\\.config\\shell\\common.clink_settings"
+        - path: "{{ msys2_home }}\\.config\\shell"
+          target: "{{ home }}\\.config\\shell"
+        - path: "{{ msys2_home }}\\.bashrc"
+          target: "{{ home }}\\.bashrc"
+        - path: "{{ msys2_home }}\\.local\\share\\antidote"
+          target: "{{ home }}\\.local\\share\\antidote"
+      loop_control:
+        label: "{{ item.path }}"
+      register: windows_links
+
+    - name: Check Windows and MSYS2 links
+      ansible.builtin.assert:
+        that:
+          - item.stat.islnk | default(false)
+          - (item.stat.lnk_target | lower) == (item.item.target | lower)
+        fail_msg: "{{ item.item.path }} -> {{ item.stat.lnk_target | default('missing') }}"
+        quiet: true
+      loop: "{{ windows_links.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Check user HOME
+      ansible.windows.win_powershell:
+        script: "[Environment]::GetEnvironmentVariable('HOME', 'User')"
+      register: user_home
+      changed_when: false
+      failed_when: user_home.output[0] != home
+
+    - name: Check Windows software
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "{{ scoop }}\shims;$env:PATH"
+          foreach ($command in 'git', 'jq', 'oh-my-posh', 'clink', 'nu', 'pwsh') {
+              $null = Get-Command $command
+          }
+          $output = & pwsh -NoLogo -Command '[Console]::Write($env:HOME); Get-Module PSCompletions -ListAvailable | Out-Null' 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "pwsh profile failed: $output" }
+          $output
+      register: windows_software
+      changed_when: false
+
+    - name: Check MSYS2 shells
+      ansible.windows.win_command:
+        argv:
+          - C:\msys64\usr\bin\zsh.exe
+          - -lic
+          - whence -p oh-my-posh jq git fish
+      environment:
+        MSYSTEM: UCRT64
+        CHERE_INVOKING: "1"
+      changed_when: false
+
+    - name: Inspect WSL development drive task
+      community.windows.win_scheduled_task_stat:
+        path: \
+        name: WSL Attach Dev VHDX
+      register: dev_drive_task
+      failed_when: not dev_drive_task.task_exists

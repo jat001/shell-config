@@ -1,0 +1,102 @@
+shell_scoop_buckets:
+  - main
+  - versions
+
+shell_scoop_bootstrap: https://raw.githubusercontent.com/ScoopInstaller/Versions/master/bucket/git-without-openssh.json
+
+shell_scoop_apps:
+  - name: git-without-openssh
+    bucket: versions
+  - name: jq
+    bucket: main
+  - name: oh-my-posh
+    bucket: main
+  - name: clink
+    bucket: main
+  - name: nu
+    bucket: main
+  - name: pscompletions
+    bucket: main
+  - name: pwsh
+    bucket: main
+    command: pwsh
+
+shell_msys2_installer: https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe
+shell_msys2_packages:
+  - fish
+  - git
+  - jq
+  - zsh
+  - mingw-w64-ucrt-x86_64-oh-my-posh
+
+shell_blesh_archive: https://github.com/akinomyoga/ble.sh/releases/download/nightly/ble-nightly.tar.xz
+shell_antidote_repository: https://github.com/mattmc3/antidote.git
+
+shell_archlinuxcn_server: https://repo.archlinuxcn.org/$arch
+shell_aur_builder: aurbuilder
+
+shell_pacman_packages:
+  - base-devel
+  - fish
+  - git
+  - jq
+  - nushell
+  - zsh
+  - zsh-autosuggestions
+  - zsh-completions
+  - zsh-syntax-highlighting
+
+shell_archlinuxcn_packages:
+  - blesh-git
+  - oh-my-posh
+  - yay
+
+shell_aur_packages:
+  - powershell-bin
+  - wsl2-ssh-agent-bin
+  - zsh-antidote
+
+shell_apt_packages:
+  - ble.sh
+  - ca-certificates
+  - curl
+  - fish
+  - git
+  - jq
+  - zsh
+  - zsh-antidote
+  - zsh-autosuggestions
+  - zsh-syntax-highlighting
+
+shell_release_root: /opt/shell-releases
+
+shell_releases:
+  - name: oh-my-posh
+    repository: JanDeDobbeleer/oh-my-posh
+    asset: "posh-linux-{{ shell_release_arch.go }}"
+    command: oh-my-posh
+  - name: nushell
+    repository: nushell/nushell
+    asset: "nu-{version}-{{ shell_release_arch.rust }}-unknown-linux-gnu.tar.gz"
+    archive: "nu-{version}-{{ shell_release_arch.rust }}-unknown-linux-gnu"
+    command: nu
+  - name: powershell
+    repository: PowerShell/PowerShell
+    asset: "powershell-{version}-linux-{{ shell_release_arch.dotnet }}.tar.gz"
+    archive: ""
+    command: pwsh
+  - name: wsl2-ssh-agent
+    repository: mame/wsl2-ssh-agent
+    asset: "wsl2-ssh-agent{{ '' if shell_release_arch.go == 'amd64' else '-' ~ shell_release_arch.go }}"
+    command: wsl2-ssh-agent
+
+shell_release_arches:
+  x86_64:
+    go: amd64
+    rust: x86_64
+    dotnet: x64
+  aarch64:
+    go: arm64
+    rust: aarch64
+    dotnet: arm64
+shell_release_arch: "{{ shell_release_arches[ansible_facts.architecture] }}"

@@ -1,0 +1,94 @@
+- name: Resolve MSYS2 root
+  ansible.builtin.set_fact:
+    shell_msys2_root_path: "{{ (shell_msys2_root | default(shell_configuration.environments.msys2.root))
+      | replace('/', shell_backslash) }}"
+
+- name: Install or update MSYS2 packages
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'msys2.ps1') }}"
+    parameters:
+      Root: "{{ shell_msys2_root_path }}"
+      Mode: "{{ shell_mode }}"
+      Installer: "{{ shell_msys2_installer }}"
+      Packages: "{{ shell_msys2_packages }}"
+  tags: [packages]
+
+- name: Inspect MSYS2 tools
+  ansible.windows.win_stat:
+    path: "{{ shell_msys2_root_path }}\\usr\\bin\\getent.exe"
+  register: shell_msys2_getent
+
+- name: Read MSYS2 account
+  ansible.windows.win_command:
+    argv:
+      - "{{ shell_msys2_root_path }}\\usr\\bin\\getent.exe"
+      - passwd
+      - "{{ ansible_facts.env.USERNAME }}"
+  register: shell_msys2_account
+  changed_when: false
+  check_mode: false
+  when: shell_msys2_getent.stat.exists
+
+- name: Convert MSYS2 home
+  ansible.windows.win_command:
+    argv:
+      - "{{ shell_msys2_root_path }}\\usr\\bin\\cygpath.exe"
+      - -w
+      - "{{ shell_msys2_account.stdout.strip().split(':')[5] }}"
+  register: shell_msys2_home_path
+  changed_when: false
+  check_mode: false
+  when: shell_msys2_getent.stat.exists
+
+- name: Resolve MSYS2 home
+  ansible.builtin.set_fact:
+    shell_msys2_home: "{{ shell_msys2_home_path.stdout | trim }}"
+  when: shell_msys2_getent.stat.exists
+
+- name: Install or update ble.sh for MSYS2
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'archive.ps1') }}"
+    parameters:
+      Url: "{{ shell_blesh_archive }}"
+      Destination: "{{ shell_msys2_home }}\\.local\\share\\blesh"
+      Entry: ble.sh
+      Mode: "{{ shell_mode }}"
+  when: shell_msys2_home is defined
+  tags: [packages]
+
+- name: Install Antidote
+  ansible.windows.win_command:
+    argv:
+      - "{{ shell_scoop_root }}\\shims\\git.exe"
+      - clone
+      - --depth=1
+      - "{{ shell_antidote_repository }}"
+      - "{{ shell_home }}\\.local\\share\\antidote"
+    creates: "{{ shell_home }}\\.local\\share\\antidote\\antidote.zsh"
+  when: shell_mode != 'update'
+  tags: [packages]
+
+- name: Update Antidote
+  ansible.windows.win_command:
+    argv:
+      - "{{ shell_scoop_root }}\\shims\\git.exe"
+      - -C
+      - "{{ shell_home }}\\.local\\share\\antidote"
+      - pull
+      - --ff-only
+  register: shell_antidote_pull
+  changed_when: "'Already up to date' not in shell_antidote_pull.stdout"
+  when: shell_mode == 'update'
+  tags: [packages]
+
+- name: Install MSYS2 entries and links
+  win_shell_paths:
+    items: "{{ shell_entries | shell_unix_items(shell_msys2_home, shell_home, shell_repository,
+      shell_fish_directories, shell_plugin_content, msys=true,
+      skel=shell_msys2_root_path ~ '/etc/skel')
+      + [{'path': shell_msys2_home ~ '/.local/share/antidote', 'state': 'link',
+          'src': shell_home ~ '/.local/share/antidote'}] }}"
+  when:
+    - shell_mode != 'init'
+    - shell_msys2_home is defined
+  tags: [config]

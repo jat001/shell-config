@@ -1,0 +1,76 @@
+- name: Select systemd user units
+  ansible.builtin.set_fact:
+    shell_units: "{{ (shell_source ~ '/systemd') | shell_units(
+      only=(['wsl-dev-drive.service'] if ansible_run_tags == ['dev_drive'] else none),
+      exclude=([] if shell_configuration.environments.wsl.dev_drive is defined
+        else ['wsl-dev-drive.service'])) }}"
+  tags: [dev_drive]
+
+- name: Link systemd user units
+  shell_paths:
+    items: "{{ shell_units | shell_unit_items(shell_user_home, shell_repository) }}"
+  register: shell_unit_links
+  when: shell_units | length > 0
+  tags: [dev_drive]
+
+- name: Inspect systemd user manager
+  ansible.builtin.command:
+    argv: [systemctl, --user, show-environment]
+  environment: &systemd_environment
+    XDG_RUNTIME_DIR: "{{ '/run/user/' ~ shell_account_uid }}"
+  register: shell_systemd_user
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [dev_drive]
+
+- name: Report unavailable systemd user manager
+  ansible.builtin.debug:
+    msg: The systemd user manager is not running; user units were linked but not started.
+  when: shell_systemd_user.rc != 0
+  tags: [dev_drive]
+
+- name: Start systemd user units
+  when:
+    - shell_systemd_user.rc == 0
+    - shell_units | selectattr('enable') | list | length > 0
+  environment: *systemd_environment
+  tags: [dev_drive]
+  block:
+    - name: Inspect pending unit reloads
+      ansible.builtin.command:
+        argv: "{{ ['systemctl', '--user', 'show', '-p', 'NeedDaemonReload', '--value']
+          + (shell_units | selectattr('enable') | map(attribute='name') | list) }}"
+      register: shell_unit_reload
+      changed_when: false
+      check_mode: false
+
+    - name: Reload systemd user manager
+      ansible.builtin.systemd_service:
+        scope: user
+        daemon_reload: true
+      when: shell_unit_links.changed or 'yes' in shell_unit_reload.stdout_lines
+
+    - name: Enable and start user units
+      ansible.builtin.systemd_service:
+        scope: user
+        name: "{{ item.name }}"
+        enabled: true
+        state: started
+      loop: "{{ shell_units | selectattr('enable') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: shell_unit_started
+
+    - name: Restart reloaded user units
+      ansible.builtin.systemd_service:
+        scope: user
+        name: "{{ item.0.name }}"
+        state: restarted
+      loop: "{{ shell_units | selectattr('enable') | zip(shell_unit_reload.stdout_lines) | list }}"
+      loop_control:
+        label: "{{ item.0.name }}"
+      when:
+        - item.1 == 'yes'
+        - not (shell_unit_started.results | selectattr('item.name', 'equalto', item.0.name)
+          | map(attribute='changed') | first)

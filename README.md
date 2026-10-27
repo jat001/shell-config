@@ -7,7 +7,7 @@ Windows、WSL 和 MSYS2 按运行环境加载同一套配置。
 ## Git 与安装
 
 仓库根目录是 `C:\Users\Jat\.config\shell`，不是整个 `.config`。
-仓库保存共用脚本、zsh 插件清单、OMP 主题、安装脚本和维护说明。
+仓库保存共用脚本、zsh 插件清单、OMP 主题、Ansible 安装配置和维护说明。
 `.gitignore` 只忽略本地配置、备份和临时文件，新增配置源码会被 Git 正常发现。
 历史、运行缓存和生成文件保存在仓库之外。
 
@@ -16,16 +16,32 @@ Windows 的 `~/.config/oh-my-posh` 是指向该目录的目录符号链接；
 WSL/MSYS2 的同名目录直接链接到仓库中的主题目录。
 运行时仍使用 `$HOME/.config/oh-my-posh`，主题的相对继承路径保持不变。
 
-在 Windows PowerShell 5.1 或 PowerShell 7 中预览安装：
+安装和更新由 `ansible/` 下的 Ansible playbook 完成。
+`install.ps1` 只负责启动：准备连接，再用 `wslc` 构建并运行 Ansible 控制容器，
+把仓库只读挂载到容器的 `/work`。容器经 WinRM（PSRP）管理 Windows 和 MSYS2，
+经各 WSL 发行版内的专用 sshd 管理 WSL。
+
+安装分三种模式，`-Mode` 默认为 `full`：
+
+| 模式 | 内容 |
+|---|---|
+| `init` | 初始化：安装 Scoop、MSYS2、Python 等前置程序，以及下文列出的 shell 和依赖；不部署配置。 |
+| `full` | 全量安装：`init` 的全部内容，加上入口文件、共享链接、用户级 `HOME`、systemd 用户单元和开发盘任务。 |
+| `update` | 增量更新：重新同步配置，只报告实际变化；升级已安装的受管软件，跳过一次性初始化步骤。 |
+
+新机器先运行 `init`，再运行 `full`；之后修改配置或升级软件时运行 `update`：
+
+```powershell
+& "$HOME/.config/shell/install.ps1" -Mode init
+& "$HOME/.config/shell/install.ps1" -Mode full
+& "$HOME/.config/shell/install.ps1" -Mode update
+```
+
+`-WhatIf` 以 `--check --diff` 运行 playbook，只预览不修改；
+预览同样需要连接，因此仍会按下文准备 WinRM 和 WSL 的 sshd：
 
 ```powershell
 & "$HOME/.config/shell/install.ps1" -WhatIf
-```
-
-确认预览内容后运行：
-
-```powershell
-& "$HOME/.config/shell/install.ps1"
 ```
 
 默认布置当前 Windows 用户、`common.json` 中 `environments.msys2.root` 指定的
@@ -44,28 +60,110 @@ $installation = @{
 ```
 
 `-SkipMsys2`、`-SkipWsl` 用于跳过对应环境。
-`-WslDevDriveOnly` 只部署下文的 WSL 共享开发盘任务和用户服务，
-可与 `-WslDistribution` 一起使用，跳过 shell 入口、MSYS2 和其他用户服务。
+`-WslDevDriveOnly` 只运行带 `dev_drive` 标签的任务：Windows 开发盘任务、
+WSL 的 `~/.config/shell` 链接和 `wsl-dev-drive.service`，可与 `-WslDistribution` 一起使用。
 `-WindowsHome` 可指定配置部署的 Windows 用户主目录；
-只有目标为当前账户主目录时，脚本才设置该账户的用户级 `HOME`。
+只有目标为当前账户主目录时，才设置该账户的用户级 `HOME`。
+`-AnsibleArgument` 原样追加给 `ansible-playbook`，例如 `@('--tags', 'config', '-v')`。
 Windows 目录和文件链接均使用 SymbolicLink；
-创建这些链接需要 Windows 开发人员模式或相应权限。
+创建这些链接需要 Windows 开发人员模式或管理员会话。
 
-安装前会检查全部目标。已有的相同入口和链接保持原样；
-内容不同的入口文件或非空的普通目录会导致停止，保留其中的配置。
-脚本不递归删除目录，也不生成备份文件；可重复运行。
+### 控制容器与连接
+
+控制容器镜像由 `ansible/Containerfile`、`requirements.txt`、`requirements.yml` 定义，
+标签取三者内容的哈希；文件不变时复用已有镜像，修改后自动重建。
+容器通过 `host.wslc.internal` 访问 Windows 主机的回环地址，所有连接都只监听 `127.0.0.1`。
+
+运行状态保存在 `%LOCALAPPDATA%\shell-ansible`：WinRM 客户端证书和私钥、
+WinRM 服务器证书、WSL 用的 SSH 密钥、`known_hosts`、本次生成的库存和变量文件。
+
+Windows 使用 PSRP over HTTPS 和客户端证书认证，没有使用 Windows OpenSSH：
+它的 sshd 启用了 RedirectionGuard，SSH 会话无法经过普通用户创建的目录联接，
+Scoop 的 `apps/*/current` 和 Clink 的 cmd AutoRun 都会因此失败。
+第一次运行（以及每次 `init`）由 `ansible/bootstrap/winrm.ps1` 在提升的进程中完成：
+
+- 启动 WinRM 服务，在 `IP:127.0.0.1:5986` 建立 HTTPS 监听，使用自签名服务器证书；
+- 启用证书认证，设置 `LocalAccountTokenFilterPolicy=1`，让本地管理员账户获得完整令牌；
+- 把 `openssl` 生成的客户端证书（UPN 为 `用户名@localhost`）导入本机 Root 和 TrustedPeople，
+  并建立证书映射。映射需要 Windows 密码：启动器弹出系统凭据窗口，由用户输入；
+  凭据以 DPAPI 保护的文件交给提升的进程，映射完成后立即删除，密码由 WinRM 保存。
+
+之后的运行不再需要密码。WinRM 原本未运行时，启动器启动它并在结束后停止，
+启动和停止需要管理员权限，普通权限运行时各触发一次 UAC。
+
+WSL 发行版由 `ansible/bootstrap/wsl.sh` 准备：缺少时安装 OpenSSH 和 Python，
+在 `/etc/shell-ansible` 写入独立的 sshd 配置、主机密钥和授权公钥，
+不修改发行版自身的 sshd。启动器为每个发行版选一个固定的回环端口（22000–22999），
+运行期间以 root 启动这个 sshd，结束后停止。Ansible 以 root 连接，
+包管理任务直接执行；配置任务通过 `su` 切换到发行版的默认用户（`shell_user`）。
+目前只在默认用户为 root 的发行版上验证过。
+
+`-WhatIf` 同样需要连接，因此仍会执行上述准备。
+`-Inventory`、`-StateDirectory`、`-Network`、`-Playbook`、`-WindowsUser`、`-PrepareOnly` 供测试使用：
+提供 `-Inventory` 时跳过本机连接准备，库存文件须放在状态目录中。
+
+### 冲突与重复运行
+
+入口文件和链接由自定义模块 `shell_paths`（Linux）和 `win_shell_paths`（Windows）部署。
+模块先检查一组目标，再统一修改：已有的相同入口和链接保持原样；
+内容不同的入口文件或非空的普通目录会导致整组停止，保留其中的配置。
+只有内容与入口相同的普通文件、空目录和指向其他位置的目录链接会被替换为链接。
+WSL 和 MSYS2 主目录下的 `.bashrc`、`.profile` 等文件，若与发行版模板
+（`/etc/skel/`、Debian 的 `/usr/share/base-files/dot.*`，MSYS2 根目录下的 `etc/skel/`）
+完全相同，视为未修改的默认文件，
+同样直接替换；改动过的文件仍按冲突处理。
+模块不递归删除目录，也不生成备份文件；支持 `--check` 和重复运行。
 Windows 的 rc/profile 保持一行实际入口，WSL/MSYS2 链接到它们。
-这些运行入口不逐份提交，生成规则集中在 `install.ps1`。
+这些运行入口不逐份提交，清单集中在 `ansible/group_vars/all/main.yml` 的 `shell_entries`：
+`unix` 指定 WSL/MSYS2 的对应路径，`false` 表示不部署；`msys: false` 表示 MSYS2 跳过。
 
 `zsh_plugins.txt` 是版本管理中的实际插件清单。
 各环境的 `~/.zsh_plugins.txt` 链接到它，修改插件时编辑仓库中的文件。
 Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时生成。
 历史、日志、下载的插件仓库和构建产物均不提交。
 
-安装前需准备下文列出的 shell 和主要依赖。
-安装脚本负责配置部署，不安装软件包或设置 Windows Terminal profiles、Clink 注入。
+### 软件来源
+
+软件清单集中在 `ansible/group_vars/all/packages.yml`：
+
+| 环境 | 来源 |
+|---|---|
+| Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、nu、pscompletions；没有 `pwsh` 时安装 Scoop 的 pwsh。 |
+| MSYS2 | 缺少时下载官方 base 包解压到 `root`；pacman 安装 fish、git、jq、zsh 和 UCRT64 oh-my-posh；ble.sh 使用 nightly 包，Antidote 克隆到 Windows 的 `~/.local/share/antidote` 后链接。 |
+| Arch Linux | 官方仓库和 archlinuxcn（blesh-git、oh-my-posh、yay）；powershell-bin、wsl2-ssh-agent-bin、zsh-antidote 由专用构建用户 `aurbuilder` 通过 yay 构建。 |
+| Debian | apt 安装 ble.sh、zsh-antidote 和 zsh 插件；Oh My Posh、Nushell、PowerShell 和 wsl2-ssh-agent 使用 GitHub 发布包，放在 `/opt/shell-releases`，链接到 `/usr/local/bin`。 |
+
+缺少 Python 的 Linux 先用 `raw` 安装 Python，再执行其他任务。
+Scoop 首次安装时先从清单 URL 安装 Git，添加 bucket 后改用 versions bucket 重新安装。
+`update` 模式下 Scoop 先更新 bucket 再升级受管应用；MSYS2 和 Arch Linux 执行整体升级，
+避免部分升级；AUR 包用 `yay -Sua` 升级；Debian 只把受管包升级到最新版本；
+GitHub 发布包通过 `releases/latest` 重定向比较版本，不调用 GitHub API。
+已由其他方式安装的同名命令保持不变，不改由本仓库管理。
+Windows Terminal profiles 和 Clink 注入不在安装范围内。
 个人化安装路径目前保留在 `common.json` 和 MSYS2 主题映射中；
 部署到其他 Windows 用户或 MSYS2 安装位置时应核对并调整这些路径。
+
+### 测试
+
+`tests/run.ps1` 在隔离环境中依次运行 `init`、准备、`full`、
+重复 `full`（要求 `changed=0`）、`update` 和验证：
+
+- wslc 容器 `archlinux:latest`、`debian:sid`：直接使用官方镜像，模拟全新系统；
+  用同一个 `wsl.sh` 安装 OpenSSH 和 Python 并启动专用 sshd（容器内监听所有地址）。
+  仓库只读挂载到 `/mnt/c/Users/Jat/.config/shell`，`tests/prepare.yml`
+  生成 Windows 侧的入口文件，模拟 WSL 布局。容器内没有 systemd，用户单元只链接不启动。
+- Windows Sandbox：用 `wsb` CLI 启动，仓库只读映射到沙盒用户的 `~/.config/shell`；
+  `tests/sandbox.ps1` 为沙盒账户设置随机测试密码，用同一个 `winrm.ps1` 建立监听和证书映射
+  （沙盒内监听所有地址）。MSYS2 安装到 `C:\msys64`，开发盘任务使用空 VHDX 占位文件验证注册。
+
+```powershell
+& "$HOME/.config/shell/tests/run.ps1"
+& "$HOME/.config/shell/tests/run.ps1" -Target debian -Step full, verify -Reuse -Keep
+```
+
+`-Keep` 保留容器和沙盒，`-Reuse` 复用仍在运行的容器和沙盒。
+测试状态默认保存在 `%TEMP%\shell-ansible-test`。
+测试不覆盖本机部分：经 `host.wslc.internal` 连接本机 WinRM、启动 systemd 用户单元和挂载开发盘。
 
 ## 维护原则
 
@@ -80,9 +178,19 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 
 | 文件 | 用途 |
 |---|---|
-| `install.ps1` | 生成 Windows 入口、部署 WSL/MSYS2 链接，支持预览和重复运行。 |
+| `install.ps1` | 启动器：构建 wslc 控制容器、准备 WinRM 和 WSL 连接、生成库存，按模式运行 playbook。 |
+| `ansible/bootstrap/winrm.ps1` | 建立回环 HTTPS 监听、证书认证和客户端证书映射（需要管理员权限）。 |
+| `ansible/bootstrap/wsl.sh` | 在发行版中安装 OpenSSH/Python，写入 Ansible 专用 sshd 配置。 |
+| `ansible/site.yml` | 入口 playbook：校验模式，配置 Windows/MSYS2，再配置各 Linux 主机。 |
+| `ansible/roles/windows/` | Scoop、MSYS2、Windows 入口和链接、用户级 `HOME` 和开发盘任务。 |
+| `ansible/roles/linux/` | Python 引导、Arch/Debian 软件、WSL 入口和链接、`links` 条目和 systemd 用户单元。 |
+| `ansible/library/` | `shell_paths`、`win_shell_paths`：先检查全部目标再部署的入口与链接模块。 |
+| `ansible/filter_plugins/shell.py` | 把 `shell_entries` 展开为 Windows、MSYS2、WSL 的部署清单，筛选 systemd 单元。 |
+| `ansible/group_vars/all/` | 模式、入口清单和各环境软件清单。 |
+| `ansible/Containerfile` | Ansible 控制容器镜像；`requirements.*` 固定 Python 包和 collection 范围。 |
+| `tests/` | wslc 容器和 Windows Sandbox 的测试编排、准备和验证 playbook。 |
 | `zsh_plugins.txt` | zsh 插件清单源码；各环境的标准清单路径链接到此文件。 |
-| `systemd/wsl2-ssh-agent.service` | 上游用户服务副本，直接移除了 root 条件。 |
+| `systemd/wsl2-ssh-agent.service` | 上游用户服务副本，移除了 root 条件，`ExecStart` 改为按名称查找程序。 |
 | `systemd/wsl-dev-drive.service` | 启动时请求 Windows 任务附加共享开发盘，确认 UUID 和文件系统就绪。 |
 | `wsl-dev-drive.sh` | 读取共享开发盘配置、触发挂载并等待结果。 |
 | `common.json` | 共享数据：环境变量、PATH 前置目录和外部命令 alias。 |
@@ -179,10 +287,10 @@ Oh My Posh 直接通过 PATH 查找，脚本中不指定它的二进制路径。
 | 字段 | 内容 |
 |---|---|
 | `environment` | 环境变量名称与字符串值。 |
-| `root` | MSYS2 安装根目录，供安装脚本读取；`-Msys2Root` 可显式覆盖。 |
+| `root` | MSYS2 安装根目录，供 playbook 读取；`-Msys2Root` 可显式覆盖。 |
 | `path_prepend` | 加到 PATH 前面的目录列表。生成时删除空目录项和重复项。 |
 | `aliases` | alias 名称与外部命令名称或可执行文件路径。 |
-| `links` | 符号链接路径与目标路径；目前由安装脚本部署 WSL 条目。 |
+| `links` | 符号链接路径与目标路径；目前由 playbook 部署 WSL 条目。 |
 
 同名的环境变量和 alias 由环境专属定义覆盖共享定义；
 PATH 前置目录按共享定义、环境专属定义的顺序合并。
@@ -194,12 +302,12 @@ PATH 前置目录按共享定义、环境专属定义的顺序合并。
 `aliases` 用于外部命令名称或路径。带参数、管道或复杂逻辑的命令，
 应写成对应 shell 的 common 文件中的函数。
 
-`links` 与 `aliases` 独立，只有安装脚本创建文件系统链接。
+`links` 与 `aliases` 独立，只有 playbook 创建文件系统链接。
 链接路径和目标可以引用共享变量；现有相同链接不变，其他同名路径会报冲突。
 当前 WSL 的 `links` 将 `${HOME}/.local/bin/git.exe` 链接到 Scoop Windows Git。
 Oh My Posh 在 Windows 挂载盘上通过该链接调用 `git.exe`；该命令目录已在 PATH 中，
 无需加入 Windows Git 安装目录。普通 `git` 继续调用 Linux Git。
-修改 `links` 后重新运行安装脚本；修改 `aliases` 后重新加载 shell 配置。
+修改 `links` 后运行 `update` 模式；修改 `aliases` 后重新加载 shell 配置。
 
 Windows 外部命令 alias 的绝对路径在生成时规范为反斜杠。
 以 `${HOME}/` 开头的 alias，在 Nushell 中保留 HOME 和 `path join` 表达式。
@@ -261,20 +369,23 @@ Antidote 仓库缓存的位置由 `antidote home` 查询，以管理器实际配
 
 ## WSL SSH agent
 
-WSL 使用 AUR 的 `wsl2-ssh-agent-bin`，程序由 pacman 管理。
+Arch Linux 使用 AUR 的 `wsl2-ssh-agent-bin`，程序由 pacman 管理；
+Debian 使用上游发布的二进制，链接到 `/usr/local/bin`。
 包中只有预编译二进制，因此仓库保存从
 [上游](https://github.com/mame/wsl2-ssh-agent/blob/main/extras/systemd/user/wsl2-ssh-agent.service)
 复制的 `systemd/wsl2-ssh-agent.service`。
 为支持当前默认 root 用户，直接删除了原文件的 `ConditionUser=!root`；
-没有另设 drop-in。
+`ExecStart` 只写程序名，由 systemd 在 `/usr/local/bin`、`/usr/bin` 等固定目录中查找，
+两种安装位置共用同一份单元。没有另设 drop-in。
 
-先安装 bin 包，再执行安装脚本。
-安装脚本遍历仓库 `systemd/` 下的用户单元文件，链接到各 WSL 用户的
+playbook 遍历仓库 `systemd/` 下的用户单元文件，链接到各 WSL 用户的
 `~/.config/systemd/user/`。支持 service、socket、timer、path、target；
 带 `[Install]` 的普通单元会被启用并启动，静态单元只部署，
 `name@.service` 这类模板也只部署，实例由使用者指定。
 普通安装按文件发现单元；开发盘专用模式只选择 `wsl-dev-drive.service`。
-单元运行所需程序由包管理器安装；启动失败时脚本直接报告错误。
+单元运行所需程序在 `init` 阶段安装；启动失败时 playbook 直接报告错误。
+单元文件内容变化后（`NeedDaemonReload`），重新加载用户管理器并重启对应单元。
+systemd 用户管理器不可用时只链接单元并给出提示。
 共享环境只设置 `SSH_AUTH_SOCK=${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock`，
 各 shell 不再启动 agent。
 
@@ -302,13 +413,13 @@ journalctl --user -u wsl2-ssh-agent.service
 & "$HOME/.config/shell/install.ps1" -WslDevDriveOnly
 ```
 
-安装器注册当前 Windows 账户的 `WSL Attach Dev VHDX` 高权限按需任务。
+playbook 注册当前 Windows 账户的 `WSL Attach Dev VHDX` 高权限按需任务。
 任务直接执行系统目录的 `wsl.exe --mount --vhd ...`，没有登录或定时触发器。
-只有任务缺失或配置变化时才注册；普通权限安装会为此步骤触发一次 UAC，
-提升后的子进程只负责注册任务。`-WhatIf` 不创建任务或触发 UAC。
-同名但执行其他操作的任务会被视为冲突并保留。
+只有任务缺失或配置变化时才修改；注册经具有完整令牌的 WinRM 会话完成，不再单独触发 UAC。
+`-WhatIf` 不创建任务。同名但执行其他操作的任务会被视为冲突并保留。
+管理 WSL 发行版时自动注册；`shell_dev_drive_task` 设为 `true` 或 `false` 可强制开启或关闭。
 
-安装器同时部署并启用 `wsl-dev-drive.service` 用户服务。
+playbook 同时部署并启用 `wsl-dev-drive.service` 用户服务。
 发行版中对应用户的 systemd 用户管理器启动时，服务检查挂载点的 UUID 和文件系统。
 已经正确挂载时直接成功；其他文件系统占用该挂载点时失败。
 尚未挂载时，通过 Windows 任务请求附加，最多等待 60 秒确认挂载成功；

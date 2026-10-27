@@ -1,0 +1,35 @@
+- name: Resolve Windows layout
+  ansible.builtin.set_fact:
+    shell_home: "{{ (shell_windows_home | default(ansible_facts.env.USERPROFILE)) | replace('/', shell_backslash) }}"
+    shell_current_home: "{{ shell_windows_home is not defined or
+      (shell_windows_home | replace('/', shell_backslash) | lower) == (ansible_facts.env.USERPROFILE | lower) }}"
+    shell_scoop_root: "{{ ansible_facts.env.SCOOP | default(ansible_facts.env.USERPROFILE ~ shell_backslash ~ 'scoop') }}"
+  tags: [always]
+
+- name: Resolve repository location
+  ansible.builtin.set_fact:
+    shell_repository: "{{ shell_home }}\\.config\\shell"
+  tags: [always]
+
+- name: Install Windows packages
+  ansible.builtin.import_tasks: packages.yml
+  tags: [packages]
+
+- name: Prepare repository
+  ansible.builtin.import_tasks: repository.yml
+  tags: [always]
+
+- name: Deploy Windows configuration
+  ansible.builtin.import_tasks: config.yml
+  when: shell_mode != 'init'
+  tags: [config]
+
+- name: Manage MSYS2
+  ansible.builtin.import_tasks: msys2.yml
+  when: shell_msys2 | bool
+  tags: [msys2]
+
+- name: Register WSL development drive task
+  ansible.builtin.import_tasks: dev_drive.yml
+  when: shell_mode != 'init'
+  tags: [dev_drive]

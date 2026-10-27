@@ -1,0 +1,52 @@
+shell_mode: full
+shell_modes:
+  - init
+  - full
+  - update
+
+shell_source: "{{ playbook_dir | dirname }}"
+shell_configuration: "{{ lookup('ansible.builtin.file', shell_source ~ '/common.json') | from_json }}"
+shell_plugin_content: "{{ lookup('ansible.builtin.file', shell_source ~ '/zsh_plugins.txt') }}"
+shell_clink_content: "{{ lookup('ansible.builtin.file', shell_source ~ '/common.clink_settings') }}"
+shell_repository_url: https://github.com/jat001/shell-config.git
+
+shell_fish_directories:
+  - conf.d
+  - functions
+  - completions
+
+shell_entries:
+  - path: .bash_profile
+    content: '. "$HOME/.config/shell/common.bash"'
+  - path: .profile
+    content: '. "$HOME/.config/shell/common.bash"'
+  - path: .bashrc
+    content: '. "$HOME/.config/shell/common.bash"'
+  - path: .blerc
+    content: '. "$HOME/.config/shell/common.bash" ble'
+  - path: .inputrc
+    content: $include ~/.config/shell/common.inputrc
+  - path: .zprofile
+    content: '. "$HOME/.config/shell/common.zsh" environment'
+  - path: .zshrc
+    content: '. "$HOME/.config/shell/common.zsh"'
+  - path: .config/fish/config.fish
+    content: source "$HOME/.config/shell/common.fish"
+  - path: Documents/PowerShell/Microsoft.PowerShell_profile.ps1
+    unix: .config/powershell/Microsoft.PowerShell_profile.ps1
+    msys: false
+    content: . "$HOME/.config/shell/common.ps1"
+  - path: Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1
+    unix: false
+    content: . "$HOME/.config/shell/common.ps1"
+  - path: AppData/Roaming/nushell/env.nu
+    unix: .config/nushell/env.nu
+    msys: false
+    content: source ~/.config/shell/common-env.nu
+  - path: AppData/Roaming/nushell/config.nu
+    unix: .config/nushell/config.nu
+    msys: false
+    content: source ~/.config/shell/common.nu
+  - path: AppData/Local/clink/profile.lua
+    unix: false
+    content: dofile(os.getenv("HOME") .. "/.config/shell/common.lua")

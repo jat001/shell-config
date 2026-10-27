@@ -1,0 +1,54 @@
+- name: Install Python for Ansible
+  ansible.builtin.raw: |
+    set -e
+    command -v python3 >/dev/null 2>&1 && exit 0
+    [ "$(id -u)" -eq 0 ] || sudo=sudo
+    if command -v pacman >/dev/null 2>&1; then
+        [ -s /etc/pacman.d/gnupg/pubring.gpg ] ||
+            { $sudo pacman-key --init && $sudo pacman-key --populate archlinux; }
+        $sudo pacman -Syu --needed --noconfirm python
+    elif command -v apt-get >/dev/null 2>&1; then
+        $sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y --no-install-recommends python3
+    else
+        echo 'Unsupported distribution' >&2
+        exit 1
+    fi
+    echo installed-python
+  register: shell_python
+  changed_when: "'installed-python' in shell_python.stdout"
+  when: shell_mode != 'update'
+  tags: [always]
+
+- name: Gather Linux facts
+  ansible.builtin.setup:
+    gather_subset: [min]
+  tags: [always]
+
+- name: Resolve Linux layout
+  ansible.builtin.import_tasks: layout.yml
+  tags: [always]
+
+- name: Install Linux packages
+  ansible.builtin.include_tasks:
+    file: "packages_{{ ansible_facts.os_family | lower }}.yml"
+    apply:
+      become: "{{ shell_become }}"
+      tags: [packages]
+  tags: [packages]
+
+- name: Deploy Linux configuration
+  ansible.builtin.import_tasks: config.yml
+  become: "{{ shell_account_become }}"
+  become_user: "{{ shell_account }}"
+  become_method: ansible.builtin.su
+  when: shell_mode != 'init'
+  tags: [config]
+
+- name: Deploy systemd user units
+  ansible.builtin.import_tasks: systemd.yml
+  become: "{{ shell_account_become }}"
+  become_user: "{{ shell_account }}"
+  become_method: ansible.builtin.su
+  when: shell_mode != 'init'
+  tags: [config, dev_drive]

@@ -1,0 +1,38 @@
+- name: Inspect shared repository
+  ansible.windows.win_stat:
+    path: "{{ shell_repository }}\\common.json"
+  register: shell_repository_state
+
+- name: Clone shared repository
+  ansible.windows.win_command:
+    argv:
+      - "{{ shell_scoop_root }}\\shims\\git.exe"
+      - clone
+      - "{{ shell_repository_url }}"
+      - "{{ shell_repository }}"
+  when:
+    - not shell_repository_state.stat.exists
+    - shell_mode != 'update'
+    - not ansible_check_mode
+
+- name: Check required repository files
+  ansible.windows.win_stat:
+    path: "{{ shell_repository }}\\{{ item | replace('/', shell_backslash) }}"
+  loop:
+    - common.json
+    - common.jq
+    - zsh_plugins.txt
+    - common.clink_settings
+    - oh-my-posh/config.omp.json
+    - oh-my-posh/shell-integration.omp.json
+    - oh-my-posh/msys2.omp.json
+    - oh-my-posh/msys2-fish.omp.json
+  register: shell_repository_files
+  when: not ansible_check_mode or shell_repository_state.stat.exists
+
+- name: Require repository files
+  ansible.builtin.assert:
+    that: shell_repository_files.results | rejectattr('stat.exists') | list | length == 0
+    fail_msg: "Required repository files are missing under {{ shell_repository }}"
+    quiet: true
+  when: shell_repository_files is not skipped

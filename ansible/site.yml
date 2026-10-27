@@ -1,0 +1,23 @@
+- name: Validate installation mode
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require a supported mode
+      ansible.builtin.assert:
+        that: shell_mode in shell_modes
+        fail_msg: "shell_mode must be one of {{ shell_modes | join(', ') }}"
+        quiet: true
+      tags: [always]
+
+- name: Configure Windows and MSYS2
+  hosts: windows
+  gather_facts: true
+  roles:
+    - windows
+
+- name: Configure WSL distributions
+  hosts: linux:wsl
+  gather_facts: false
+  roles:
+    - linux
