@@ -12,6 +12,7 @@
       Mode: "{{ shell_mode }}"
       Installer: "{{ shell_msys2_installer }}"
       Packages: "{{ shell_msys2_packages }}"
+      Cache: "{{ shell_msys2_cache }}"
   tags: [packages]
 
 - name: Inspect MSYS2 tools

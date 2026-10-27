@@ -55,6 +55,14 @@ foreach ($user in @($settings.User, $settings.AdminUser)) {
 }
 
 [Environment]::SetEnvironmentVariable('SCOOP_CACHE', 'C:\shell-cache\scoop', 'Machine')
+$gitConfig = @'
+[url "file:///C:/shell-cache/git/"]
+	insteadOf = https://github.com/ScoopInstaller/
+[safe]
+	directory = *
+'@
+[IO.File]::WriteAllText("C:\Users\$($settings.AdminUser)\.gitconfig", $gitConfig.Replace("`r", '') + "`n",
+    [Text.UTF8Encoding]::new($false))
 
 New-NetFirewallRule -DisplayName 'Shell test WinRM' -Direction Inbound -Protocol TCP `
     -LocalPort 5986 -Action Allow -ErrorAction SilentlyContinue | Out-Null

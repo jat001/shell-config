@@ -182,7 +182,12 @@ Windows Terminal profiles 和 Clink 注入不在安装范围内。
 `setup-<目标>.log`。下载缓存跨轮保留：wslc 卷 `shell-test-pacman`、`shell-test-aur`（Arch 的包缓存和
 AUR 构建目录）、`shell-test-apt`、`shell-test-releases`（Debian 的包缓存和 GitHub 发布包），
 Debian 容器删除了丢弃包缓存的 `docker-clean` 配置；状态目录下的 `cache` 映射到沙盒的
-`C:\shell-cache`，保存 Scoop 缓存（`SCOOP_CACHE`）和 MSYS2 基础包。
+`C:\shell-cache`，保存 Scoop 缓存（`SCOOP_CACHE`）、MSYS2 基础包和 MSYS2 的 pacman 包
+（`shell_msys2_cache`，传给 pacman 的 `--cachedir`；生产环境默认为空，使用 MSYS2 自身的缓存）。
+`cache/git` 保存 ScoopInstaller/Scoop、Main、Versions 的浅克隆裸镜像，每轮在主机上增量 `fetch`；
+沙盒管理员账户的 `.gitconfig` 用 `url.insteadOf` 把 `https://github.com/ScoopInstaller/` 指向这些镜像，
+因此添加 bucket、`update` 时把 main bucket 转为 git 仓库以及更新 Scoop 核心都从本地克隆。
+Scoop 安装器自身下载的核心和 main bucket 压缩包不经过 git，仍从 GitHub 下载。
 删除这些卷和 `cache` 目录即可重新下载。
 测试启用 `ansible.posix.profile_tasks` 输出每个任务的耗时，结束时打印各准备和步骤的耗时，
 并写入状态目录的 `timings.json`。启动器会把宿主环境中的 `ANSIBLE_*` 和 `PROFILE_TASKS_*`

@@ -106,6 +106,16 @@ foreach ($name in $linux) {
 }
 
 if ($Target -contains 'sandbox') {
+    foreach ($mirrorName in @('Scoop', 'Main', 'Versions')) {
+        $mirror = Join-Path $cache "git/$mirrorName.git"
+        $global:LASTEXITCODE = 0
+        if (-not [IO.Directory]::Exists($mirror)) {
+            & git clone -q --bare --depth 1 "https://github.com/ScoopInstaller/$mirrorName" $mirror
+        } else {
+            & git -C $mirror fetch -q --depth 1 origin '+refs/heads/*:refs/heads/*'
+        }
+        if ($LASTEXITCODE -ne 0) { throw "Could not mirror ScoopInstaller/$mirrorName." }
+    }
     $msys2 = Join-Path $cache 'msys2-base-x86_64-latest.sfx.exe'
     if (-not [IO.File]::Exists($msys2)) {
         $ProgressPreference = 'SilentlyContinue'
@@ -218,6 +228,7 @@ if ($Target -contains 'sandbox') {
             shell_dev_drive_task = $true
             shell_msys2_root = 'C:/msys64'
             shell_msys2_installer = 'file:///C:/shell-cache/msys2-base-x86_64-latest.sfx.exe'
+            shell_msys2_cache = 'C:\shell-cache\msys2'
         }
         if ($user -eq $adminUser) {
             $windows.sandbox = $connection

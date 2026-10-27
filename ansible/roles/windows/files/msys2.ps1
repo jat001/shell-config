@@ -3,7 +3,8 @@ param(
     [string]$Root,
     [string]$Mode,
     [string]$Installer,
-    [string[]]$Packages
+    [string[]]$Packages,
+    [string]$Cache
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,10 +28,18 @@ function Invoke-Msys {
     @{ Code = $LASTEXITCODE; Output = $output.Trim() }
 }
 
+function Get-Pacman {
+    if (-not $Cache) { return 'pacman' }
+    $null = [IO.Directory]::CreateDirectory($Cache)
+    $path = (& (Join-Path $Root 'usr/bin/cygpath.exe') -u $Cache).Trim()
+    "pacman --cachedir '$path'"
+}
+
 function Update-System {
+    $pacman = Get-Pacman
     $before = (Invoke-Msys 'pacman -Q').Output
-    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
-    $null = Invoke-Msys 'pacman -Syuu --noconfirm'
+    $null = Invoke-Msys "$pacman -Syuu --noconfirm"
+    $null = Invoke-Msys "$pacman -Syuu --noconfirm"
     if ((Invoke-Msys 'pacman -Q').Output -ne $before) { $Ansible.Changed = $true }
 }
 
@@ -78,7 +87,7 @@ if ($Mode -eq 'update') {
     if ($missing.Code -eq 127) {
         Update-System
         $names = $missing.Output -split '\s+' | Where-Object { $_ }
-        $null = Invoke-Msys ('pacman -S --needed --noconfirm ' + ($names -join ' '))
+        $null = Invoke-Msys ((Get-Pacman) + ' -S --needed --noconfirm ' + ($names -join ' '))
         $Ansible.Changed = $true
     }
 }

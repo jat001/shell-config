@@ -22,6 +22,7 @@ shell_scoop_apps:
     command: pwsh
 
 shell_msys2_installer: https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe
+shell_msys2_cache: ""
 shell_msys2_packages:
   - fish
   - git
