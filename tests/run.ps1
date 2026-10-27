@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot
 $installer = Join-Path $repository 'install.ps1'
 $network = 'shell-test'
-$images = @{ arch = 'archlinux:latest'; debian = 'debian:sid' }
+$images = @{ arch = 'archlinux:latest'; debian = 'debian:testing' }
 $utf8 = [Text.UTF8Encoding]::new($false)
 $linux = @($Target | Where-Object { $_ -ne 'sandbox' })
 

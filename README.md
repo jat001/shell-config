@@ -72,6 +72,9 @@ Windows 目录和文件链接均使用 SymbolicLink；
 
 控制容器镜像由 `ansible/Containerfile`、`requirements.txt`、`requirements.yml` 定义，
 标签取三者内容的哈希；文件不变时复用已有镜像，修改后自动重建。
+镜像基于 `python:3.14-slim`，即当前稳定版 ansible-core 支持的最高 Python；
+`requirements.*` 只规定最低版本。`update` 模式总会以 `--pull --no-cache` 重建镜像，
+让 Python、ansible-core 和 collection 随增量更新升级到最新稳定版。
 容器通过 `host.wslc.internal` 访问 Windows 主机的回环地址，所有连接都只监听 `127.0.0.1`。
 
 运行状态保存在 `%LOCALAPPDATA%\shell-ansible`：WinRM 客户端证书和私钥、
@@ -148,7 +151,7 @@ Windows Terminal profiles 和 Clink 注入不在安装范围内。
 `tests/run.ps1` 在隔离环境中依次运行 `init`、准备、`full`、
 重复 `full`（要求 `changed=0`）、`update` 和验证：
 
-- wslc 容器 `archlinux:latest`、`debian:sid`：直接使用官方镜像，模拟全新系统；
+- wslc 容器 `archlinux:latest`、`debian:testing`（与 WSL 中的 Debian forky 一致）：直接使用官方镜像，模拟全新系统；
   用同一个 `wsl.sh` 安装 OpenSSH 和 Python 并启动专用 sshd（容器内监听所有地址）。
   仓库只读挂载到 `/mnt/c/Users/Jat/.config/shell`，`tests/prepare.yml`
   生成 Windows 侧的入口文件，模拟 WSL 布局。容器内没有 systemd，用户单元只链接不启动。

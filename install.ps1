@@ -134,6 +134,11 @@ $image = 'shell-ansible:' + [BitConverter]::ToString(
 & wslc.exe image inspect $image *> $null
 if ($LASTEXITCODE -ne 0) {
     Invoke-Wslc build -t $image -f (Join-Path $context 'Containerfile') $context
+} elseif ($Mode -eq 'update' -and -not $PrepareOnly) {
+    $previous = @((& wslc.exe image inspect $image | Out-String | ConvertFrom-Json))[0].Id
+    Invoke-Wslc build --pull --no-cache -t $image -f (Join-Path $context 'Containerfile') $context
+    $current = @((& wslc.exe image inspect $image | Out-String | ConvertFrom-Json))[0].Id
+    if ($previous -and $previous -ne $current) { & wslc.exe rmi $previous *> $null }
 }
 
 $null = [IO.Directory]::CreateDirectory($StateDirectory)

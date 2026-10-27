@@ -1,2 +1,2 @@
-ansible-core>=2.19,<2.21
-pypsrp>=0.8
+ansible-core>=2.21
+pypsrp>=0.9
