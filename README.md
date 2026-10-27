@@ -28,7 +28,8 @@ WSL/MSYS2 的同名目录直接链接到仓库中的主题目录。
 & "$HOME/.config/shell/install.ps1"
 ```
 
-默认布置当前 Windows 用户、发现到的 Scoop MSYS2，以及默认 WSL 发行版。
+默认布置当前 Windows 用户、`common.json` 中 `environments.msys2.root` 指定的
+MSYS2，以及默认 WSL 发行版。当前 MSYS2 安装目录为 `J:\msys2`。
 MSYS2 主目录从账户数据库读取，WSL 主目录和发行版名从运行环境读取；
 不固定 Windows 用户名、MSYS2 HOME 或 WSL 发行版名称。
 其他安装位置和多个 WSL 发行版可显式指定：
@@ -105,7 +106,7 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 |---|---|
 | Windows | `C:\Users\Jat` |
 | WSL archlinux | `/root` |
-| MSYS2 | `/home/Jat`，对应 `C:\Users\Jat\scoop\persist\msys2\home\Jat` |
+| MSYS2 | `/home/Jat`，对应 `J:\msys2\home\Jat` |
 
 | 入口文件 | 内容 |
 |---|---|
@@ -178,6 +179,7 @@ Oh My Posh 直接通过 PATH 查找，脚本中不指定它的二进制路径。
 | 字段 | 内容 |
 |---|---|
 | `environment` | 环境变量名称与字符串值。 |
+| `root` | MSYS2 安装根目录，供安装脚本读取；`-Msys2Root` 可显式覆盖。 |
 | `path_prepend` | 加到 PATH 前面的目录列表。生成时删除空目录项和重复项。 |
 | `aliases` | alias 名称与外部命令名称或可执行文件路径。 |
 | `links` | 符号链接路径与目标路径；目前由安装脚本部署 WSL 条目。 |

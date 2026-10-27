@@ -35,6 +35,7 @@
       }
     },
     "msys2": {
+      "root": "J:/msys2",
       "path_prepend": [
         "${MSYSTEM_PREFIX}/bin",
         "/ucrt64/bin"

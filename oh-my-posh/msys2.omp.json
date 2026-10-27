@@ -13,8 +13,7 @@
           "style": "plain",
           "options": {
             "mapped_locations": {
-              "C:/Users/Jat/scoop/apps/msys2/current/home/Jat": "~",
-              "C:/Users/Jat/scoop/persist/msys2/home/Jat": "~"
+              "J:/msys2/home/Jat": "~"
             }
           }
         }

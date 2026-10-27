@@ -437,11 +437,13 @@ Add-LinkPlan "$WindowsHome/AppData/Local/clink/clink_settings" `
 
 if (-not $SkipMsys2 -and -not $WslDevDriveOnly) {
     if (-not $Msys2Root) {
-        $scoop = [Environment]::GetEnvironmentVariable('SCOOP', 'User')
-        if (-not $scoop) {
-            $scoop = Join-Path ([Environment]::GetFolderPath('UserProfile')) 'scoop'
+        $configuration = [IO.File]::ReadAllText(
+            (Join-Path $repository 'common.json')
+        ) | ConvertFrom-Json
+        $Msys2Root = $configuration.environments.msys2.root
+        if (-not $Msys2Root) {
+            throw 'Set environments.msys2.root or pass -Msys2Root.'
         }
-        $Msys2Root = Join-Path $scoop 'apps/msys2/current'
     }
 
     $getent = Join-Path $Msys2Root 'usr/bin/getent.exe'
@@ -460,7 +462,7 @@ if (-not $SkipMsys2 -and -not $WslDevDriveOnly) {
 
         Add-SharedLayout $msysHome $WindowsHome $repository
         Add-UnixEntries $msysHome $WindowsHome -Msys
-    } elseif ($PSBoundParameters.ContainsKey('Msys2Root')) {
+    } elseif ($Msys2Root) {
         throw "MSYS2 tools were not found under $Msys2Root"
     }
 }
