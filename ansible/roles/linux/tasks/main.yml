@@ -37,6 +37,18 @@
       tags: [packages]
   tags: [packages]
 
+- name: Link shared repository
+  shell_paths:
+    items:
+      - path: "{{ shell_user_home }}/.config/shell"
+        state: link
+        src: "{{ shell_repository }}"
+  become: "{{ shell_account_become }}"
+  become_user: "{{ shell_account }}"
+  become_method: ansible.builtin.su
+  when: shell_mode != 'init' or shell_configuration.environments.wsl.dev_drive is defined
+  tags: [config, dev_drive]
+
 - name: Deploy Linux configuration
   ansible.builtin.import_tasks: config.yml
   become: "{{ shell_account_become }}"
@@ -50,5 +62,4 @@
   become: "{{ shell_account_become }}"
   become_user: "{{ shell_account }}"
   become_method: ansible.builtin.su
-  when: shell_mode != 'init'
   tags: [config, dev_drive]

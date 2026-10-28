@@ -17,6 +17,25 @@ Add-Type -Namespace Native -Name Profile -MemberDefinition @'
 public static extern int CreateProfile(string sid, string name, System.Text.StringBuilder path, uint size);
 '@
 
+function New-DevDrive {
+    param([string]$Path, [bool]$Attached)
+
+    if ([IO.File]::Exists($Path)) { return }
+    $commands = @(
+        "create vdisk file=`"$Path`" maximum=512 type=expandable"
+        "select vdisk file=`"$Path`""
+        'attach vdisk'
+        'create partition primary'
+        'format fs=ntfs quick label=Dev'
+        'assign'
+    )
+    if (-not $Attached) { $commands += 'detach vdisk' }
+    $script = Join-Path $env:TEMP 'shell-dev-drive.txt'
+    [IO.File]::WriteAllLines($script, [string[]]$commands)
+    $output = & diskpart.exe /s $script
+    if ($LASTEXITCODE -ne 0) { throw "diskpart failed for ${Path}: $output" }
+}
+
 foreach ($user in @($settings.User, $settings.AdminUser)) {
     $profilePath = "C:\Users\$user"
     if (-not (Test-Path $profilePath)) {
@@ -35,6 +54,9 @@ foreach ($user in @($settings.User, $settings.AdminUser)) {
     $vhd = Join-Path $profilePath 'AppData\Local\wsl\dev.vhdx'
     $null = New-Item -ItemType Directory -Force (Split-Path $vhd)
     if (-not (Test-Path $vhd)) { $null = New-Item -ItemType File $vhd }
+    # The administrator's drive starts detached so the playbook attaches it; the unprivileged
+    # account cannot attach, so its drive is attached here.
+    New-DevDrive -Path (Join-Path $profilePath 'AppData\Local\Dev.vhdx') -Attached ($user -eq $settings.User)
 
     $credentialFile = Join-Path $env:TEMP "shell-test-$user.xml"
     [pscredential]::new(".\$user", $password) | Export-Clixml -LiteralPath $credentialFile

@@ -2,3 +2,4 @@ shell_msys2: true
 shell_dev_drive_task: auto
 shell_backslash: '\'
 shell_elevate: true
+shell_auto_attach_key: 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'

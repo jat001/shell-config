@@ -25,8 +25,8 @@ WSL/MSYS2 的同名目录直接链接到仓库中的主题目录。
 
 | 模式 | 内容 |
 |---|---|
-| `init` | 初始化：开启开发人员模式，安装 Scoop、MSYS2、Python 等前置程序，以及下文列出的 shell 和依赖；不部署配置。 |
-| `full` | 全量安装：`init` 的全部内容，加上入口文件、共享链接、用户级 `HOME`、systemd 用户单元和开发盘任务。 |
+| `init` | 初始化：开启开发人员模式，设置两个开发盘（见下文），安装 Scoop、MSYS2、Python 等前置程序，以及下文列出的 shell 和依赖；不部署其他配置。 |
+| `full` | 全量安装：`init` 的全部内容，加上入口文件、共享链接、用户级 `HOME` 和其余 systemd 用户单元。 |
 | `update` | 增量更新：重新同步配置，只报告实际变化；升级已安装的受管软件，跳过一次性初始化步骤。 |
 
 各主机并行执行，互不等待。新机器先运行 `init`，再运行 `full`：
@@ -47,7 +47,8 @@ WSL 的 `links` 条目指向 Scoop 安装的程序，需要先由 `init` 装好�
 ```
 
 默认布置当前 Windows 用户、`common.json` 中 `environments.msys2.root` 指定的
-MSYS2，以及默认 WSL 发行版。当前 MSYS2 安装目录为 `J:\msys2`。
+MSYS2，以及默认 WSL 发行版。当前 MSYS2 安装目录为 `${DEV_DRIVE}/msys2`，
+`${DEV_DRIVE}` 由 playbook 替换为 Windows 开发盘的盘符（见下文），目前是 `J:\msys2`。
 MSYS2 主目录从账户数据库读取，WSL 主目录和发行版名从运行环境读取；
 不固定 Windows 用户名、MSYS2 HOME 或 WSL 发行版名称。
 其他安装位置和多个 WSL 发行版可显式指定：
@@ -62,7 +63,7 @@ $installation = @{
 ```
 
 `-SkipMsys2`、`-SkipWsl` 用于跳过对应环境。
-`-WslDevDriveOnly` 只运行带 `dev_drive` 标签的任务：Windows 开发盘任务、
+`-WslDevDriveOnly` 只运行带 `dev_drive` 标签的任务：WSL 开发盘的 Windows 计划任务、
 WSL 的 `~/.config/shell` 链接和 `wsl-dev-drive.service`，可与 `-WslDistribution` 一起使用。
 `-WindowsHome` 可指定配置部署的 Windows 用户主目录；
 只有目标为当前账户主目录时，才设置该账户的用户级 `HOME`。
@@ -100,11 +101,13 @@ SSH 会话无法经过普通用户创建的目录联接（Scoop 的 `apps/*/curr
 只有两项操作需要管理员权限，均只在需要时请求：
 
 - `init`/`full` 检测到开发人员模式未开启时，开启它（`AllowDevelopmentWithoutDevLicense`）；
-- 开发盘计划任务缺失或配置变化时，注册它。
+- Windows 开发盘未登记开机附加或尚未附加时，登记并附加它；
+- WSL 开发盘计划任务缺失或配置变化时，注册它。
 
 Ansible 在交互会话中以 `Start-Process -Verb RunAs` 启动提升的 Windows PowerShell 完成这些步骤，
 因此会出现 UAC 提示；`-WhatIf` 只报告而不请求。已在管理员会话中运行时直接执行。
-主机变量 `shell_elevate: false` 关闭提权请求，此时计划任务只给出提示，
+主机变量 `shell_elevate: false` 关闭提权请求，此时开发盘登记和计划任务只给出提示
+（未附加的 Windows 开发盘取不到盘符，依赖它的步骤会停止），
 开发人员模式未开启则在部署链接前停止。
 
 `-Inventory`、`-StateDirectory`、`-Network`、`-Playbook`、`-PrepareOnly` 供测试使用：
@@ -165,11 +168,14 @@ Windows Terminal profiles 和 Clink 注入不在安装范围内。
   沙盒中没有 WSL，测试改用 WinRM（`tests/winrm.ps1`，HTTPS 和客户端证书）连接，
   Windows role 与生产使用相同的任务。`tests/sandbox.ps1` 为内置管理员账户映射完整令牌的证书，
   并创建非管理员账户 `shelltest`。完整流程以管理员账户运行：沙盒初始未开启开发人员模式，
-  由 `init` 开启，`full` 注册开发盘任务。最后的 `unprivileged` 步骤以 `shelltest`
+  由 `init` 开启，同时登记、附加 Windows 开发盘并注册 WSL 开发盘任务。
+  最后的 `unprivileged` 步骤以 `shelltest`
   运行两次 `config` 和 `dev_drive` 标签（`shell_elevate: false`，第二次要求 `changed=0`），
-  验证普通权限下的链接、`HOME`、MSYS2 链接，以及计划任务只提示不提权。
+  验证普通权限下的链接、`HOME`、MSYS2 链接、已附加开发盘的盘符读取，以及登记和计划任务只提示不提权。
   非管理员经 WinRM 网络登录无法使用 Windows Installer，因此不在沙盒里以 `shelltest` 安装软件。
-  MSYS2 安装到 `C:\msys64`，开发盘任务使用空 VHDX 占位文件。
+  MSYS2 安装到 `C:\msys64`。`sandbox.ps1` 用 diskpart 为两个账户各建一个 512 MB 的
+  `AppData\Local\Dev.vhdx`（NTFS）：管理员的先分离，由 playbook 附加；`shelltest` 的保持附加。
+  WSL 开发盘任务使用空 VHDX 占位文件。
 
 ```powershell
 & "$HOME/.config/shell/tests/run.ps1"
@@ -243,7 +249,7 @@ Scoop 安装器自身下载的核心和 main bucket 压缩包不经过 git，仍
 |---|---|
 | Windows | `C:\Users\Jat` |
 | WSL archlinux | `/root` |
-| MSYS2 | `/home/Jat`，对应 `J:\msys2\home\Jat` |
+| MSYS2 | `/home/Jat`，对应 `${DEV_DRIVE}\msys2\home\Jat`（目前为 `J:`） |
 
 | 入口文件 | 内容 |
 |---|---|
@@ -411,7 +417,7 @@ playbook 遍历仓库 `systemd/` 下的用户单元文件，链接到各 WSL 用
 `~/.config/systemd/user/`。支持 service、socket、timer、path、target；
 带 `[Install]` 的普通单元会被启用并启动，静态单元只部署，
 `name@.service` 这类模板也只部署，实例由使用者指定。
-普通安装按文件发现单元；开发盘专用模式只选择 `wsl-dev-drive.service`。
+普通安装按文件发现单元；`init` 和开发盘专用模式只选择 `wsl-dev-drive.service`。
 单元运行所需程序在 `init` 阶段安装；启动失败时 playbook 直接报告错误。
 单元文件内容变化后（`NeedDaemonReload`），重新加载用户管理器并重启对应单元。
 systemd 用户管理器不可用时只链接单元并给出提示。
@@ -426,6 +432,21 @@ systemctl --user restart wsl2-ssh-agent.service
 journalctl --user -u wsl2-ssh-agent.service
 ```
 
+## Windows 开发盘
+
+`common.json` 的 `environments.windows.dev_drive.vhd` 指定 Windows 开发盘的 VHDX，
+相对于 `-WindowsHome`，当前为 `AppData/Local/Dev.vhdx`（ReFS 开发盘，挂载为 `J:`）。
+Windows 不会在重启后自动重新附加普通 VHDX；从“设置”创建的开发盘登记在
+`HKLM\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks\{GUID}` 的 `Path` 值中，
+由系统开机附加。playbook 在每种模式下检查该登记和附加状态：
+缺少登记时用由 VHDX 路径生成的固定 GUID 添加一项，未附加时 `Mount-DiskImage`，
+两者合并为一次管理员批准；已登记且已附加时不做修改。
+
+盘符不写入配置：附加后从该 VHDX 对应磁盘的分区读取，设为用户级环境变量 `DEV_DRIVE`（如 `J:`），
+`common.json` 中 MSYS2 的 `root` 和 `oh-my-posh/msys2.omp.json` 的路径映射都通过它引用开发盘。
+playbook 只登记和附加已有 VHDX，不创建虚拟磁盘或格式化文件系统；VHDX 不存在时停止。
+`-WhatIf` 下未附加的开发盘使用已有的 `DEV_DRIVE` 预览。
+
 ## WSL 共享开发盘
 
 `common.json` 的 `environments.wsl.dev_drive` 保存共享开发盘配置。
@@ -433,7 +454,8 @@ journalctl --user -u wsl2-ssh-agent.service
 挂载到 `/mnt/wsl/dev`，使用 Btrfs 和 `compress=zstd:1`。
 `vhd` 相对于 `-WindowsHome`；`schtasks` 是该发行版访问 Windows 任务工具的完整路径。
 如果发行版使用其他 Windows 挂载根目录，应相应调整 `schtasks` 和 `mountpoint`。
-配置中的 UUID 必须与已有文件系统一致；重新创建数据盘后应更新 UUID。
+UUID 不写入配置：服务第一次在挂载点看到预期类型的文件系统时，把它的 UUID 记录到
+`~/.local/state/shell/dev-drive.uuid`（遵循 `XDG_STATE_HOME`），之后的挂载必须与之一致。
 
 普通安装会一并部署此功能，也可以只安装开发盘部分：
 
@@ -442,13 +464,15 @@ journalctl --user -u wsl2-ssh-agent.service
 & "$HOME/.config/shell/install.ps1" -WslDevDriveOnly
 ```
 
-playbook 注册当前 Windows 账户的 `WSL Attach Dev VHDX` 高权限按需任务。
+`init` 起即注册当前 Windows 账户的 `WSL Attach Dev VHDX` 高权限按需任务。
 任务直接执行系统目录的 `wsl.exe --mount --vhd ...`，没有登录或定时触发器。
 只有任务缺失或配置变化时才修改，此时会为注册请求一次管理员批准（UAC）。
 `-WhatIf` 不创建任务。同名但执行其他操作的任务会被视为冲突并保留。
 管理 WSL 发行版时自动注册；`shell_dev_drive_task` 设为 `true` 或 `false` 可强制开启或关闭。
 
-playbook 同时部署并启用 `wsl-dev-drive.service` 用户服务。
+playbook 同时部署并启用 `wsl-dev-drive.service` 用户服务（`init` 也会部署 `~/.config/shell` 链接和这个服务）。
+各主机并行执行，启动服务前 WSL 一侧最多等待 2 分钟，直到 Windows 一侧注册好计划任务；
+仍未注册时只启用不启动，并给出提示。
 发行版中对应用户的 systemd 用户管理器启动时，服务检查挂载点的 UUID 和文件系统。
 已经正确挂载时直接成功；其他文件系统占用该挂载点时失败。
 尚未挂载时，通过 Windows 任务请求附加，最多等待 60 秒确认挂载成功；
@@ -457,7 +481,7 @@ playbook 同时部署并启用 `wsl-dev-drive.service` 用户服务。
 
 这项功能需要 systemd、WSL Windows 互操作、jq、findmnt，以及内核对应文件系统支持。
 它只附加已有 VHDX，不创建虚拟磁盘或格式化文件系统。
-运行时重建盘后，需同步更新配置中的 UUID。
+重建盘后删除 `~/.local/state/shell/dev-drive.uuid`，下次启动服务时重新记录。
 Windows 账户必须已登录，才能运行 Interactive 类型的计划任务。
 服务按 WSL 用户部署；其他发行版可通过 `-WslDistribution` 一并安装，
 各发行版共用同一个 Windows 挂载任务。

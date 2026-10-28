@@ -1,11 +1,3 @@
-- name: Link shared repository
-  shell_paths:
-    items:
-      - path: "{{ shell_user_home }}/.config/shell"
-        state: link
-        src: "{{ shell_repository }}"
-  tags: [dev_drive]
-
 - name: Install entries and shared links
   shell_paths:
     items: "{{ shell_entries | shell_unix_items(shell_user_home, shell_windows_home_path,

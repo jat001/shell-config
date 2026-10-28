@@ -1,7 +1,8 @@
 - name: Select systemd user units
   ansible.builtin.set_fact:
     shell_units: "{{ (shell_source ~ '/systemd') | shell_units(
-      only=(['wsl-dev-drive.service'] if ansible_run_tags == ['dev_drive'] else none),
+      only=(['wsl-dev-drive.service'] if ansible_run_tags == ['dev_drive'] or shell_mode == 'init'
+        else none),
       exclude=([] if shell_configuration.environments.wsl.dev_drive is defined
         else ['wsl-dev-drive.service'])) }}"
   tags: [dev_drive]
@@ -45,6 +46,36 @@
       changed_when: false
       check_mode: false
 
+    - name: Wait for Windows development drive task
+      ansible.builtin.command:
+        argv:
+          - "{{ shell_configuration.environments.wsl.dev_drive.schtasks }}"
+          - /Query
+          - /TN
+          - "{{ shell_configuration.environments.wsl.dev_drive.task }}"
+      register: shell_dev_drive_task_query
+      until: shell_dev_drive_task_query.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+      failed_when: false
+      when:
+        - "'wsl-dev-drive.service' in (shell_units | selectattr('enable') | map(attribute='name'))"
+        - not ansible_check_mode
+
+    - name: Report missing Windows development drive task
+      ansible.builtin.debug:
+        msg: >-
+          The Windows task {{ shell_configuration.environments.wsl.dev_drive.task }} is not registered;
+          wsl-dev-drive.service was enabled but not started.
+      when: shell_dev_drive_task_query.rc | default(0) != 0
+
+    - name: Select user units to start
+      ansible.builtin.set_fact:
+        shell_units_started: "{{ shell_units | selectattr('enable')
+          | rejectattr('name', 'in', [] if shell_dev_drive_task_query.rc | default(0) == 0
+            else ['wsl-dev-drive.service']) | list }}"
+
     - name: Reload systemd user manager
       ansible.builtin.systemd_service:
         scope: user
@@ -56,7 +87,7 @@
         scope: user
         name: "{{ item.name }}"
         enabled: true
-        state: started
+        state: "{{ 'started' if item in shell_units_started else omit }}"
       loop: "{{ shell_units | selectattr('enable') | list }}"
       loop_control:
         label: "{{ item.name }}"
@@ -72,5 +103,6 @@
         label: "{{ item.0.name }}"
       when:
         - item.1 == 'yes'
+        - item.0 in shell_units_started
         - not (shell_unit_started.results | selectattr('item.name', 'equalto', item.0.name)
           | map(attribute='changed') | first)

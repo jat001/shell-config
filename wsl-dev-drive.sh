@@ -7,15 +7,25 @@ drive=$(jq -c '.environments.wsl.dev_drive // null' "$configuration")
 [ "$drive" != null ] || exit 0
 mountpoint=$(printf '%s' "$drive" | jq -er '.mountpoint')
 filesystem=$(printf '%s' "$drive" | jq -er '.filesystem')
-uuid=$(printf '%s' "$drive" | jq -er '.uuid' | tr '[:upper:]' '[:lower:]')
+state=${XDG_STATE_HOME:-$HOME/.local/state}/shell/dev-drive.uuid
+uuid=$(cat "$state" 2>/dev/null || true)
 task=$(printf '%s' "$drive" | jq -er '.task')
 schtasks=$(printf '%s' "$drive" | jq -er '.schtasks')
 
 check_mount() {
     actual=$(findmnt -rn -M "$mountpoint" -o UUID,FSTYPE) || return 1
-    if [ "$actual" != "$uuid $filesystem" ]; then
+    actual_uuid=${actual%% *}
+    if [ "${actual#* }" != "$filesystem" ] || [ -z "$actual_uuid" ] ||
+        { [ -n "$uuid" ] && [ "$actual_uuid" != "$uuid" ]; }; then
         printf 'Unexpected filesystem at %s: %s\n' "$mountpoint" "$actual" >&2
+        [ -z "$uuid" ] || printf 'Expected UUID %s from %s\n' "$uuid" "$state" >&2
         exit 1
+    fi
+    if [ -z "$uuid" ]; then
+        uuid=$actual_uuid
+        mkdir -p "$(dirname -- "$state")"
+        printf '%s\n' "$uuid" > "$state"
+        printf 'Recorded development drive UUID in %s\n' "$state"
     fi
     printf 'Development drive ready: %s (%s)\n' "$mountpoint" "$uuid"
 }

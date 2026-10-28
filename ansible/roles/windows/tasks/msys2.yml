@@ -1,7 +1,16 @@
 - name: Resolve MSYS2 root
   ansible.builtin.set_fact:
     shell_msys2_root_path: "{{ (shell_msys2_root | default(shell_configuration.environments.msys2.root))
-      | replace('/', shell_backslash) }}"
+      | replace('${DEV_DRIVE}', shell_dev_drive_letter | default('')) | replace('/', shell_backslash) }}"
+  tags: [packages, config]
+
+- name: Require MSYS2 root
+  ansible.builtin.assert:
+    that: shell_msys2_root_path is regex('^[A-Za-z]:')
+    fail_msg: >-
+      MSYS2 root {{ shell_msys2_root | default(shell_configuration.environments.msys2.root) }} needs an
+      absolute Windows path; ${DEV_DRIVE} requires environments.windows.dev_drive.
+    quiet: true
   tags: [packages, config]
 
 - name: Install or update MSYS2 packages

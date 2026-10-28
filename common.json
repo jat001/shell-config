@@ -2,6 +2,9 @@
   "common": {},
   "environments": {
     "windows": {
+      "dev_drive": {
+        "vhd": "AppData/Local/Dev.vhdx"
+      },
       "aliases": {
         "code": "${HOME}/scoop/apps/vscode/current/bin/code.cmd"
       }
@@ -12,7 +15,6 @@
         "mountpoint": "/mnt/wsl/dev",
         "filesystem": "btrfs",
         "options": "compress=zstd:1",
-        "uuid": "7a914196-e7cf-4bef-8cee-ca4030787a4a",
         "task": "WSL Attach Dev VHDX",
         "schtasks": "/mnt/c/Windows/System32/schtasks.exe"
       },
@@ -35,7 +37,7 @@
       }
     },
     "msys2": {
-      "root": "J:/msys2",
+      "root": "${DEV_DRIVE}/msys2",
       "path_prepend": [
         "${MSYSTEM_PREFIX}/bin",
         "/ucrt64/bin"

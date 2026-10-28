@@ -177,6 +177,25 @@
         CHERE_INVOKING: "1"
       changed_when: false
 
+    - name: Check Windows development drive
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          $path = Join-Path $env:USERPROFILE 'AppData\Local\Dev.vhdx'
+          $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
+          if (-not (Get-ChildItem -LiteralPath $key | Where-Object { $_.GetValue('Path') -eq $path })) {
+              throw "Not attached at boot: $path"
+          }
+          $image = Get-DiskImage -ImagePath $path
+          if (-not $image.Attached) { throw "Not attached: $path" }
+          $letter = Get-CimInstance Win32_DiskDrive | Where-Object { $_.DeviceID -eq $image.DevicePath } |
+              Get-CimAssociatedInstance -ResultClassName Win32_DiskPartition |
+              Get-CimAssociatedInstance -ResultClassName Win32_LogicalDisk |
+              Select-Object -First 1 -ExpandProperty DeviceID
+          $expected = [Environment]::GetEnvironmentVariable('DEV_DRIVE', 'User')
+          if ($letter -ne $expected) { throw "DEV_DRIVE is '$expected' but the drive is '$letter'" }
+
     - name: Inspect WSL development drive task
       community.windows.win_scheduled_task_stat:
         path: \

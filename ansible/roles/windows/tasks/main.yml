@@ -39,6 +39,14 @@
   when: shell_mode != 'update'
   tags: [developer_mode]
 
+- name: Attach Windows development drive
+  ansible.builtin.import_tasks: windows_dev_drive.yml
+  tags: [packages, config, msys2, windows_dev_drive]
+
+- name: Register WSL development drive task
+  ansible.builtin.import_tasks: wsl_dev_drive.yml
+  tags: [dev_drive]
+
 - name: Install Windows packages
   ansible.builtin.import_tasks: packages.yml
   tags: [packages]
@@ -57,7 +65,3 @@
   when: shell_msys2 | bool
   tags: [msys2]
 
-- name: Register WSL development drive task
-  ansible.builtin.import_tasks: dev_drive.yml
-  when: shell_mode != 'init'
-  tags: [dev_drive]

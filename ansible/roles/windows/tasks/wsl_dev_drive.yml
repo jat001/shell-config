@@ -13,7 +13,7 @@
       - shell_dev_drive[item] | default('') | length > 0
     fail_msg: "Missing WSL development drive setting: {{ item }}"
     quiet: true
-  loop: [vhd, mountpoint, filesystem, uuid, task, schtasks]
+  loop: [vhd, mountpoint, filesystem, task, schtasks]
   when: shell_dev_drive_enabled | bool
 
 - name: Validate WSL development drive values
@@ -21,7 +21,6 @@
     that:
       - shell_dev_drive.mountpoint is regex('^/\S+/[A-Za-z0-9][A-Za-z0-9._-]*$')
       - shell_dev_drive.filesystem is regex('^[a-z0-9]+$')
-      - shell_dev_drive.uuid is regex('^[0-9a-fA-F-]{36}$')
       - shell_dev_drive.task is regex('^[A-Za-z0-9][A-Za-z0-9 ._-]*$')
       - shell_dev_drive.options | default('') is not regex('["\r\n]')
       - shell_dev_drive.vhd is not regex('["\r\n]')
