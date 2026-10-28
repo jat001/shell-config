@@ -58,6 +58,10 @@ shell_aur_packages:
   - wsl2-ssh-agent-bin
   - zsh-antidote
 
+# Installed for each WSL account from PSGallery.
+shell_powershell_modules:
+  - PSCompletions
+
 shell_apt_packages:
   - ble.sh
   - ca-certificates

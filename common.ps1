@@ -23,23 +23,26 @@ if (-not $_shared_platform) {
 $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding =
     [System.Text.UTF8Encoding]::new()
 
-$_shared_windows_home = $_shared_mounts = ''
+# Windows PowerShell drops empty native arguments, so WSL-only values are passed only on WSL.
+$_shared_arguments = @()
 if ($_shared_platform -eq 'wsl') {
-    $_shared_windows_home = Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)
-    $_shared_mounts = [IO.File]::ReadAllText('/proc/self/mounts')
+    $_shared_arguments = @(
+        '--arg', 'windows_home',
+        (Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)),
+        '--arg', 'mounts', [IO.File]::ReadAllText('/proc/self/mounts')
+    )
 }
 
 jq -r `
     --arg platform $_shared_platform `
     --arg home $HOME `
-    --arg windows_home $_shared_windows_home `
-    --arg mounts $_shared_mounts `
+    @_shared_arguments `
     --arg mode pwsh `
     -f "$PSScriptRoot/common.jq" `
     "$PSScriptRoot/common.json" |
     Invoke-Expression
 
-Remove-Variable @('_shared_windows_home', '_shared_mounts')
+Remove-Variable '_shared_arguments'
 
 if ($_shared_platform -eq 'windows') {
     Set-PSReadLineOption -EditMode Emacs

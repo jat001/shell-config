@@ -218,6 +218,31 @@
         fail_msg: "{{ user_shell.stdout }} / {{ user_shell.stderr }}"
         quiet: true
 
+    - name: Load PowerShell modules for root and the WSL user
+      ansible.builtin.command:
+        argv: "{{ item.argv }}"
+      environment: "{{ shell_environment }}"
+      loop:
+        - name: root
+          argv: [pwsh, -NoLogo, -Command, '(Get-Module PSCompletions).Name']
+        - name: shell
+          argv: [su, shell, -c, "cd && pwsh -NoLogo -Command '(Get-Module PSCompletions).Name'"]
+      loop_control:
+        label: "{{ item.name }}"
+      register: powershell_modules
+      changed_when: false
+
+    - name: Check PowerShell modules
+      ansible.builtin.assert:
+        that:
+          - (item.stdout_lines | last | default('')) == 'PSCompletions'
+          - item.stderr | length == 0
+        fail_msg: "{{ item.item.name }} printed {{ item.stdout }} / {{ item.stderr }}"
+        quiet: true
+      loop: "{{ powershell_modules.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
 - name: Verify Windows Sandbox
   hosts: windows
   gather_facts: true

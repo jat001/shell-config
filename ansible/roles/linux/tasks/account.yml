@@ -26,3 +26,7 @@
   ansible.builtin.import_tasks: xdg.yml
   when: shell_mode != 'init'
   tags: [config]
+
+- name: Install PowerShell modules
+  ansible.builtin.import_tasks: powershell.yml
+  tags: [packages]

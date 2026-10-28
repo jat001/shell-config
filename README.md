@@ -553,7 +553,9 @@ shell 自身在读取配置前就确定的目录另行处理：PowerShell 把 `$
 
 用户不存在时创建（主目录取发行版默认值），并通过 `/etc/sudoers.d/<用户名>` 获得免密码 sudo；
 yay 以该用户构建 AUR 包。不设置登录密码。
-root 和该用户得到相同的入口文件、`links`、systemd 用户单元和 XDG 目录。
+root 和该用户得到相同的入口文件、`links`、systemd 用户单元和 XDG 目录，
+并各自从 PSGallery 安装 `shell_powershell_modules` 中的 PowerShell 模块（目前为 PSCompletions），
+装在该账户 shell 使用的 `XDG_DATA_HOME` 下；`update` 模式同时更新。
 systemd 用户单元的 `default.target.wants` 链接直接创建，用户管理器未运行时也已启用，下次登录时启动。
 `links` 中当前账户读不到的目标会跳过：Windows 一侧的 `.ssh`、`.gnupg` 属于 root（权限 `0700`），
 所以只链接给 root，WSL 用户使用自己的 `~/.ssh`、`~/.gnupg`。

@@ -1,0 +1,53 @@
+- name: Inspect PowerShell
+  ansible.builtin.command:
+    argv: [sh, -c, command -v pwsh]
+  register: shell_pwsh
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Modules go where the account's shells look: the shared XDG_DATA_HOME when the drive is in use.
+# PSResourceGet's CurrentUser scope ignores XDG_DATA_HOME, so the directory is passed explicitly.
+- name: Install or update PowerShell modules
+  ansible.builtin.command:
+    argv:
+      - pwsh
+      - -NoProfile
+      - -NonInteractive
+      - -Command
+      - |
+        $ErrorActionPreference = 'Stop'
+        $mode = '{{ 'check' if ansible_check_mode else shell_mode }}'
+        $path = '{{ shell_powershell_data }}/powershell/Modules'
+        foreach ($name in @('{{ shell_powershell_modules | join("', '") }}')) {
+            $installed = if (Test-Path -LiteralPath $path) {
+                Get-InstalledPSResource -Name $name -Path $path -ErrorAction SilentlyContinue |
+                    Sort-Object Version -Descending | Select-Object -First 1
+            }
+            if (-not $installed) {
+                if ($mode -ne 'check') {
+                    $null = New-Item -ItemType Directory -Force -Path $path
+                    Save-PSResource -Name $name -Path $path -TrustRepository -Quiet -IncludeXml
+                }
+                "installed $name"
+            } elseif ($mode -eq 'update') {
+                $latest = Find-PSResource -Name $name
+                if ($latest.Version -gt $installed.Version) {
+                    Save-PSResource -Name $name -Version $latest.Version.ToString() -Path $path -TrustRepository -Quiet -IncludeXml
+                    "updated $name $($installed.Version) $($latest.Version)"
+                }
+            }
+        }
+  environment:
+    XDG_DATA_HOME: "{{ shell_powershell_data }}"
+  vars:
+    shell_powershell_data: "{{ (shell_xdg_plan.stdout | from_json).environment.XDG_DATA_HOME
+      | default(shell_user_home ~ '/.local/share', true) if shell_xdg_plan.stdout is defined
+      else shell_user_home ~ '/.local/share' }}"
+  register: shell_powershell_result
+  changed_when: shell_powershell_result.stdout | trim | length > 0
+  until: shell_powershell_result is succeeded
+  retries: 3
+  delay: 10
+  check_mode: false
+  when: shell_pwsh.rc == 0
