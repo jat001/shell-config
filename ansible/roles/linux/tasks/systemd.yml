@@ -46,12 +46,14 @@
       changed_when: false
       check_mode: false
 
+    # schtasks prints in the Windows console code page, which is not UTF-8 on every system.
     - name: Wait for Windows development drive task
       ansible.builtin.command:
         argv:
+          - sh
+          - -c
+          - '"$0" /Query /TN "$1" >/dev/null 2>&1'
           - "{{ shell_configuration.environments.wsl.dev_drive.schtasks }}"
-          - /Query
-          - /TN
           - "{{ shell_configuration.environments.wsl.dev_drive.task }}"
       register: shell_dev_drive_task_query
       until: shell_dev_drive_task_query.rc == 0

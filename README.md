@@ -321,7 +321,7 @@ Oh My Posh 直接通过 PATH 查找，脚本中不指定它的二进制路径。
 
 | 字段 | 内容 |
 |---|---|
-| `environment` | 环境变量名称与字符串值。 |
+| `environment` | 环境变量名称与字符串值；值为数组时依次尝试，取第一个所引用变量都已定义的候选。 |
 | `root` | MSYS2 安装根目录，供 playbook 读取；`-Msys2Root` 可显式覆盖。 |
 | `path_prepend` | 加到 PATH 前面的目录列表。生成时删除空目录项和重复项。 |
 | `aliases` | alias 名称与外部命令名称或可执行文件路径。 |
@@ -336,6 +336,7 @@ PATH 前置目录按共享定义、环境专属定义的顺序合并。
 Windows 取 `USERPROFILE`，MSYS2 把继承的 `USERPROFILE` 转为 `/c/Users/...` 形式，
 WSL 由各 shell 解析 `~/.config/shell` 链接（指向 `<Windows 用户目录>/.config/shell`）得到，
 playbook 规划链接时直接传入检测到的 Windows 用户目录。
+WSL 中 `${DEV_DRIVE}` 只在共享开发盘已挂载时定义（见下文），同样不导出。
 引用不存在的变量会报错，添加相互引用的变量时需要注意展开顺序。
 
 `aliases` 用于外部命令名称或路径。带参数、管道或复杂逻辑的命令，
@@ -398,7 +399,8 @@ Bash/zsh 的初始化文件查找使用标准数据目录：
 没有该条目时，加载器会在清单加载后完成补全初始化。
 `ZSH_AUTOSUGGEST_*` 等变量是插件效果设置，不是插件加载白名单。
 
-解析后的整份清单与加载脚本位于 `${XDG_CACHE_HOME:-$HOME/.cache}/zsh/`：
+解析后的整份清单与加载脚本位于 `${XDG_CACHE_HOME:-$HOME/.cache}/zsh/`
+（WSL 中再按 `WSL_DISTRO_NAME` 分子目录，因为内容包含发行版的安装路径）：
 `plugins.txt`、`plugins.zsh`、`plugins.context`。
 清单、实际安装目录、Antidote 安装或配置变化时重新生成；普通启动复用缓存。
 Antidote 仓库缓存的位置由 `antidote home` 查询，以管理器实际配置为准。
@@ -459,7 +461,8 @@ playbook 只登记和附加已有 VHDX，不创建虚拟磁盘或格式化文件
 `vhd` 相对于 `-WindowsHome`；`schtasks` 是该发行版访问 Windows 任务工具的完整路径。
 如果发行版使用其他 Windows 挂载根目录，应相应调整 `schtasks` 和 `mountpoint`。
 UUID 不写入配置：服务第一次在挂载点看到预期类型的文件系统时，把它的 UUID 记录到
-`~/.local/state/shell/dev-drive.uuid`（遵循 `XDG_STATE_HOME`），之后的挂载必须与之一致。
+`~/.local/state/shell/dev-drive.uuid`，之后的挂载必须与之一致。
+这个文件固定留在本地，不随 `XDG_STATE_HOME` 移到开发盘，因为挂载前就要读取它。
 
 普通安装会一并部署此功能，也可以只安装开发盘部分：
 
@@ -496,6 +499,31 @@ systemctl --user restart wsl-dev-drive.service
 journalctl --user -u wsl-dev-drive.service
 findmnt -M /mnt/wsl/dev
 ```
+
+### 共享 XDG 目录
+
+可以在发行版之间共享的 XDG 基础目录放在开发盘上，由 `common.json` 的 WSL `environment` 设置：
+
+| 变量 | 开发盘已挂载 | 未挂载 |
+|---|---|---|
+| `XDG_DATA_HOME` | `/mnt/wsl/dev/.local/share` | `~/.local/share` |
+| `XDG_STATE_HOME` | `/mnt/wsl/dev/.local/state` | `~/.local/state` |
+| `XDG_CACHE_HOME` | `/mnt/wsl/dev/.cache` | `~/.cache` |
+
+`XDG_CONFIG_HOME` 留在本地：其中有各发行版自己的 systemd 用户单元，包括挂载开发盘的服务。
+`XDG_RUNTIME_DIR` 属于当前会话，也留在本地。pnpm 的目录跟随这些变量。
+
+各 shell 启动时读取 `/proc/self/mounts`：挂载点上是配置的文件系统时定义 `${DEV_DRIVE}`，
+使用开发盘上的目录；否则（例如 WSL 刚启动、服务还没挂载好）这个 shell 继续使用本地目录，
+不会写进挂载点下的 tmpfs。变量只对从这些 shell 启动的程序生效；
+不经过 shell 的 systemd 服务等仍使用本地默认目录。
+各发行版的账户需要有相同的 uid，才能读写同一组目录（目前都是 `root`）。
+
+`full` 和 `update` 在开发盘已挂载时，把本地 `~/.local/share`、`~/.local/state` 中的每个条目
+移到开发盘的同名位置，再在原位置留下指向它的符号链接，
+让不读取这些变量的程序也能找到原有数据。开发盘上已有同名条目时保留本地副本并给出提示，
+不合并内容；`~/.local/state/shell` 不移动。缓存可以重新生成，`~/.cache` 不迁移，
+共享缓存从空目录开始；未挂载时，已移动条目留下的链接暂时不可用。
 
 ## ble.sh 历史搜索退出
 

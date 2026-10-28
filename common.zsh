@@ -33,11 +33,11 @@ fi
 
 source "$_shell_antidote" || return
 
-_shell_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+_shell_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
 mkdir -p "$_shell_cache_dir"
 
 _shell_init_completion() {
-    local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+    local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
     mkdir -p "$_cache"
     autoload -Uz compinit
     compinit -d "$_cache/zcompdump"

@@ -17,14 +17,17 @@ if test -z "$_shell_environment"
 end
 
 set _shell_windows_home
+set _shell_mounts
 if test "$_shell_environment" = wsl
     set _shell_windows_home (path dirname (path dirname (path resolve $HOME/.config/shell)))
+    set _shell_mounts (string collect < /proc/self/mounts)
 end
 
 jq -r \
     --arg platform $_shell_environment \
     --arg home $HOME \
     --arg windows_home "$_shell_windows_home" \
+    --arg mounts "$_shell_mounts" \
     --arg mode fish \
     -f "$HOME/.config/shell/common.jq" \
     "$HOME/.config/shell/common.json" |
@@ -94,4 +97,4 @@ if status is-interactive
         source
 end
 
-set -e _shell_environment _shell_theme _shell_windows_home
+set -e _shell_environment _shell_theme _shell_windows_home _shell_mounts

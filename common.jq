@@ -27,6 +27,16 @@ else
             $variables[.name] // error("Undefined variable: " + .name)
         );
 
+    # An array lists alternatives; the first one whose variables are all defined is used.
+    def resolve($variables):
+        if type == "array" then
+            map(select([scan("\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")[0] | $variables[.] != null] | all))
+            | .[0] // error("No alternative can be expanded: " + tojson)
+        else
+            .
+        end
+        | expand($variables);
+
     def native_alias_path:
         if $platform == "windows" and test("^([A-Za-z]:[/\\\\]|[/\\\\]{2})") then
             gsub("/"; "\\")
@@ -90,18 +100,42 @@ else
         end
       ) as $windows_home
 
+    # WSL shells pass /proc/self/mounts; DEV_DRIVE is defined only while the drive is mounted.
+    | (
+        $specific.dev_drive as $drive
+        | if $platform == "wsl" and $drive != null then
+            ($ARGS.named.mounts // "")
+            | split("\n")
+            | map(split(" "))
+            | if any(.[1] == $drive.mountpoint and .[2] == $drive.filesystem) then
+                $drive.mountpoint
+              else
+                null
+              end
+          else
+            null
+          end
+      ) as $dev_drive
+
     | (
         env
         | .PATH = (.PATH // .Path // "")
         | . + {HOME: $home}
         | if ($windows_home | length) > 0 then .WINDOWS_HOME = $windows_home else del(.WINDOWS_HOME) end
+        | if $platform != "wsl" then
+            .
+          elif $dev_drive != null then
+            .DEV_DRIVE = $dev_drive
+          else
+            del(.DEV_DRIVE)
+          end
       ) as $inherited
 
     | (
         reduce ($definitions | to_entries[]) as $entry (
             $inherited;
             . as $variables
-            | .[$entry.key] = ($entry.value | expand($variables))
+            | .[$entry.key] = ($entry.value | resolve($variables))
         )
       ) as $variables
 

@@ -19,9 +19,12 @@
         "schtasks": "/mnt/c/Windows/System32/schtasks.exe"
       },
       "environment": {
-        "PNPM_HOME": "${HOME}/.local/share/pnpm",
-        "PNPM_CONFIG_CACHE_DIR": "${HOME}/.cache/pnpm",
-        "PNPM_CONFIG_STATE_DIR": "${HOME}/.local/state/pnpm",
+        "XDG_CACHE_HOME": ["${DEV_DRIVE}/.cache", "${HOME}/.cache"],
+        "XDG_DATA_HOME": ["${DEV_DRIVE}/.local/share", "${HOME}/.local/share"],
+        "XDG_STATE_HOME": ["${DEV_DRIVE}/.local/state", "${HOME}/.local/state"],
+        "PNPM_HOME": "${XDG_DATA_HOME}/pnpm",
+        "PNPM_CONFIG_CACHE_DIR": "${XDG_CACHE_HOME}/pnpm",
+        "PNPM_CONFIG_STATE_DIR": "${XDG_STATE_HOME}/pnpm",
         "PNPM_CONFIG_STORE_DIR": "${PNPM_HOME}/store",
         "SSH_AUTH_SOCK": "${XDG_RUNTIME_DIR}/wsl2-ssh-agent.sock"
       },

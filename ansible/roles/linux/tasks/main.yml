@@ -63,3 +63,11 @@
   become_user: "{{ shell_account }}"
   become_method: ansible.builtin.su
   tags: [config, dev_drive]
+
+- name: Share XDG data and state through the development drive
+  ansible.builtin.import_tasks: xdg.yml
+  become: "{{ shell_account_become }}"
+  become_user: "{{ shell_account }}"
+  become_method: ansible.builtin.su
+  when: shell_mode != 'init'
+  tags: [config]

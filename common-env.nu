@@ -19,12 +19,14 @@ let windows_home = if $platform == 'wsl' {
 } else {
     ''
 }
+let mounts = if $platform == 'wsl' { open --raw /proc/self/mounts } else { '' }
 
 let shared = (
     ^jq
         --arg platform $platform
         --arg home $env.HOME
         --arg windows_home $windows_home
+        --arg mounts $mounts
         --arg mode plan
         -f ($shared_directory | path join 'common.jq')
         ($shared_directory | path join 'common.json')
@@ -38,6 +40,7 @@ load-env $shared.environment
         --arg platform $platform
         --arg home $env.HOME
         --arg windows_home $windows_home
+        --arg mounts $mounts
         --arg mode nu-aliases
         -f ($shared_directory | path join 'common.jq')
         ($shared_directory | path join 'common.json')

@@ -16,8 +16,10 @@ if [ -z "$_shell_environment" ]; then
 fi
 
 _shell_windows_home=
+_shell_mounts=
 if [ "$_shell_environment" = wsl ]; then
     _shell_windows_home="$(cd -P "$HOME/.config/shell" && cd ../.. && pwd)"
+    _shell_mounts="$(</proc/self/mounts)"
 fi
 
 eval "$(
@@ -25,11 +27,12 @@ eval "$(
         --arg platform "$_shell_environment" \
         --arg home "$HOME" \
         --arg windows_home "$_shell_windows_home" \
+        --arg mounts "$_shell_mounts" \
         --arg mode sh \
         -f "$HOME/.config/shell/common.jq" \
         "$HOME/.config/shell/common.json"
 )"
-unset _shell_windows_home
+unset _shell_windows_home _shell_mounts
 
 case "$_shell_environment" in
     msys2)

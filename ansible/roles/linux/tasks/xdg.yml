@@ -1,0 +1,69 @@
+- name: Plan shared XDG directories
+  ansible.builtin.command:
+    argv:
+      - jq
+      - --arg
+      - platform
+      - wsl
+      - --arg
+      - home
+      - "{{ shell_user_home }}"
+      - --arg
+      - windows_home
+      - "{{ shell_windows_home_path }}"
+      - --rawfile
+      - mounts
+      - /proc/self/mounts
+      - --arg
+      - mode
+      - plan
+      - -f
+      - "{{ shell_repository }}/common.jq"
+      - "{{ shell_repository }}/common.json"
+  environment:
+    XDG_RUNTIME_DIR: "{{ '/run/user/' ~ shell_account_uid }}"
+  register: shell_xdg_plan
+  changed_when: false
+  check_mode: false
+
+- name: Resolve shared XDG directories
+  ansible.builtin.set_fact:
+    shell_xdg_migrations: "{{ [
+      {'source': shell_user_home ~ '/.local/share', 'shared': shell_xdg_environment.XDG_DATA_HOME | default(''),
+       'exclude': []},
+      {'source': shell_user_home ~ '/.local/state', 'shared': shell_xdg_environment.XDG_STATE_HOME | default(''),
+       'exclude': ['shell']}]
+      | rejectattr('shared', 'in', ['', shell_user_home ~ '/.local/share', shell_user_home ~ '/.local/state'])
+      | list }}"
+  vars:
+    shell_xdg_environment: "{{ (shell_xdg_plan.stdout | from_json).environment }}"
+
+- name: Report unshared XDG directories
+  ansible.builtin.debug:
+    msg: >-
+      The development drive {{ shell_configuration.environments.wsl.dev_drive.mountpoint }} is not mounted,
+      so local XDG data and state were not moved to it.
+  when:
+    - shell_configuration.environments.wsl.dev_drive is defined
+    - shell_xdg_migrations | length == 0
+
+- name: Move local XDG data and state to the development drive
+  ansible.builtin.command:
+    argv: "{{ ['sh', '-c', lookup('ansible.builtin.file', 'xdg-migrate.sh'), 'xdg-migrate',
+      'check' if ansible_check_mode else 'apply', item.source, item.shared] + item.exclude }}"
+  loop: "{{ shell_xdg_migrations }}"
+  loop_control:
+    label: "{{ item.source }}"
+  register: shell_xdg_moved
+  changed_when: shell_xdg_moved.stdout_lines | select('match', 'move ') | list | length > 0
+  check_mode: false
+
+- name: Report conflicting XDG entries
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.stdout_lines | select('match', 'conflict ') | map('regex_replace', '^conflict (\S+) (\S+)$',
+      '\1 stays local because \2 already exists') | list }}
+  loop: "{{ shell_xdg_moved.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.source }}"
+  when: item.stdout_lines | default([]) | select('match', 'conflict ') | list | length > 0

@@ -7,7 +7,8 @@ drive=$(jq -c '.environments.wsl.dev_drive // null' "$configuration")
 [ "$drive" != null ] || exit 0
 mountpoint=$(printf '%s' "$drive" | jq -er '.mountpoint')
 filesystem=$(printf '%s' "$drive" | jq -er '.filesystem')
-state=${XDG_STATE_HOME:-$HOME/.local/state}/shell/dev-drive.uuid
+# Kept off the drive: it is read before the drive is mounted.
+state=$HOME/.local/state/shell/dev-drive.uuid
 uuid=$(cat "$state" 2>/dev/null || true)
 task=$(printf '%s' "$drive" | jq -er '.task')
 schtasks=$(printf '%s' "$drive" | jq -er '.schtasks')

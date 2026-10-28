@@ -23,22 +23,23 @@ if (-not $_shared_platform) {
 $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding =
     [System.Text.UTF8Encoding]::new()
 
-$_shared_windows_home = if ($_shared_platform -eq 'wsl') {
-    Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)
-} else {
-    ''
+$_shared_windows_home = $_shared_mounts = ''
+if ($_shared_platform -eq 'wsl') {
+    $_shared_windows_home = Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)
+    $_shared_mounts = [IO.File]::ReadAllText('/proc/self/mounts')
 }
 
 jq -r `
     --arg platform $_shared_platform `
     --arg home $HOME `
     --arg windows_home $_shared_windows_home `
+    --arg mounts $_shared_mounts `
     --arg mode pwsh `
     -f "$PSScriptRoot/common.jq" `
     "$PSScriptRoot/common.json" |
     Invoke-Expression
 
-Remove-Variable '_shared_windows_home'
+Remove-Variable @('_shared_windows_home', '_shared_mounts')
 
 if ($_shared_platform -eq 'windows') {
     Set-PSReadLineOption -EditMode Emacs

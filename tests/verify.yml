@@ -89,6 +89,59 @@
       loop_control:
         label: "{{ item.item.name }}"
 
+    - name: Resolve XDG directories with and without the development drive
+      ansible.builtin.command:
+        argv: [jq, -c, --arg, platform, wsl, --arg, home, "{{ home }}", --arg, windows_home, "{{ windows_home }}",
+               --arg, mounts, "{{ item }}", --arg, mode, plan,
+               -f, "{{ home }}/.config/shell/common.jq", "{{ home }}/.config/shell/common.json"]
+      environment: "{{ shell_environment | combine({'DEV_DRIVE': 'J:'}) }}"
+      loop:
+        - ''
+        - /dev/sdx /mnt/wsl/dev ext4 rw 0 0
+        - /dev/sdx /mnt/wsl/dev btrfs rw 0 0
+      register: xdg_plans
+      changed_when: false
+
+    - name: Check XDG directories
+      ansible.builtin.assert:
+        that:
+          - (xdg_plans.results[0].stdout | from_json).environment.XDG_DATA_HOME == home ~ '/.local/share'
+          - (xdg_plans.results[1].stdout | from_json).environment.XDG_CACHE_HOME == home ~ '/.cache'
+          - (xdg_plans.results[2].stdout | from_json).environment.XDG_STATE_HOME == '/mnt/wsl/dev/.local/state'
+          - (xdg_plans.results[2].stdout | from_json).environment.PNPM_HOME == '/mnt/wsl/dev/.local/share/pnpm'
+        quiet: true
+
+    - name: Exercise XDG migration
+      ansible.builtin.shell: |
+        set -eu
+        root=$(mktemp -d)
+        trap 'rm -rf "$root"' EXIT
+        mkdir -p "$root/local/moved" "$root/local/kept" "$root/local/shell" "$root/shared/kept"
+        echo data > "$root/local/moved/file"
+        sh -c "$script" xdg-migrate check "$root/local" "$root/shared" shell
+        test -d "$root/local/moved" && test ! -L "$root/local/moved"
+        sh -c "$script" xdg-migrate apply "$root/local" "$root/shared" shell
+        test "$(readlink "$root/local/moved")" = "$root/shared/moved"
+        test "$(cat "$root/shared/moved/file")" = data
+        test -d "$root/local/kept" && test ! -L "$root/local/kept"
+        test -d "$root/local/shell" && test ! -e "$root/shared/shell"
+        printf 'rerun:'
+        sh -c "$script" xdg-migrate apply "$root/local" "$root/shared" shell
+      environment:
+        script: "{{ lookup('ansible.builtin.file', '../ansible/roles/linux/files/xdg-migrate.sh') }}"
+      register: xdg_migration
+      changed_when: false
+
+    - name: Check XDG migration
+      ansible.builtin.assert:
+        that:
+          - xdg_migration.stdout_lines[0] is match('conflict .*/local/kept ')
+          - xdg_migration.stdout_lines[1] is match('move .*/local/moved ')
+          - xdg_migration.stdout is search('rerun:conflict .*/local/kept ')
+          - xdg_migration.stdout is not search('rerun:.*move ')
+        fail_msg: "{{ xdg_migration.stdout }}"
+        quiet: true
+
 - name: Verify Windows Sandbox
   hosts: windows
   gather_facts: true
