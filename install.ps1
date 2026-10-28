@@ -147,7 +147,6 @@ try {
             if ($SkipWsl -and -not $transport) { break }
 
             $source = Invoke-Wsl $distribution @('wslpath', '-a', '-u', $repository)
-            $user = Invoke-Wsl $distribution @('id', '-un')
             $port = Get-FreePort $distribution
             $bootstrap = @('sh', "$source/ansible/bootstrap/wsl.sh", [string]$port, '127.0.0.1', $key)
             if ($transport) {
@@ -180,7 +179,8 @@ try {
                 $windowsHosts['windows-host'] = $windows
             }
             if (-not $SkipWsl) {
-                $connection.shell_user = $user
+                # The WSL user takes the Windows user name, lowercased as Linux user names expect.
+                $connection.shell_user = (Split-Path -Leaf $profileHome).ToLowerInvariant()
                 $connection.shell_windows_home_native = $profileHome
                 $wslHosts["wsl-$($distribution -replace '[^A-Za-z0-9_-]', '-')"] = $connection
             }

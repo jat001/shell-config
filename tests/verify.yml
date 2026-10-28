@@ -121,8 +121,8 @@
         that:
           - (xdg_plans.results[0].stdout | from_json).environment.XDG_DATA_HOME == home ~ '/.local/share'
           - (xdg_plans.results[1].stdout | from_json).environment.XDG_CACHE_HOME == home ~ '/.cache'
-          - (xdg_plans.results[2].stdout | from_json).environment.XDG_STATE_HOME == '/mnt/wsl/dev/.local/state'
-          - (xdg_plans.results[2].stdout | from_json).environment.PNPM_HOME == '/mnt/wsl/dev/.local/share/pnpm'
+          - (xdg_plans.results[2].stdout | from_json).environment.XDG_STATE_HOME == '/mnt/wsl/dev' ~ home ~ '/.local/state'
+          - (xdg_plans.results[2].stdout | from_json).environment.PNPM_HOME == '/mnt/wsl/dev' ~ home ~ '/.local/share/pnpm'
         quiet: true
 
     - name: Exercise XDG migration
@@ -131,7 +131,9 @@
         root=$(mktemp -d)
         trap 'rm -rf "$root"' EXIT
         mkdir -p "$root/local/moved" "$root/local/kept" "$root/local/shell" "$root/shared/kept"
+        mkdir -p "$root/local/empty/sub" "$root/shared/empty"
         echo data > "$root/local/moved/file"
+        echo local > "$root/local/kept/file"
         sh -c "$script" xdg-migrate check "$root/local" "$root/shared" shell
         test -d "$root/local/moved" && test ! -L "$root/local/moved"
         sh -c "$script" xdg-migrate apply "$root/local" "$root/shared" shell
@@ -139,6 +141,7 @@
         test "$(cat "$root/shared/moved/file")" = data
         test -d "$root/local/kept" && test ! -L "$root/local/kept"
         test -d "$root/local/shell" && test ! -e "$root/shared/shell"
+        test ! -e "$root/local/empty"
         printf 'rerun:'
         sh -c "$script" xdg-migrate apply "$root/local" "$root/shared" shell
       environment:
@@ -149,11 +152,70 @@
     - name: Check XDG migration
       ansible.builtin.assert:
         that:
-          - xdg_migration.stdout_lines[0] is match('conflict .*/local/kept ')
-          - xdg_migration.stdout_lines[1] is match('move .*/local/moved ')
+          - xdg_migration.stdout_lines[0] is match('remove .*/local/empty$')
+          - xdg_migration.stdout_lines[1] is match('conflict .*/local/kept ')
+          - xdg_migration.stdout_lines[2] is match('move .*/local/moved ')
           - xdg_migration.stdout is search('rerun:conflict .*/local/kept ')
-          - xdg_migration.stdout is not search('rerun:.*move ')
+          - xdg_migration.stdout is not search('rerun:.*(move|remove) ')
         fail_msg: "{{ xdg_migration.stdout }}"
+        quiet: true
+
+    - name: Read WSL user
+      ansible.builtin.getent:
+        database: "{{ item }}"
+      loop: [passwd, group]
+
+    - name: Check WSL user identity and build user removal
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.getent_passwd.shell[1] == '1000'
+          - ansible_facts.getent_passwd.shell[2] == '1000'
+          - ansible_facts.getent_group.shell[1] == '1000'
+          - "'aurbuilder' not in ansible_facts.getent_passwd"
+        fail_msg: "shell is {{ ansible_facts.getent_passwd.shell | default('missing') }}"
+        quiet: true
+
+    - name: Check WSL user sudo and default user
+      ansible.builtin.shell: |
+        set -e
+        su shell -c 'sudo -n true'
+        grep -qx 'default=root' /etc/wsl.conf
+      changed_when: false
+
+    - name: Inspect WSL user links
+      ansible.builtin.stat:
+        path: "/home/shell/{{ item }}"
+        follow: false
+      loop:
+        - .config/shell
+        - .bashrc
+        - .gitconfig
+        - .config/systemd/user/default.target.wants/wsl2-ssh-agent.service
+        - .ssh
+      register: user_links
+
+    - name: Check WSL user links
+      ansible.builtin.assert:
+        that: (item.stat.islnk | default(false)) if item.item != '.ssh' else not item.stat.exists
+        fail_msg: "/home/shell/{{ item.item }}: {{ item.stat | to_json }}"
+        quiet: true
+      loop: "{{ user_links.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Load shared environment as the WSL user
+      ansible.builtin.command:
+        argv: [su, shell, -c, "bash -ic 'alias code; printf %s \"$PNPM_HOME\"'"]
+      environment: "{{ shell_environment }}"
+      register: user_shell
+      changed_when: false
+
+    - name: Check shared environment of the WSL user
+      ansible.builtin.assert:
+        that:
+          - (user_shell.stdout_lines | last | default('')) == '/home/shell/.local/share/pnpm'
+          - (windows_home ~ '/scoop/apps/vscode/current/bin/code') in user_shell.stdout
+        fail_msg: "{{ user_shell.stdout }} / {{ user_shell.stderr }}"
         quiet: true
 
 - name: Verify Windows Sandbox

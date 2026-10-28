@@ -1,0 +1,88 @@
+- name: Validate WSL user
+  ansible.builtin.assert:
+    that:
+      - shell_user is match('^[a-z_][a-z0-9_-]*$')
+      - shell_user != 'root'
+      - shell_wsl_user.uid | default(1000) | int >= 1000
+      - shell_wsl_user.gid | default(1000) | int >= 1000
+    fail_msg: >-
+      The WSL user {{ shell_user }} needs a lowercase name and uid and gid of at least 1000
+      (environments.wsl.user in common.json).
+    quiet: true
+
+- name: Resolve WSL user identity
+  ansible.builtin.set_fact:
+    shell_user_uid: "{{ shell_wsl_user.uid | default(1000) | int }}"
+    shell_user_gid: "{{ shell_wsl_user.gid | default(1000) | int }}"
+    shell_wsl_ids: "{{ shell_configuration.environments.wsl.ids | default({}) }}"
+
+# The same IDs in every distribution keep files on the shared development drive usable.
+- name: Align WSL account IDs
+  ansible.builtin.command:
+    argv: "{{ ['sh', '-c', lookup('ansible.builtin.file', 'ids.sh'), 'ids',
+      'check' if ansible_check_mode else 'apply', shell_user, shell_user_uid | string, shell_user_gid | string]
+      + (shell_wsl_ids.items() | map('join', '=') | list) }}"
+  register: shell_ids
+  changed_when: shell_ids.stdout_lines | select('match', 'change ') | list | length > 0
+  failed_when: shell_ids.rc not in [0, 3]
+  check_mode: false
+
+- name: Require free WSL account IDs
+  ansible.builtin.assert:
+    that: shell_ids.rc == 0
+    fail_msg: >-
+      {{ shell_ids.stdout_lines | select('match', 'conflict ')
+      | map('regex_replace', '^conflict (\S+) (\S+) (\S+) (\S+)$', '\4 needs \1 ID \2, which \3 holds')
+      | join('; ') }}. Change that ID or environments.wsl in common.json.
+    quiet: true
+
+- name: Create WSL user group
+  ansible.builtin.group:
+    name: "{{ shell_user }}"
+    gid: "{{ shell_user_gid }}"
+
+- name: Create WSL user
+  ansible.builtin.user:
+    name: "{{ shell_user }}"
+    uid: "{{ shell_user_uid }}"
+    group: "{{ shell_user }}"
+    create_home: true
+
+- name: Allow WSL user to use sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ shell_user }}"
+    content: "{{ shell_user }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
+    mode: "0440"
+    validate: visudo -cf %s
+
+- name: Read WSL accounts
+  ansible.builtin.getent:
+    database: passwd
+  when: shell_configuration.environments.wsl.default_user is defined
+
+- name: Require existing default WSL user
+  ansible.builtin.assert:
+    that: >-
+      shell_configuration.environments.wsl.default_user in ansible_facts.getent_passwd
+      or shell_configuration.environments.wsl.default_user == shell_user
+    fail_msg: "The default WSL user {{ shell_configuration.environments.wsl.default_user }} does not exist."
+    quiet: true
+  when: shell_configuration.environments.wsl.default_user is defined
+
+- name: Set default WSL user
+  community.general.ini_file:
+    path: /etc/wsl.conf
+    section: user
+    option: default
+    value: "{{ shell_configuration.environments.wsl.default_user }}"
+    no_extra_spaces: true
+    mode: "0644"
+  register: shell_default_user
+  when: shell_configuration.environments.wsl.default_user is defined
+
+- name: Report default WSL user change
+  ansible.builtin.debug:
+    msg: >-
+      The default WSL user is now {{ shell_configuration.environments.wsl.default_user }};
+      it takes effect after wsl.exe --terminate for this distribution.
+  when: shell_default_user.changed | default(false)

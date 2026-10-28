@@ -18,10 +18,18 @@
         "task": "WSL Attach Dev VHDX",
         "schtasks": "/mnt/c/Windows/System32/schtasks.exe"
       },
+      "user": {
+        "uid": 1000,
+        "gid": 1000
+      },
+      "ids": {
+        "docker": 1001
+      },
+      "default_user": "root",
       "environment": {
-        "XDG_CACHE_HOME": ["${DEV_DRIVE}/.cache", "${HOME}/.cache"],
-        "XDG_DATA_HOME": ["${DEV_DRIVE}/.local/share", "${HOME}/.local/share"],
-        "XDG_STATE_HOME": ["${DEV_DRIVE}/.local/state", "${HOME}/.local/state"],
+        "XDG_CACHE_HOME": ["${DEV_DRIVE}${HOME}/.cache", "${HOME}/.cache"],
+        "XDG_DATA_HOME": ["${DEV_DRIVE}${HOME}/.local/share", "${HOME}/.local/share"],
+        "XDG_STATE_HOME": ["${DEV_DRIVE}${HOME}/.local/state", "${HOME}/.local/state"],
         "PNPM_HOME": "${XDG_DATA_HOME}/pnpm",
         "PNPM_CONFIG_CACHE_DIR": "${XDG_CACHE_HOME}/pnpm",
         "PNPM_CONFIG_STATE_DIR": "${XDG_STATE_HOME}/pnpm",

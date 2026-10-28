@@ -22,7 +22,13 @@ for path in "$source_dir"/* "$source_dir"/.[!.]* "$source_dir"/..?*; do
         continue
     fi
     if [ -e "$target" ] || [ -L "$target" ]; then
-        printf 'conflict %s %s\n' "$path" "$target"
+        # Directories without files, as programs create at startup, hold nothing to keep.
+        if [ -d "$path" ] && [ ! -L "$path" ] && [ -z "$(find "$path" ! -type d -print | head -n 1)" ]; then
+            [ "$mode" = check ] || find "$path" -depth -type d -empty -delete
+            printf 'remove %s\n' "$path"
+        else
+            printf 'conflict %s %s\n' "$path" "$target"
+        fi
         continue
     fi
     if [ "$mode" = check ]; then

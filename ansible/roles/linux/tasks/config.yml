@@ -51,15 +51,17 @@
     label: "{{ item.value }}"
   register: shell_link_targets
 
-- name: Select configured links with existing targets
+# Targets this account cannot read, such as another account's private .ssh, are skipped as well.
+- name: Select configured links with readable targets
   ansible.builtin.set_fact:
     shell_links_available: "{{ shell_link_targets.results | selectattr('stat.exists')
-      | map(attribute='item') | items2dict }}"
+      | selectattr('stat.readable') | map(attribute='item') | items2dict }}"
 
-- name: Report configured links with missing targets
+- name: Report configured links without readable targets
   ansible.builtin.debug:
-    msg: "Skipped links whose targets do not exist: {{ shell_link_targets.results
-      | rejectattr('stat.exists') | map(attribute='item.key') | join(', ') }}"
+    msg: "Skipped links whose targets do not exist or are not readable by {{ shell_account }}:
+      {{ shell_link_targets.results | map(attribute='item.key') | reject('in', shell_links_available)
+      | join(', ') }}"
   when: shell_links_available | length < shell_links | length
 
 - name: Install configured links

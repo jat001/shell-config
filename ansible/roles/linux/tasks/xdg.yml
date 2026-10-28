@@ -55,7 +55,7 @@
   loop_control:
     label: "{{ item.source }}"
   register: shell_xdg_moved
-  changed_when: shell_xdg_moved.stdout_lines | select('match', 'move ') | list | length > 0
+  changed_when: shell_xdg_moved.stdout_lines | select('match', '(move|remove) ') | list | length > 0
   check_mode: false
 
 - name: Report conflicting XDG entries

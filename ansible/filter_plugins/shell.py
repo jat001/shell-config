@@ -98,17 +98,22 @@ def shell_units(directory, only=None, exclude=()):
             continue
         with open(os.path.join(directory, name), encoding='utf-8') as handle:
             content = handle.read().replace('\r', '').rstrip('\n')
+        enable = bool(re.search(r'(?m)^\[Install\]\s*$', content)) and not os.path.splitext(name)[0].endswith('@')
         units.append({
             'name': name,
             'content': content,
-            'enable': bool(re.search(r'(?m)^\[Install\]\s*$', content))
-            and not os.path.splitext(name)[0].endswith('@'),
+            'enable': enable,
+            'wanted_by': [
+                target
+                for line in re.findall(r'(?m)^WantedBy=(.*)$', content)
+                for target in line.split()
+            ] if enable else [],
         })
     return units
 
 
 def shell_unit_items(units, home, repository):
-    return [
+    items = [
         {
             'path': _join(home, '.config/systemd/user', unit['name']),
             'state': 'link',
@@ -118,6 +123,17 @@ def shell_unit_items(units, home, repository):
         }
         for unit in units
     ]
+    # The same links systemctl --user enable creates, so units are enabled without a running user manager.
+    items += [
+        {
+            'path': _join(home, '.config/systemd/user', target + '.wants', unit['name']),
+            'state': 'link',
+            'src': _join(repository, 'systemd', unit['name']),
+        }
+        for unit in units
+        for target in unit['wanted_by']
+    ]
+    return items
 
 
 def shell_link_items(links):

@@ -1,0 +1,18 @@
+- name: Inspect development drive mount
+  ansible.builtin.command:
+    argv: [findmnt, -rn, -M, "{{ shell_configuration.environments.wsl.dev_drive.mountpoint }}", -o, FSTYPE]
+  register: shell_dev_drive_mount
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# Accounts cannot create their directory under the root-owned mount point themselves.
+- name: Create account homes on the development drive
+  ansible.builtin.file:
+    path: "{{ shell_configuration.environments.wsl.dev_drive.mountpoint }}{{ ansible_facts.getent_passwd[item][4] }}"
+    state: directory
+    owner: "{{ ansible_facts.getent_passwd[item][1] }}"
+    group: "{{ ansible_facts.getent_passwd[item][2] }}"
+    mode: "0700"
+  loop: "{{ shell_accounts | select('in', ansible_facts.getent_passwd) | list }}"
+  when: shell_dev_drive_mount.stdout | trim == shell_configuration.environments.wsl.dev_drive.filesystem

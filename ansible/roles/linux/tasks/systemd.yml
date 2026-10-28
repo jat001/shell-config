@@ -35,6 +35,7 @@
   when:
     - shell_systemd_user.rc == 0
     - shell_units | selectattr('enable') | list | length > 0
+    - not (ansible_check_mode and shell_unit_links.changed)
   environment: *systemd_environment
   tags: [dev_drive]
   block:

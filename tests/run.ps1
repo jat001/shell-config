@@ -36,7 +36,7 @@ $cache = Join-Path $StateDirectory 'cache'
 $null = [IO.Directory]::CreateDirectory($sandbox)
 $null = [IO.Directory]::CreateDirectory((Join-Path $cache 'scoop'))
 $volumes = @{
-    arch = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/aurbuilder')
+    arch = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/shell-aur')
     debian = @('-v', 'shell-test-apt:/var/cache/apt/archives', '-v', 'shell-test-releases:/var/cache/shell-releases')
 }
 $timings = [ordered]@{}
@@ -102,6 +102,8 @@ foreach ($name in $linux) {
         ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
         ansible_ssh_common_args = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
         shell_windows_home = '/mnt/c/Users/shell'
+        shell_user = 'shell'
+        shell_aur_cache = '/var/cache/shell-aur'
     }
 }
 

@@ -17,18 +17,11 @@
     - shell_windows_home is not defined
     - shell_windows_home_native is not defined
 
-- name: Read configuration account
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ shell_user | default(ansible_facts.user_id) }}"
-
 - name: Resolve shared paths
   ansible.builtin.set_fact:
     shell_become: "{{ ansible_facts.user_uid | int != 0 }}"
-    shell_account: "{{ shell_user | default(ansible_facts.user_id) }}"
-    shell_account_become: "{{ (shell_user | default(ansible_facts.user_id)) != ansible_facts.user_id }}"
-    shell_account_uid: "{{ ansible_facts.getent_passwd[shell_user | default(ansible_facts.user_id)][1] }}"
-    shell_user_home: "{{ ansible_facts.getent_passwd[shell_user | default(ansible_facts.user_id)][4] }}"
+    shell_accounts: "{{ ([ansible_facts.user_id] + ([shell_user] if shell_user is defined else [])) | unique }}"
+    shell_wsl_user: "{{ shell_configuration.environments.wsl.user | default({}) }}"
     shell_windows_home_path: "{{ shell_windows_home
       | default(shell_windows_home_converted.stdout | default(''))
       | default(shell_windows_home_discovered.stdout, true) | trim }}"

@@ -34,8 +34,8 @@ shell_blesh_archive: https://github.com/akinomyoga/ble.sh/releases/download/nigh
 shell_antidote_repository: https://github.com/mattmc3/antidote.git
 
 shell_archlinuxcn_server: https://repo.archlinuxcn.org/$arch
-shell_aur_builder: aurbuilder
-shell_aur_cache: /var/cache/aurbuilder
+# Empty uses yay's default, ~/.cache/yay of the WSL user.
+shell_aur_cache: ""
 
 shell_pacman_packages:
   - base-devel
@@ -65,6 +65,7 @@ shell_apt_packages:
   - fish
   - git
   - jq
+  - sudo
   - zsh
   - zsh-antidote
   - zsh-autosuggestions

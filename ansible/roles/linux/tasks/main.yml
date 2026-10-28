@@ -37,37 +37,46 @@
       tags: [packages]
   tags: [packages]
 
-- name: Link shared repository
-  shell_paths:
-    items:
-      - path: "{{ shell_user_home }}/.config/shell"
-        state: link
-        src: "{{ shell_repository }}"
-  become: "{{ shell_account_become }}"
-  become_user: "{{ shell_account }}"
-  become_method: ansible.builtin.su
-  when: shell_mode != 'init' or shell_configuration.environments.wsl.dev_drive is defined
-  tags: [config, dev_drive]
+- name: Create WSL user
+  ansible.builtin.import_tasks: user.yml
+  become: "{{ shell_become }}"
+  when: shell_user is defined
+  tags: [packages, config, dev_drive]
 
-- name: Deploy Linux configuration
-  ansible.builtin.import_tasks: config.yml
-  become: "{{ shell_account_become }}"
-  become_user: "{{ shell_account }}"
-  become_method: ansible.builtin.su
-  when: shell_mode != 'init'
+- name: Install AUR packages
+  ansible.builtin.import_tasks: aur.yml
+  become: "{{ shell_become }}"
+  when: ansible_facts.os_family == 'Archlinux'
+  tags: [packages]
+
+- name: Read configured accounts
+  ansible.builtin.getent:
+    database: passwd
+  tags: [always]
+
+- name: Prepare shared XDG homes
+  ansible.builtin.import_tasks: xdg_homes.yml
+  become: "{{ shell_become }}"
+  when:
+    - shell_mode != 'init'
+    - shell_configuration.environments.wsl.dev_drive is defined
   tags: [config]
 
-- name: Deploy systemd user units
-  ansible.builtin.import_tasks: systemd.yml
-  become: "{{ shell_account_become }}"
-  become_user: "{{ shell_account }}"
-  become_method: ansible.builtin.su
-  tags: [config, dev_drive]
+# Each account gets the same entries, links, user units and XDG directories.
+- name: Configure accounts
+  ansible.builtin.include_tasks:
+    file: account.yml
+    apply:
+      become: "{{ shell_account != ansible_facts.user_id }}"
+      become_user: "{{ shell_account }}"
+      become_method: ansible.builtin.su
+  loop: "{{ shell_accounts | select('in', ansible_facts.getent_passwd) | list }}"
+  loop_control:
+    loop_var: shell_account
+  tags: [always]
 
-- name: Share XDG data and state through the development drive
-  ansible.builtin.import_tasks: xdg.yml
-  become: "{{ shell_account_become }}"
-  become_user: "{{ shell_account }}"
-  become_method: ansible.builtin.su
-  when: shell_mode != 'init'
-  tags: [config]
+- name: Report accounts that do not exist yet
+  ansible.builtin.debug:
+    msg: "{{ item }} does not exist yet; it is configured on the next run."
+  loop: "{{ shell_accounts | reject('in', ansible_facts.getent_passwd) | list }}"
+  tags: [config, dev_drive]

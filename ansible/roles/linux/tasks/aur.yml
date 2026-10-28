@@ -1,0 +1,61 @@
+- name: Inspect missing AUR packages
+  ansible.builtin.command:
+    argv: "{{ ['pacman', '-T'] + shell_aur_packages }}"
+  register: shell_aur_missing
+  changed_when: false
+  check_mode: false
+  failed_when: shell_aur_missing.rc not in [0, 127]
+
+- name: Require WSL user for AUR builds
+  ansible.builtin.assert:
+    that: shell_user is defined
+    fail_msg: AUR packages are built by the WSL user; set shell_user.
+    quiet: true
+  when: shell_aur_missing.rc == 127 or shell_mode == 'update'
+
+- name: Resolve AUR build options
+  ansible.builtin.set_fact:
+    shell_aur_options: "{{ ['--noconfirm', '--answerdiff', 'None', '--answerclean', 'None', '--removemake']
+      + (['--builddir', shell_aur_cache] if shell_aur_cache | length > 0 else []) }}"
+
+- name: Create AUR build cache
+  ansible.builtin.file:
+    path: "{{ shell_aur_cache }}"
+    state: directory
+    owner: "{{ shell_user }}"
+    group: "{{ shell_user }}"
+    recurse: true
+  when:
+    - shell_aur_cache | length > 0
+    - shell_aur_missing.rc == 127 or shell_mode == 'update'
+
+- name: Install AUR packages
+  ansible.builtin.command:
+    argv: "{{ ['sudo', '-u', shell_user, '-H', 'yay', '-S', '--needed'] + shell_aur_options
+      + shell_aur_missing.stdout_lines }}"
+  register: shell_network_result
+  until: shell_network_result is succeeded
+  retries: 3
+  delay: 10
+  when: shell_aur_missing.rc == 127
+
+- name: Read foreign packages
+  ansible.builtin.command:
+    argv: [pacman, -Qm]
+  register: shell_aur_before
+  changed_when: false
+  check_mode: false
+  when: shell_mode == 'update'
+
+- name: Update AUR packages
+  ansible.builtin.command:
+    argv: "{{ ['sudo', '-u', shell_user, '-H', 'yay', '-Sua'] + shell_aur_options }}"
+  changed_when: false
+  when: shell_mode == 'update'
+
+- name: Compare foreign packages
+  ansible.builtin.command:
+    argv: [pacman, -Qm]
+  register: shell_aur_after
+  changed_when: shell_aur_after.stdout != shell_aur_before.stdout
+  when: shell_mode == 'update'

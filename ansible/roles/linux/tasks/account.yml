@@ -1,0 +1,28 @@
+- name: Resolve account paths
+  ansible.builtin.set_fact:
+    shell_account_uid: "{{ ansible_facts.getent_passwd[shell_account][1] }}"
+    shell_user_home: "{{ ansible_facts.getent_passwd[shell_account][4] }}"
+  tags: [always]
+
+- name: Link shared repository
+  shell_paths:
+    items:
+      - path: "{{ shell_user_home }}/.config/shell"
+        state: link
+        src: "{{ shell_repository }}"
+  when: shell_mode != 'init' or shell_configuration.environments.wsl.dev_drive is defined
+  tags: [config, dev_drive]
+
+- name: Deploy Linux configuration
+  ansible.builtin.import_tasks: config.yml
+  when: shell_mode != 'init'
+  tags: [config]
+
+- name: Deploy systemd user units
+  ansible.builtin.import_tasks: systemd.yml
+  tags: [config, dev_drive]
+
+- name: Share XDG data and state through the development drive
+  ansible.builtin.import_tasks: xdg.yml
+  when: shell_mode != 'init'
+  tags: [config]

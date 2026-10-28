@@ -86,8 +86,7 @@ WSL 发行版由 `ansible/bootstrap/wsl.sh` 准备：缺少时安装 OpenSSH 和
 在 `/etc/shell-ansible` 写入独立的 sshd 配置、主机密钥和授权公钥，
 不修改发行版自身的 sshd。启动器为每个发行版选一个固定的回环端口（22000–22999），
 运行期间以 root 启动这个 sshd，结束后停止。Ansible 以 root 连接，
-包管理任务直接执行；配置任务通过 `su` 切换到发行版的默认用户（`shell_user`）。
-目前只在默认用户为 root 的发行版上验证过。
+包管理任务直接执行；配置任务对 root 和 WSL 用户各运行一次，通过 `su` 切换到对应账户（见“WSL 用户”）。
 
 Windows 不单独开放远程管理服务。第一个 WSL 发行版的 sshd 同时承载 Windows 连接：
 库存中的 Windows 主机使用 `ansible_shell_type: powershell`，
@@ -141,7 +140,7 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 |---|---|
 | Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、nu、pscompletions；没有 `pwsh` 时安装 Scoop 的 pwsh。 |
 | MSYS2 | 缺少时下载官方 base 包解压到 `root`；pacman 安装 fish、git、jq、zsh 和 UCRT64 oh-my-posh；ble.sh 使用 nightly 包，Antidote 克隆到 Windows 的 `~/.local/share/antidote` 后链接。 |
-| Arch Linux | 官方仓库和 archlinuxcn（blesh-git、oh-my-posh、yay）；powershell-bin、wsl2-ssh-agent-bin、zsh-antidote 由专用构建用户 `aurbuilder` 通过 yay 构建。 |
+| Arch Linux | 官方仓库和 archlinuxcn（blesh-git、oh-my-posh、yay）；powershell-bin、wsl2-ssh-agent-bin、zsh-antidote 由 WSL 用户通过 yay 构建。 |
 | Debian | apt 安装 ble.sh、zsh-antidote 和 zsh 插件；Oh My Posh、Nushell、PowerShell 和 wsl2-ssh-agent 使用 GitHub 发布包，放在 `/opt/shell-releases`，链接到 `/usr/local/bin`。 |
 
 缺少 Python 的 Linux 先用 `raw` 安装 Python，再执行其他任务。
@@ -149,7 +148,7 @@ Scoop 首次安装时先从清单 URL 安装 Git，添加 bucket 后改用 versi
 `update` 模式下 Scoop 先更新 bucket 再升级受管应用；MSYS2 和 Arch Linux 执行整体升级，
 避免部分升级；AUR 包用 `yay -Sua` 升级；Debian 只把受管包升级到最新版本；
 GitHub 发布包通过 `releases/latest` 重定向比较版本，不调用 GitHub API；
-下载的发布包保留在 `/var/cache/shell-releases`（只保留当前版本），AUR 构建目录为 `/var/cache/aurbuilder`。
+下载的发布包保留在 `/var/cache/shell-releases`（只保留当前版本），AUR 构建目录默认为 WSL 用户的 `~/.cache/yay`（`shell_aur_cache` 可改为其他目录）。
 已由其他方式安装的同名命令保持不变，不改由本仓库管理。
 Windows Terminal profiles 和 Clink 注入不在安装范围内。
 个人化安装路径目前保留在 `common.json` 和 MSYS2 主题映射中；
@@ -344,7 +343,7 @@ WSL 中 `${DEV_DRIVE}` 只在共享开发盘已挂载时定义（见下文），
 
 `links` 与 `aliases` 独立，只有 playbook 创建文件系统链接。
 链接路径和目标可以引用共享变量；现有相同链接不变，其他同名路径会报冲突。
-目标不存在的链接跳过并列出，Windows 一侧补上后再运行 `update` 即可创建。
+目标不存在或当前账户读不到的链接跳过并列出，Windows 一侧补上后再运行 `update` 即可创建。
 当前 WSL 的 `links` 将 `${HOME}/.local/bin/git.exe` 链接到 Scoop Windows Git。
 Oh My Posh 在 Windows 挂载盘上通过该链接调用 `git.exe`；该命令目录已在 PATH 中，
 无需加入 Windows Git 安装目录。普通 `git` 继续调用 Linux Git。
@@ -510,9 +509,13 @@ findmnt -M /mnt/wsl/dev
 
 | 变量 | 开发盘已挂载 | 未挂载 |
 |---|---|---|
-| `XDG_DATA_HOME` | `/mnt/wsl/dev/.local/share` | `~/.local/share` |
-| `XDG_STATE_HOME` | `/mnt/wsl/dev/.local/state` | `~/.local/state` |
-| `XDG_CACHE_HOME` | `/mnt/wsl/dev/.cache` | `~/.cache` |
+| `XDG_DATA_HOME` | `/mnt/wsl/dev${HOME}/.local/share` | `~/.local/share` |
+| `XDG_STATE_HOME` | `/mnt/wsl/dev${HOME}/.local/state` | `~/.local/state` |
+| `XDG_CACHE_HOME` | `/mnt/wsl/dev${HOME}/.cache` | `~/.cache` |
+
+开发盘上按主目录分开：root 使用 `/mnt/wsl/dev/root`，WSL 用户使用 `/mnt/wsl/dev/home/<用户名>`。
+账户自己不能在 root 所有的挂载点下建目录，所以 `full` 和 `update` 在开发盘已挂载时以 root
+为每个受管账户创建这个目录（属主为该账户，权限 `0700`）。
 
 `XDG_CONFIG_HOME` 留在本地：其中有各发行版自己的 systemd 用户单元，包括挂载开发盘的服务。
 `XDG_RUNTIME_DIR` 属于当前会话，也留在本地。pnpm 的目录跟随这些变量。
@@ -524,13 +527,36 @@ findmnt -M /mnt/wsl/dev
 shell 自身在读取配置前就确定的目录另行处理：PowerShell 把 `$XDG_DATA_HOME/powershell/Modules`
 加到 `PSModulePath` 前面；直接启动（没有继承这些变量）的交互式 fish 用原参数重新启动一次，
 使历史记录也来自开发盘。
-各发行版的账户需要有相同的 uid，才能读写同一组目录（目前都是 `root`）。
+各发行版的同名账户需要有相同的 uid 和 gid，才能读写同一组目录；WSL 用户的 ID 由 playbook 统一（见“WSL 用户”）。
 
 `full` 和 `update` 在开发盘已挂载时，把本地 `~/.local/share`、`~/.local/state` 中的每个条目
 移到开发盘的同名位置，原位置不留链接：不读取这些变量的程序之后从空的本地目录开始。
-开发盘上已有同名条目时保留本地副本并给出提示，不合并内容；`~/.local/state/shell` 不移动；
+开发盘上已有同名条目时保留本地副本并给出提示，不合并内容（本地只有空目录时直接删除）；`~/.local/state/shell` 不移动；
 早期版本留下的、指向开发盘同名条目的链接保持不动。缓存可以重新生成，`~/.cache` 不迁移，
 共享缓存从空目录开始。
+
+## WSL 用户
+
+除 root 外，playbook 在每个受管发行版中维护一个非 root 用户，用户名取 Windows 用户目录名的小写形式
+（目前为 `jat`），由 `install.ps1` 作为 `shell_user` 传入。`common.json` 的 WSL 部分设置：
+
+| 字段 | 内容 |
+|---|---|
+| `user` | 该用户的 `uid` 和 `gid`，目前都是 `1000`。 |
+| `ids` | 其他需要在各发行版保持一致的组 ID，目前 `docker` 为 `1001`；同名用户存在时 uid 也设为该值。 |
+| `default_user` | 写入 `/etc/wsl.conf` 的 `[user] default`，目前为 `root`；修改后 `wsl.exe --terminate` 该发行版才生效。 |
+
+这些 ID 被上述账户以外的用户或组占用时，playbook 停止并列出占用者；
+只在这些账户之间互相占用时（例如 `docker` 和用户组的 gid 对调），先换到临时 ID 再换到目标 ID，
+并把原来属于旧 ID 的文件（根文件系统、`/run` 和 `/tmp` 中）改到新 ID 上，例如 Docker Desktop 的 `docker.sock`。
+`-WhatIf` 只列出将要做的修改。
+
+用户不存在时创建（主目录取发行版默认值），并通过 `/etc/sudoers.d/<用户名>` 获得免密码 sudo；
+yay 以该用户构建 AUR 包。不设置登录密码。
+root 和该用户得到相同的入口文件、`links`、systemd 用户单元和 XDG 目录。
+systemd 用户单元的 `default.target.wants` 链接直接创建，用户管理器未运行时也已启用，下次登录时启动。
+`links` 中当前账户读不到的目标会跳过：Windows 一侧的 `.ssh`、`.gnupg` 属于 root（权限 `0700`），
+所以只链接给 root，WSL 用户使用自己的 `~/.ssh`、`~/.gnupg`。
 
 ## ble.sh 历史搜索退出
 
