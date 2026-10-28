@@ -23,6 +23,8 @@
       .config/powershell/Microsoft.PowerShell_profile.ps1: "{{ windows_home }}/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"
       .config/nushell/config.nu: "{{ windows_home }}/AppData/Roaming/nushell/config.nu"
       .local/bin/git.exe: "{{ windows_home }}/scoop/apps/git-without-openssh/current/cmd/git.exe"
+      .ssh: "{{ windows_home }}/.ssh"
+      .gitconfig: "{{ windows_home }}/.gitconfig"
       .config/systemd/user/wsl2-ssh-agent.service: "{{ windows_home }}/.config/shell/systemd/wsl2-ssh-agent.service"
       .config/systemd/user/wsl-dev-drive.service: "{{ windows_home }}/.config/shell/systemd/wsl-dev-drive.service"
   tasks:
@@ -44,6 +46,18 @@
       loop: "{{ links.results }}"
       loop_control:
         label: "{{ item.item.key }}"
+
+    - name: Inspect a configured link without a Windows target
+      ansible.builtin.stat:
+        path: "{{ home }}/.aws"
+        follow: false
+      register: missing_link
+
+    - name: Check that links without targets are skipped
+      ansible.builtin.assert:
+        that: not missing_link.stat.exists
+        fail_msg: "{{ home }}/.aws was created although {{ windows_home }}/.aws does not exist"
+        quiet: true
 
     - name: Check software
       ansible.builtin.shell: |

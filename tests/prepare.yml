@@ -35,6 +35,19 @@
         state: directory
         mode: "0755"
 
+    - name: Create Windows SSH directory
+      ansible.builtin.file:
+        path: "{{ windows_home }}/.ssh"
+        state: directory
+        mode: "0700"
+
+    - name: Create Windows Git configuration
+      ansible.builtin.copy:
+        dest: "{{ windows_home }}/.gitconfig"
+        content: ""
+        mode: "0644"
+        force: false
+
     - name: Create Scoop Git placeholder
       ansible.builtin.copy:
         dest: "{{ windows_home }}/scoop/apps/git-without-openssh/current/cmd/git.exe"

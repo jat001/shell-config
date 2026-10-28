@@ -344,9 +344,13 @@ WSL 中 `${DEV_DRIVE}` 只在共享开发盘已挂载时定义（见下文），
 
 `links` 与 `aliases` 独立，只有 playbook 创建文件系统链接。
 链接路径和目标可以引用共享变量；现有相同链接不变，其他同名路径会报冲突。
+目标不存在的链接跳过并列出，Windows 一侧补上后再运行 `update` 即可创建。
 当前 WSL 的 `links` 将 `${HOME}/.local/bin/git.exe` 链接到 Scoop Windows Git。
 Oh My Posh 在 Windows 挂载盘上通过该链接调用 `git.exe`；该命令目录已在 PATH 中，
 无需加入 Windows Git 安装目录。普通 `git` 继续调用 Linux Git。
+其余条目让 WSL 与 Windows 共用账户和工具配置：`.ssh`、`.gnupg`、`.gitconfig`、`.aws`、
+`.azure`、`.vimrc`、`.wakatime.cfg`、Docker 的 `contexts` 和 `features.json`、
+Cargo 的 `credentials.toml`（Scoop rustup 目录下）、pnpm 配置目录和 fish 的 `fish_plugins`。
 修改 `links` 后运行 `update` 模式；修改 `aliases` 后重新加载 shell 配置。
 
 Windows 外部命令 alias 的绝对路径在生成时规范为反斜杠。

@@ -51,16 +51,18 @@
     label: "{{ item.value }}"
   register: shell_link_targets
 
-- name: Require configured link targets
-  ansible.builtin.assert:
-    that: item.stat.exists
-    fail_msg: "Configured link target does not exist: {{ item.item.value }}"
-    quiet: true
-  loop: "{{ shell_link_targets.results }}"
-  loop_control:
-    label: "{{ item.item.value }}"
+- name: Select configured links with existing targets
+  ansible.builtin.set_fact:
+    shell_links_available: "{{ shell_link_targets.results | selectattr('stat.exists')
+      | map(attribute='item') | items2dict }}"
+
+- name: Report configured links with missing targets
+  ansible.builtin.debug:
+    msg: "Skipped links whose targets do not exist: {{ shell_link_targets.results
+      | rejectattr('stat.exists') | map(attribute='item.key') | join(', ') }}"
+  when: shell_links_available | length < shell_links | length
 
 - name: Install configured links
   shell_paths:
-    items: "{{ shell_links | shell_link_items }}"
-  when: shell_links | length > 0
+    items: "{{ shell_links_available | shell_link_items }}"
+  when: shell_links_available | length > 0

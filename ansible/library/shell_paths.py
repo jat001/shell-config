@@ -36,6 +36,8 @@ def evaluate(item):
     if kind == 'external':
         if current['type'] == 'link' and current['target'] == item['src']:
             return None, None
+        if current['type'] == 'directory' and not os.listdir(path):
+            return 'replace', None
         return None, 'An existing path occupies a configured link'
 
     if state == 'directory':

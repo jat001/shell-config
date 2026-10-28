@@ -36,7 +36,19 @@
         "code": "${WINDOWS_HOME}/scoop/apps/vscode/current/bin/code"
       },
       "links": {
-        "${HOME}/.local/bin/git.exe": "${WINDOWS_HOME}/scoop/apps/git-without-openssh/current/cmd/git.exe"
+        "${HOME}/.local/bin/git.exe": "${WINDOWS_HOME}/scoop/apps/git-without-openssh/current/cmd/git.exe",
+        "${HOME}/.aws": "${WINDOWS_HOME}/.aws",
+        "${HOME}/.azure": "${WINDOWS_HOME}/.azure",
+        "${HOME}/.cargo/credentials.toml": "${WINDOWS_HOME}/scoop/apps/rustup/current/.cargo/credentials.toml",
+        "${HOME}/.config/fish/fish_plugins": "${WINDOWS_HOME}/.config/fish/fish_plugins",
+        "${HOME}/.config/pnpm": "${WINDOWS_HOME}/AppData/Local/pnpm/config",
+        "${HOME}/.docker/contexts": "${WINDOWS_HOME}/.docker/contexts",
+        "${HOME}/.docker/features.json": "${WINDOWS_HOME}/.docker/features.json",
+        "${HOME}/.gitconfig": "${WINDOWS_HOME}/.gitconfig",
+        "${HOME}/.gnupg": "${WINDOWS_HOME}/.gnupg",
+        "${HOME}/.ssh": "${WINDOWS_HOME}/.ssh",
+        "${HOME}/.vimrc": "${WINDOWS_HOME}/.vimrc",
+        "${HOME}/.wakatime.cfg": "${WINDOWS_HOME}/.wakatime.cfg"
       }
     },
     "msys2": {
