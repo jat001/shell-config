@@ -162,7 +162,7 @@ Windows Terminal profiles 和 Clink 注入不在安装范围内。
 
 - wslc 容器 `archlinux:latest`、`debian:testing`（与 WSL 中的 Debian forky 一致）：直接使用官方镜像，模拟全新系统；
   用同一个 `wsl.sh` 安装 OpenSSH 和 Python 并启动专用 sshd（容器内监听所有地址）。
-  仓库只读挂载到 `/mnt/c/Users/Jat/.config/shell`，`tests/prepare.yml`
+  仓库只读挂载到 `/mnt/c/Users/shell/.config/shell`（有意不用真实用户名），`tests/prepare.yml`
   生成 Windows 侧的入口文件，模拟 WSL 布局。容器内没有 systemd，用户单元只链接不启动。
 - Windows Sandbox：用 `wsb` CLI 启动，仓库只读映射到 `C:\shell-repo`。
   沙盒中没有 WSL，测试改用 WinRM（`tests/winrm.ps1`，HTTPS 和客户端证书）连接，
@@ -249,7 +249,7 @@ Scoop 安装器自身下载的核心和 main bucket 压缩包不经过 git，仍
 |---|---|
 | Windows | `C:\Users\Jat` |
 | WSL archlinux | `/root` |
-| MSYS2 | `/home/Jat`，对应 `${DEV_DRIVE}\msys2\home\Jat`（目前为 `J:`） |
+| MSYS2 | `/home/<用户名>`，对应 `${DEV_DRIVE}\msys2\home\<用户名>`（目前为 `J:\msys2\home\Jat`） |
 
 | 入口文件 | 内容 |
 |---|---|
@@ -332,6 +332,10 @@ PATH 前置目录按共享定义、环境专属定义的顺序合并。
 
 字符串可以引用 `${HOME}`、`${PNPM_HOME}` 等变量。
 `HOME` 来自当前 shell；其他引用来自继承的环境及已展开的环境变量。
+`${WINDOWS_HOME}` 是 Windows 用户目录，不写死用户名，也不导出到环境：
+Windows 取 `USERPROFILE`，MSYS2 把继承的 `USERPROFILE` 转为 `/c/Users/...` 形式，
+WSL 由各 shell 解析 `~/.config/shell` 链接（指向 `<Windows 用户目录>/.config/shell`）得到，
+playbook 规划链接时直接传入检测到的 Windows 用户目录。
 引用不存在的变量会报错，添加相互引用的变量时需要注意展开顺序。
 
 `aliases` 用于外部命令名称或路径。带参数、管道或复杂逻辑的命令，

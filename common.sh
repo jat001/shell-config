@@ -15,14 +15,21 @@ if [ -z "$_shell_environment" ]; then
     return 1
 fi
 
+_shell_windows_home=
+if [ "$_shell_environment" = wsl ]; then
+    _shell_windows_home="$(cd -P "$HOME/.config/shell" && cd ../.. && pwd)"
+fi
+
 eval "$(
     jq -r \
         --arg platform "$_shell_environment" \
         --arg home "$HOME" \
+        --arg windows_home "$_shell_windows_home" \
         --arg mode sh \
         -f "$HOME/.config/shell/common.jq" \
         "$HOME/.config/shell/common.json"
 )"
+unset _shell_windows_home
 
 case "$_shell_environment" in
     msys2)

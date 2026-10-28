@@ -30,10 +30,10 @@
         "${PNPM_HOME}/bin"
       ],
       "aliases": {
-        "code": "/mnt/c/Users/Jat/scoop/apps/vscode/current/bin/code"
+        "code": "${WINDOWS_HOME}/scoop/apps/vscode/current/bin/code"
       },
       "links": {
-        "${HOME}/.local/bin/git.exe": "/mnt/c/Users/Jat/scoop/apps/git-without-openssh/current/cmd/git.exe"
+        "${HOME}/.local/bin/git.exe": "${WINDOWS_HOME}/scoop/apps/git-without-openssh/current/cmd/git.exe"
       }
     },
     "msys2": {
@@ -43,7 +43,7 @@
         "/ucrt64/bin"
       ],
       "aliases": {
-        "code": "/c/Users/Jat/scoop/apps/vscode/current/bin/code"
+        "code": "${WINDOWS_HOME}/scoop/apps/vscode/current/bin/code"
       }
     }
   }

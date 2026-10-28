@@ -13,7 +13,7 @@
           "style": "plain",
           "options": {
             "mapped_locations": {
-              "{{ .Env.DEV_DRIVE }}/msys2/home/Jat": "~"
+              "{{ .Env.DEV_DRIVE }}/msys2/home/{{ .UserName }}": "~"
             }
           }
         }

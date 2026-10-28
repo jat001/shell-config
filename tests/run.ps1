@@ -72,13 +72,13 @@ $linuxSetup = {
         & wslc.exe remove -f $container *> $null
         Invoke-Logged (@(
             'run', '-d', '--name', $container, '--hostname', $Name, '--network', $Network
-            '-v', "${Repository}:/mnt/c/Users/Jat/.config/shell:ro"
+            '-v', "${Repository}:/mnt/c/Users/shell/.config/shell:ro"
         ) + $Volumes + @($Image, 'sleep', 'infinity'))
         Invoke-Logged exec $container rm -f /etc/apt/apt.conf.d/docker-clean
     }
 
     $global:LASTEXITCODE = 0
-    $sshd = & wslc.exe exec $container sh /mnt/c/Users/Jat/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
+    $sshd = & wslc.exe exec $container sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
         Select-Object -Last 1
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed in $container; see $Log" }
     $alive = 'pid=$(cat /etc/shell-ansible/sshd.pid 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid"'
@@ -101,7 +101,7 @@ foreach ($name in $linux) {
         ansible_user = 'root'
         ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
         ansible_ssh_common_args = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
-        shell_windows_home = '/mnt/c/Users/Jat'
+        shell_windows_home = '/mnt/c/Users/shell'
     }
 }
 

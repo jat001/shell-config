@@ -14,6 +14,9 @@
       - home
       - "{{ shell_user_home }}"
       - --arg
+      - windows_home
+      - "{{ shell_windows_home_path }}"
+      - --arg
       - mode
       - plan
       - -f

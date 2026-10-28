@@ -4,7 +4,7 @@
   vars_files:
     - ../ansible/group_vars/all/main.yml
   vars:
-    windows_home: /mnt/c/Users/Jat
+    windows_home: /mnt/c/Users/shell
   tasks:
     - name: Create Windows entry directories
       ansible.builtin.file:

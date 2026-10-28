@@ -74,7 +74,28 @@ else
       end
 
     | (($common.environment // {}) + ($specific.environment // {})) as $definitions
-    | (env | .PATH = (.PATH // .Path // "") | . + {HOME: $home}) as $inherited
+    # WSL shells pass the Windows home resolved from the ~/.config/shell link; MSYS2 inherits USERPROFILE.
+    | (
+        if $platform == "wsl" then
+            $ARGS.named.windows_home // ""
+        elif $platform == "msys2" then
+            env.USERPROFILE // ""
+            | if test("^[A-Za-z]:") then
+                "/" + (.[0:1] | ascii_downcase) + (.[2:] | gsub("\\\\"; "/"))
+              else
+                ""
+              end
+        else
+            env.USERPROFILE // ""
+        end
+      ) as $windows_home
+
+    | (
+        env
+        | .PATH = (.PATH // .Path // "")
+        | . + {HOME: $home}
+        | if ($windows_home | length) > 0 then .WINDOWS_HOME = $windows_home else del(.WINDOWS_HOME) end
+      ) as $inherited
 
     | (
         reduce ($definitions | to_entries[]) as $entry (
