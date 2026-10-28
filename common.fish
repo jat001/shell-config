@@ -33,6 +33,15 @@ jq -r \
     "$HOME/.config/shell/common.json" |
     source
 
+# fish fixes its data directory, and with it the history, at startup; restart once with the shared one.
+if test "$_shell_environment" = wsl; and status is-interactive; and set -q XDG_DATA_HOME
+    and test "$__fish_user_data_dir" != "$XDG_DATA_HOME/fish"
+    set -l fish (status fish-path)
+    set -l arguments (string split0 < /proc/$fish_pid/cmdline)[2..]
+    status is-login; and set -p arguments --login
+    exec $fish $arguments
+end
+
 switch $_shell_environment
     case msys2
         set _shell_theme msys2-fish

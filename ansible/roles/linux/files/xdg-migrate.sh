@@ -1,7 +1,8 @@
 set -eu
 
 # Usage: xdg-migrate.sh check|apply SOURCE SHARED [EXCLUDE...]
-# Moves each entry of SOURCE into SHARED when SHARED has no entry of that name, then links it back.
+# Moves each entry of SOURCE into SHARED when SHARED has no entry of that name.
+# Links to SHARED left by earlier versions are skipped.
 mode=$1
 source_dir=$2
 shared_dir=$3
@@ -29,6 +30,5 @@ for path in "$source_dir"/* "$source_dir"/.[!.]* "$source_dir"/..?*; do
         continue
     fi
     mv -- "$path" "$target"
-    ln -s -- "$target" "$path"
     printf 'move %s %s\n' "$path" "$target"
 done

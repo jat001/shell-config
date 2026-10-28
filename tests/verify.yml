@@ -121,7 +121,7 @@
         sh -c "$script" xdg-migrate check "$root/local" "$root/shared" shell
         test -d "$root/local/moved" && test ! -L "$root/local/moved"
         sh -c "$script" xdg-migrate apply "$root/local" "$root/shared" shell
-        test "$(readlink "$root/local/moved")" = "$root/shared/moved"
+        test ! -e "$root/local/moved" && test ! -L "$root/local/moved"
         test "$(cat "$root/shared/moved/file")" = data
         test -d "$root/local/kept" && test ! -L "$root/local/kept"
         test -d "$root/local/shell" && test ! -e "$root/shared/shell"

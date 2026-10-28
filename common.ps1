@@ -49,6 +49,15 @@ oh-my-posh init pwsh `
     --config "$HOME/.config/oh-my-posh/shell-integration.omp.json" |
     Invoke-Expression
 
+# PowerShell computes PSModulePath at startup, before this profile sets XDG_DATA_HOME.
+if ($_shared_platform -ne 'windows' -and $env:XDG_DATA_HOME) {
+    $_shared_modules = Join-Path $env:XDG_DATA_HOME 'powershell/Modules'
+    if (($env:PSModulePath -split [IO.Path]::PathSeparator) -notcontains $_shared_modules) {
+        $env:PSModulePath = $_shared_modules + [IO.Path]::PathSeparator + $env:PSModulePath
+    }
+    Remove-Variable '_shared_modules'
+}
+
 Import-Module PSCompletions
 
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
