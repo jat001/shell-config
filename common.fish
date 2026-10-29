@@ -51,6 +51,10 @@ switch $_shell_environment
 end
 
 if status is-interactive
+    if test "$_shell_environment" = msys2; and docker --version >/dev/null 2>&1
+        docker completion fish | source
+    end
+
     set -g fish_color_autosuggestion 8a8a8a --italics
 
     function _shell_history_search --argument-names direction

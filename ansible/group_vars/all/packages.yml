@@ -14,6 +14,8 @@ shell_scoop_apps:
     bucket: main
   - name: clink
     bucket: main
+  - name: clink-completions
+    bucket: main
   - name: nu
     bucket: main
   - name: pscompletions
@@ -73,6 +75,7 @@ shell_powershell_modules:
   - PSCompletions
 
 shell_apt_packages:
+  - bash-completion
   - xz-utils
   - ble.sh
   - ca-certificates
@@ -88,11 +91,46 @@ shell_apt_packages:
 
 shell_release_root: /opt/shell-releases
 shell_release_cache: /var/cache/shell-releases
+shell_release_bin: /usr/local/bin
+shell_release_manifest: /etc/shell-releases.json
+shell_release_updater: /usr/local/libexec/shell-releases-update
+shell_release_update_calendar: daily
+shell_release_update_delay: 1h
+
+shell_microsoft_debian_versions:
+  bookworm: "12"
+  trixie: "13"
+  forky: "13"
+  sid: "13"
+shell_microsoft_debian_suites:
+  "12": bookworm
+  "13": trixie
+shell_microsoft_debian_version: "{{ shell_microsoft_debian_versions.get(ansible_facts.distribution_release, '')
+  if ansible_facts.distribution == 'Debian' else '' }}"
+
+shell_debian_apt_sources:
+  - name: nushell
+    uri: https://apt.fury.io/nushell/
+    suite: /
+    components: []
+    key: https://apt.fury.io/nushell/gpg.key
+    key_sha256: f4e531487a24270a83b8a84cb314b4f6ce373e6adf690c4d6d694798936bd32f
+    packages: [nushell]
+  - name: powershell
+    uri: "{{ 'https://packages.microsoft.com/debian/' ~ shell_microsoft_debian_version ~ '/prod'
+      if shell_microsoft_debian_version else '' }}"
+    suite: "{{ shell_microsoft_debian_suites.get(shell_microsoft_debian_version, '') }}"
+    components: [main]
+    key: "https://packages.microsoft.com/keys/microsoft{{ '-2025' if shell_microsoft_debian_version == '13' else '' }}.asc"
+    key_sha256: "{{ 'd45224d594d969f084232deaaf97c58ca502a9d964c362d7aaef5a76e16b3dd1'
+      if shell_microsoft_debian_version == '13' else '2fa9c05d591a1582a9aba276272478c262e95ad00acf60eaee1644d93941e3c6' }}"
+    packages: [powershell]
 
 shell_releases:
   - name: oh-my-posh
     repository: JanDeDobbeleer/oh-my-posh
     asset: "posh-linux-{{ shell_release_arch.go }}"
+    checksum_asset: checksums.txt
     command: oh-my-posh
   - name: nushell
     repository: nushell/nushell
@@ -107,14 +145,18 @@ shell_releases:
   - name: wsl2-ssh-agent
     repository: mame/wsl2-ssh-agent
     asset: "wsl2-ssh-agent{{ '' if shell_release_arch.go == 'amd64' else '-' ~ shell_release_arch.go }}"
+    checksum_asset: checksums.txt
     command: wsl2-ssh-agent
+    restart_user_units: [wsl2-ssh-agent.service]
 
 shell_release_arches:
   x86_64:
+    deb: amd64
     go: amd64
     rust: x86_64
     dotnet: x64
   aarch64:
+    deb: arm64
     go: arm64
     rust: aarch64
     dotnet: arm64

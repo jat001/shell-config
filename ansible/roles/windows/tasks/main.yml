@@ -34,18 +34,13 @@
       (shell_developer_mode.value | default(0)) == 1 }}"
   tags: [always]
 
-- name: Enable Developer Mode for symbolic links
-  ansible.builtin.import_tasks: developer_mode.yml
-  when: shell_mode != 'update'
-  tags: [developer_mode]
+- name: Prepare privileged Windows system settings
+  ansible.builtin.import_tasks: system_setup.yml
+  tags: [developer_mode, dev_drive, windows_dev_drive, packages, config, msys2]
 
 - name: Attach Windows development drive
   ansible.builtin.import_tasks: windows_dev_drive.yml
   tags: [packages, config, msys2, windows_dev_drive]
-
-- name: Register WSL development drive task
-  ansible.builtin.import_tasks: wsl_dev_drive.yml
-  tags: [dev_drive]
 
 - name: Install Windows packages
   ansible.builtin.import_tasks: packages.yml

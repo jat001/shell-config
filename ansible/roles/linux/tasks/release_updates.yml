@@ -1,0 +1,57 @@
+- name: Create release updater directory
+  ansible.builtin.file:
+    path: "{{ shell_release_updater | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Install shared release updater
+  ansible.builtin.copy:
+    src: release-update.py
+    dest: "{{ shell_release_updater }}"
+    mode: "0755"
+  register: shell_release_updater_copy
+
+- name: Write managed release manifest
+  ansible.builtin.copy:
+    dest: "{{ shell_release_manifest }}"
+    mode: "0644"
+    content: "{{ {'root': shell_release_root, 'bin': shell_release_bin, 'cache': shell_release_cache,
+      'packages': shell_debian_fallback_releases,
+      'users': shell_accounts | default([ansible_facts.user_id])} | to_nice_json }}\n"
+  register: shell_release_manifest_copy
+
+- name: Install or update fallback release packages
+  ansible.builtin.command:
+    argv: "{{ ['/usr/bin/python3', shell_release_updater, '--manifest', shell_release_manifest]
+      + (['--update'] if shell_mode == 'update' else [])
+      + (['--check'] if ansible_check_mode else []) }}"
+  register: shell_release_update_result
+  changed_when: (shell_release_update_result.stdout | from_json).changed | length > 0
+  check_mode: false
+  when: not ansible_check_mode or not (shell_release_updater_copy is changed or shell_release_manifest_copy is changed)
+
+- name: Report release package initialization in preview
+  ansible.builtin.debug:
+    msg: The shared updater and manifest will be installed before release packages can be checked.
+  changed_when: shell_debian_fallback_releases | length > 0
+  when:
+    - ansible_check_mode
+    - shell_release_updater_copy is changed or shell_release_manifest_copy is changed
+
+- name: Install release update units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [shell-releases-update.service, shell-releases-update.timer]
+  register: shell_release_units
+
+- name: Enable timer only when fallback packages remain
+  ansible.builtin.systemd_service:
+    name: shell-releases-update.timer
+    enabled: "{{ shell_debian_fallback_releases | length > 0 }}"
+    state: "{{ 'started' if shell_debian_fallback_releases | length > 0 else 'stopped' }}"
+    daemon_reload: "{{ shell_release_units is changed }}"
+  when:
+    - ansible_facts.service_mgr == 'systemd'
+    - not (ansible_check_mode and shell_release_units is changed)

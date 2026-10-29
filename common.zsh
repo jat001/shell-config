@@ -38,9 +38,23 @@ mkdir -p "$_shell_cache_dir"
 
 _shell_init_completion() {
     local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
+    local _share _context
+    local -a _completion_files
+    for _share in ${(s.:.)${XDG_DATA_DIRS:-/usr/local/share:/usr/share}}; do
+        [[ -d "$_share/zsh/vendor-completions" ]] && fpath+=("$_share/zsh/vendor-completions")
+    done
+    typeset -gU fpath
     mkdir -p "$_cache"
+    _completion_files=(${^fpath}/_*(N-.))
+    _context="${(F)fpath}
+${(F)_completion_files}"
+    if [[ ! -r "$_cache/completions.context" ||
+        "$_context" != "$(<"$_cache/completions.context")" ]]; then
+        rm -f -- "$_cache/zcompdump" "$_cache/zcompdump.zwc"
+    fi
     autoload -Uz compinit
-    compinit -d "$_cache/zcompdump"
+    compinit -d "$_cache/zcompdump" || return
+    print -r -- "$_context" > "$_cache/completions.context"
     typeset -g _shell_completion_ready=1
 }
 
@@ -217,6 +231,10 @@ source "$_shell_plugins_script" || return
 
 if (( ! _shell_completion_ready )); then
     _shell_init_completion
+fi
+
+if [[ "$_shell_environment" == msys2 ]] && docker --version >/dev/null 2>&1; then
+    source <(docker completion zsh)
 fi
 
 unfunction _shell_find_path _shell_package_completion_dir _shell_resolve_plugins

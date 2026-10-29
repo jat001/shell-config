@@ -1,0 +1,12 @@
+[Unit]
+Description=Update managed shell release packages
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists={{ shell_release_manifest }}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 "{{ shell_release_updater }}" --manifest "{{ shell_release_manifest }}" --update --installed-only
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=30min

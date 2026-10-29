@@ -25,6 +25,18 @@ fi
 
 source "$HOME/.config/shell/common.sh" || return
 
+if ! declare -F _init_completion >/dev/null; then
+    _shell_bash_completion="$(_shell_find_path -f bash-completion/bash_completion)"
+    if [[ -r "$_shell_bash_completion" ]]; then
+        source "$_shell_bash_completion"
+    fi
+    unset _shell_bash_completion
+fi
+
+if [[ "$_shell_environment" == msys2 ]] && docker --version >/dev/null 2>&1; then
+    source <(docker completion bash)
+fi
+
 _shell_ble="${BLESH_FILE:-$(
     _shell_find_path -f \
         blesh/ble.sh \

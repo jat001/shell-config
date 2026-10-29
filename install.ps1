@@ -35,7 +35,7 @@ $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 
 function Get-Wslc {
-    $command = Get-Command wslc.exe -CommandType Application -ErrorAction SilentlyContinue
+    $command = Get-Command wslc.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($command) { return $command.Source }
     $paths = @(
         [Environment]::GetEnvironmentVariable('Path', 'Machine')

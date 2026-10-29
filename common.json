@@ -91,7 +91,8 @@
         "/ucrt64/bin"
       ],
       "aliases": {
-        "code": "${WINDOWS_HOME}/scoop/apps/vscode/current/bin/code"
+        "code": "${WINDOWS_HOME}/scoop/apps/vscode/current/bin/code",
+        "docker": "${WINDOWS_HOME}/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe"
       }
     }
   }

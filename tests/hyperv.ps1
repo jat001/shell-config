@@ -1,14 +1,25 @@
+[CmdletBinding(SupportsShouldProcess)]
 param(
-    [ValidateSet('Start','Worker','Sync','Run','Collect','Status','Restore','Stop')][string]$Action = 'Start',
+    [ValidateSet('Prepare','Start','Worker','Sync','Run','Collect','Status','Restore','Stop')][string]$Action = 'Start',
     [string]$StateDirectory = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData/Local/shell-ansible-test/hyperv'),
-    [string]$Repository = (Split-Path $PSScriptRoot),
+    [string]$Repository,
     [ValidateSet('init','full','update')][string[]]$Modes = @('init','full','full','update'),
-    [ValidateSet('Clean-Windows','WSL-Ready')][string]$Baseline = 'WSL-Ready'
+    [ValidateSet('Clean-Windows','WSL-Ready')][string]$Baseline = 'WSL-Ready',
+    [string]$IsoSource,
+    [string]$IsoSha256,
+    [string]$IsoLanguage = (Get-Culture).Name
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Repository) { $Repository = Split-Path $PSScriptRoot }
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
 $Repository = [IO.Path]::GetFullPath($Repository)
+if ($Action -eq 'Prepare') {
+    & (Join-Path $PSScriptRoot 'hyperv_prepare.ps1') -StateDirectory $StateDirectory -Repository $Repository `
+        -IsoSource $IsoSource -IsoSha256 $IsoSha256 -IsoLanguage $IsoLanguage -WhatIf:$WhatIfPreference
+    return
+}
+if (-not $PSCmdlet.ShouldProcess('Hyper-V test environment', $Action)) { return }
 $requestPath = Join-Path $StateDirectory 'request.json'
 $workerPath = Join-Path $StateDirectory 'worker.json'
 $identity = [IO.File]::ReadAllText((Join-Path $StateDirectory 'vm-created.json')) | ConvertFrom-Json

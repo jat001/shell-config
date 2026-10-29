@@ -2,15 +2,6 @@
   ansible.builtin.set_fact:
     shell_windows_dev_drive: "{{ shell_configuration.environments.windows.dev_drive | default({}) }}"
 
-- name: Validate Windows development drive configuration
-  ansible.builtin.assert:
-    that:
-      - shell_windows_dev_drive.vhd | default('') | length > 0
-      - shell_windows_dev_drive.vhd | default('') is not regex("['\r\n]")
-    fail_msg: Invalid Windows development drive configuration.
-    quiet: true
-  when: shell_windows_dev_drive | length > 0
-
 - name: Resolve Windows development VHDX
   ansible.builtin.set_fact:
     shell_windows_dev_drive_vhd: "{{ shell_home ~ shell_backslash
@@ -21,27 +12,8 @@
   ansible.builtin.set_fact:
     shell_windows_dev_drive_legacy_key: "{{ '{' ~ (('shell-dev-drive:' ~ shell_windows_dev_drive_vhd | lower) | to_uuid) ~ '}' }}"
   when: shell_windows_dev_drive | length > 0
+
 - name: Inspect Windows development VHDX
-  ansible.windows.win_stat:
-    path: "{{ shell_windows_dev_drive_vhd }}"
-    get_checksum: false
-  register: shell_windows_dev_drive_file
-  when: shell_windows_dev_drive | length > 0
-
-- name: Provision missing Windows development VHDX
-  ansible.builtin.include_tasks:
-    file: create_drive.yml
-    apply:
-      tags: [dev_drive, windows_dev_drive, config, packages, msys2]
-  vars:
-    shell_create_drive_path: "{{ shell_windows_dev_drive_vhd }}"
-    shell_create_drive_size: "{{ shell_windows_dev_drive.size_gib }}"
-    shell_create_drive_filesystem: ReFS
-  when:
-    - shell_windows_dev_drive | length > 0
-    - not shell_windows_dev_drive_file.stat.exists
-
-- name: Refresh Windows development VHDX
   ansible.windows.win_stat:
     path: "{{ shell_windows_dev_drive_vhd }}"
     get_checksum: false
@@ -57,12 +29,13 @@
     - shell_windows_dev_drive | length > 0
     - not ansible_check_mode
 
-- name: Inspect Windows development drive
+- name: Read Windows development drive
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'dev_drive.ps1') }}"
     parameters:
       Path: "{{ shell_windows_dev_drive_vhd }}"
       LegacyKey: "{{ shell_windows_dev_drive_legacy_key }}"
+      Wait: 30
   register: shell_windows_dev_drive_state
   changed_when: false
   check_mode: false
@@ -70,89 +43,16 @@
     - shell_windows_dev_drive | length > 0
     - shell_windows_dev_drive_file.stat.exists
 
-- name: Resolve Windows development drive inspection
-  ansible.builtin.set_fact:
-    shell_windows_dev_drive_state:
-      result: "{{ shell_windows_dev_drive_state.result
-        | default({'registered': false, 'attached': false, 'letter': ''}) }}"
-  when: shell_windows_dev_drive | length > 0
-
-- name: Plan Windows development drive changes
-  ansible.builtin.set_fact:
-    shell_windows_dev_drive_command: >-
-      {{ ("& '" ~ shell_repository ~ "\\ansible\\roles\\windows\\files\\attach_drive.ps1' -Path '"
-      ~ shell_windows_dev_drive_vhd ~ "' -LegacyKey '" ~ shell_windows_dev_drive_legacy_key ~ "'"
-      ~ (' -AllowDetach' if shell_windows_dev_drive_allow_detach | default(false) else '') )
-      if not shell_windows_dev_drive_state.result.registered or not shell_windows_dev_drive_state.result.attached
-      or (shell_windows_dev_drive_state.result.legacy_registration | default(false)) else '' }}
-  when: shell_windows_dev_drive | length > 0
-- name: Attach Windows development drive at boot
-  ansible.windows.win_powershell:
-    script: |
-      [CmdletBinding(SupportsShouldProcess)]
-      param()
-      $ErrorActionPreference = 'Stop'
-      $Ansible.Changed = $true
-      if ($Ansible.CheckMode) { return }
-      {{ shell_windows_dev_drive_command }}
-  when:
-    - shell_windows_dev_drive | length > 0
-    - shell_windows_dev_drive_command | length > 0
-    - shell_elevated | bool
-
-- name: Attach Windows development drive at boot with administrator approval
-  ansible.windows.win_powershell:
-    script: "{{ lookup('ansible.builtin.file', 'elevate.ps1') }}"
-    parameters:
-      Description: Attach the Windows development drive at boot
-      Command: "{{ shell_windows_dev_drive_command }}"
-  when:
-    - shell_windows_dev_drive | length > 0
-    - shell_windows_dev_drive_command | length > 0
-    - not shell_elevated | bool
-    - shell_elevate | bool
-
-- name: Report pending Windows development drive
-  ansible.builtin.debug:
-    msg: >-
-      The Windows development drive {{ shell_windows_dev_drive_vhd }} needs administrator rights to be
-      {{ ((['registered for attachment at boot'] if not shell_windows_dev_drive_state.result.registered else [])
-      + (['attached'] if not shell_windows_dev_drive_state.result.attached else [])) | join(' and ') }},
-      and elevation is disabled for this host (shell_elevate).
-  when:
-    - shell_windows_dev_drive | length > 0
-    - shell_windows_dev_drive_command | length > 0
-    - not shell_elevated | bool
-    - not shell_elevate | bool
-
-- name: Read attached Windows development drive
-  ansible.windows.win_powershell:
-    script: "{{ lookup('ansible.builtin.file', 'dev_drive.ps1') }}"
-    parameters:
-      Path: "{{ shell_windows_dev_drive_vhd }}"
-      LegacyKey: "{{ shell_windows_dev_drive_legacy_key }}"
-      Wait: 30
-  register: shell_windows_dev_drive_attached
-  changed_when: false
-  when:
-    - shell_windows_dev_drive | length > 0
-    - not shell_windows_dev_drive_state.result.attached
-    - shell_elevated | bool or shell_elevate | bool
-    - not ansible_check_mode
-
 - name: Resolve Windows development drive letter
   ansible.builtin.set_fact:
-    shell_dev_drive_letter: "{{ (shell_windows_dev_drive_attached.result.letter
-      if shell_windows_dev_drive_attached.result is defined
-      else shell_windows_dev_drive_state.result.letter)
+    shell_dev_drive_letter: "{{ shell_windows_dev_drive_state.result.letter
       | default(ansible_facts.env.DEV_DRIVE | default(''), true) }}"
   when: shell_windows_dev_drive | length > 0
 
 - name: Require Windows development drive letter
   ansible.builtin.assert:
     that: shell_dev_drive_letter is regex('^[A-Za-z]:$')
-    fail_msg: >-
-      The Windows development drive {{ shell_windows_dev_drive_vhd }} is not attached or has no drive letter.
+    fail_msg: "The Windows development drive {{ shell_windows_dev_drive_vhd }} is not attached or has no drive letter."
     quiet: true
   when:
     - shell_windows_dev_drive | length > 0

@@ -1,7 +1,11 @@
+- name: Configure target-only third-party repositories
+  ansible.builtin.import_tasks: apt_sources.yml
+
 - name: Refresh Debian package metadata
   ansible.builtin.apt:
     update_cache: true
-    cache_valid_time: 3600
+    cache_valid_time: "{{ 0 if shell_apt_keys is changed or shell_apt_source_files is changed else 3600 }}"
+  when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
 - name: Inspect available Debian packages
   ansible.builtin.shell: |
@@ -12,7 +16,7 @@
     print(json.dumps([name for name in names if name in cache and cache[name].candidate]))
     PY
   environment:
-    SHELL_APT_PACKAGES: "{{ shell_apt_packages | to_json }}"
+    SHELL_APT_PACKAGES: "{{ shell_debian_apt_packages | to_json }}"
   register: shell_apt_probe
   changed_when: false
   check_mode: false
@@ -20,12 +24,15 @@
 - name: Resolve available Debian packages
   ansible.builtin.set_fact:
     shell_apt_available: "{{ shell_apt_probe.stdout | from_json }}"
+    shell_debian_fallback_releases: "{{ shell_releases
+      | rejectattr('name', 'in', shell_apt_probe.stdout | from_json) | list }}"
 
 - name: Require nonoptional Debian packages
   ansible.builtin.assert:
-    that: shell_apt_packages | difference(shell_apt_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
-    fail_msg: "Packages unavailable: {{ shell_apt_packages | difference(shell_apt_available) }}"
+    that: shell_debian_apt_packages | difference(shell_apt_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
+    fail_msg: "Packages unavailable: {{ shell_debian_apt_packages | difference(shell_apt_available) }}"
     quiet: true
+  when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
 - name: Install or update Debian packages
   ansible.builtin.apt:
@@ -33,18 +40,24 @@
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
     update_cache: true
     cache_valid_time: 3600
+    force_apt_get: true
     install_recommends: false
   register: shell_network_result
   until: shell_network_result is succeeded
   retries: 3
   delay: 10
 
-- name: Find ICU runtime package
+- name: Select releases that still need the archive PowerShell runtime
+  ansible.builtin.set_fact:
+    shell_powershell_archive: "{{ shell_debian_fallback_releases | selectattr('name', 'equalto', 'powershell') | list | length > 0 }}"
+
+- name: Find ICU runtime package for archive installations
   ansible.builtin.shell: >-
     apt-cache search --names-only '^libicu[0-9]+$' | cut -d' ' -f1 | sort -V | tail -n1
   register: shell_icu_package
   changed_when: false
   check_mode: false
+  when: shell_powershell_archive
 
 - name: Install ICU runtime for PowerShell
   ansible.builtin.apt:
@@ -54,14 +67,34 @@
   until: shell_network_result is succeeded
   retries: 3
   delay: 10
-  when: shell_icu_package.stdout | trim | length > 0
+  when:
+    - shell_powershell_archive
+    - shell_icu_package.stdout | default('') | trim | length > 0
 
-- name: Install or update release binaries
-  ansible.builtin.include_tasks: release.yml
-  loop: "{{ shell_releases }}"
+- name: Remove only old managed command links after apt migration
+  ansible.builtin.shell: |
+    set -e
+    link={{ (shell_release_bin ~ '/' ~ item.command) | quote }}
+    root={{ (shell_release_root ~ '/' ~ item.name ~ '/') | quote }}
+    test -x /usr/bin/{{ item.command | quote }}
+    if test -L "$link"; then
+        case $(readlink -f "$link") in
+            "$root"*)
+                rm -- "$link"
+                echo migrated
+                ;;
+        esac
+    fi
+  loop: "{{ shell_releases | selectattr('name', 'in', shell_apt_available) | list }}"
   loop_control:
-    loop_var: shell_release
-    label: "{{ shell_release.name }}"
+    label: "{{ item.name }}"
+  register: shell_apt_migration
+  changed_when: "'migrated' in shell_apt_migration.stdout"
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Manage remaining release packages and their update timer
+  ansible.builtin.import_tasks: release_updates.yml
 
 - name: Install unavailable Debian shell dependencies
   ansible.builtin.import_tasks: debian-fallbacks.yml

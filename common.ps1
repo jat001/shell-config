@@ -63,6 +63,18 @@ if ($_shared_platform -ne 'windows' -and $env:XDG_DATA_HOME) {
 
 Import-Module PSCompletions
 
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    $_shared_completion = docker completion powershell | Out-String
+    $_shared_completion.Replace(
+        'Invoke-Expression -OutVariable out "$RequestComp" 2>&1 | Out-Null',
+        (
+            '$ErrorActionPreference = ''Continue''; ' +
+            'Invoke-Expression -OutVariable out ($RequestComp + '' 2>$null'') | Out-Null'
+        )
+    ) | Invoke-Expression
+    Remove-Variable '_shared_completion'
+}
+
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 
 Set-PSReadlineKeyHandler -Key UpArrow -Function HistorySearchBackward

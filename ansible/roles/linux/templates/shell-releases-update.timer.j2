@@ -1,0 +1,10 @@
+[Unit]
+Description=Check managed shell release updates
+
+[Timer]
+OnCalendar={{ shell_release_update_calendar }}
+RandomizedDelaySec={{ shell_release_update_delay }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

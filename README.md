@@ -108,9 +108,11 @@ SSH 会话无法经过普通用户创建的目录联接（Scoop 的 `apps/*/curr
 - Windows 开发盘未登记开机附加或尚未附加时，登记并附加它；
 - WSL 开发盘计划任务缺失或配置变化时，注册它。
 
-Ansible 在交互会话中以 `Start-Process -Verb RunAs` 启动提升的 Windows PowerShell 完成这些步骤，
-因此会出现 UAC 提示；`-WhatIf` 只报告而不请求。已在管理员会话中运行时直接执行。
-普通用户首次部署仍可能因不同的系统初始化步骤出现多次 UAC；一次提权复用目前用于 Hyper-V 测试控制流程。
+WSL 可用后，Ansible 先汇总开发人员模式、建盘、Windows 开机挂载和 WSL 计划任务的实际变化，
+只在存在变化时请求一次 UAC，在同一个管理员进程里完成这些系统步骤。
+Scoop、MSYS2 和用户配置仍在普通权限下运行；已在管理员会话中运行时，系统步骤直接执行。
+WSL 本身尚未安装时，MSI 引导属于更早的独立阶段，可能另需一次 UAC 和重启；安装器不自动重启宿主。
+`-WhatIf` 只报告系统变化，不请求管理员批准；连接和传输所需的临时脚本仍会准备。
 主机变量 `shell_elevate: false` 关闭提权请求，此时开发盘登记和计划任务只给出提示
 （未附加的 Windows 开发盘取不到盘符，依赖它的步骤会停止），
 开发人员模式未开启则在部署链接前停止。
@@ -144,22 +146,39 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 
 | 环境 | 来源 |
 |---|---|
-| Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、nu、pscompletions、Maple-Mono-NF-CN（nerd-fonts bucket）；Microsoft Store：Windows Terminal、PowerShell。 |
+| Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、clink-completions、nu、pscompletions、Maple-Mono-NF-CN（nerd-fonts bucket）；Microsoft Store：Windows Terminal、PowerShell。 |
 | MSYS2 | 缺少时下载官方 base 包解压到 `root`；pacman 安装 fish、git、jq、zsh 和 UCRT64 oh-my-posh；ble.sh 使用 nightly 包，Antidote 克隆到 Windows 的 `~/.local/share/antidote` 后链接。 |
 | Arch Linux | 官方仓库和 archlinuxcn（blesh-git、oh-my-posh、yay）；powershell-bin、wsl2-ssh-agent-bin、zsh-antidote 由 WSL 用户通过 yay 构建。 |
-| Debian | apt 安装 ble.sh、zsh-antidote 和 zsh 插件；Oh My Posh、Nushell、PowerShell 和 wsl2-ssh-agent 使用 GitHub 发布包，放在 `/opt/shell-releases`，链接到 `/usr/local/bin`。 |
+| Debian | Debian 官方源安装 bash-completion、ble.sh、zsh-antidote 和可用的 zsh 插件；Nushell 使用项目官方 Gemfury 源，PowerShell 使用微软官方源。Oh My Posh、wsl2-ssh-agent 使用各自官方 GitHub 二进制，由共享更新器和 systemd timer 维护。 |
 
 缺少 Python 的 Linux 先用 `raw` 安装 Python，再执行其他任务。
 Scoop 首次安装时先从清单 URL 安装 Git，添加 bucket 后改用 versions bucket 重新安装。
 `update` 模式下 Scoop 先更新 bucket 再升级受管应用；MSYS2 和 Arch Linux 执行整体升级，
 避免部分升级；AUR 包用 `yay -Sua` 升级；Debian 只把受管包升级到最新版本；
 GitHub 发布包通过 `releases/latest` 重定向比较版本，不调用 GitHub API；
-下载的发布包保留在 `/var/cache/shell-releases`（只保留当前版本），AUR 构建目录默认为 WSL 用户的 `~/.cache/yay`（`shell_aur_cache` 可改为其他目录）。
+下载的发布包保留在 `/var/cache/shell-releases`，先校验内容长度、上游 SHA256 和可执行格式，再原子切换命令链接。
+旧的已安装版本保留，避免仍在运行的 shell 引用旧绝对路径时失效。
+AUR 构建目录默认为 WSL 用户的 `~/.cache/yay`（`shell_aur_cache` 可改为其他目录）。
 已由其他方式安装的同名命令保持不变，不改由本仓库管理。
 Windows Terminal 的受管设置和 MSYS2、Nushell profiles 由 `windows-terminal.json` 定义并合并部署；
 现有其他 profile 和未受管字段保留。Clink 自动注入在 `full`/`update` 的配置阶段注册（见“CMD 与 Clink”）。
-Debian 的 GitHub 发布包由 `install.ps1 -Mode update` 更新，`apt upgrade` 不会更新它们；
-当前不部署自动更新 timer。
+Debian 的上游 apt 源分别使用独立的 `Signed-By` 密钥，仅允许提供声明的目标包；
+其他包在这些源中的优先级为 `-1`，运行库继续由 Debian 官方源提供。
+Debian 12 使用微软 bookworm 源；13 使用 trixie 源，forky/sid 使用已验证可满足依赖的 Debian 13 通用包。
+后者不表示微软对 Debian testing 提供官方发行版支持。
+
+Oh My Posh 和 wsl2-ssh-agent 的当前官方发布没有 Debian 包，使用官方二进制，
+不接入其他维护者的重打包源，也不自建仓库。安装器与
+`shell-releases-update.service` 共用 `/usr/local/libexec/shell-releases-update` 和
+`/etc/shell-releases.json`，不会各维护一份升级逻辑。
+`shell-releases-update.timer` 每天检查一次，随机延迟最多一小时，`Persistent=true` 补跑错过的任务。
+timer 只更新已受管且仍安装的程序，不接管其他安装，也不重新安装已移除的程序；
+发生校验失败或用户服务重启失败时保留或恢复旧命令链接。SSH agent 更新后只尝试重启已运行的受管用户单元。
+日志用 `journalctl -u shell-releases-update.service` 查看。
+
+运行 `install.ps1 -Mode update` 同样会更新这些程序；apt 管理的 Nushell 和 PowerShell
+则通过正常的 apt 升级流程更新。固定版本的 zsh 插件继续遵循 `zsh_plugins.txt`，
+PowerShell 用户模块继续由 PSResourceGet 管理，系统程序 timer 不修改插件清单或共享用户模块。
 
 ### 测试
 
@@ -212,6 +231,29 @@ WSL interop 承载的 Windows 连接和已安装发行版上的完整部署已�
 
 ### Hyper-V 完整部署测试
 
+首次准备使用仓库内的 `Prepare` 入口：
+
+```powershell
+& "$HOME/.config/shell/tests/hyperv.ps1" -Action Prepare
+```
+
+准备入口先复用状态目录 `media/` 中的 ISO；没有缓存时，从微软评估中心公开下载页解析当前语言的
+Windows 11 Enterprise ISO 地址，用 curl 断点续传到缓存。`-IsoLanguage en-US` 可选择语言，
+`-IsoSource <本地 ISO 或 HTTPS 地址>` 可指定来源，`-IsoSha256 <SHA256>` 可校验预期哈希。
+缓存记录保存 SHA256，再次使用前检查；挂载后还会检查微软安装程序签名。
+
+媒体准备完成后只请求一次 UAC：缺少时启用 Hyper-V，创建新的动态系统 VHDX 并应用 Windows 镜像，
+创建支持嵌套虚拟化、Secure Boot 和 vTPM 的 VM，通过 PowerShell Direct 等待安装完成，
+建立 `Clean-Windows`，安装缓存的 WSL MSI、重启客户机并验证嵌套容器，再建立 `WSL-Ready`。
+Hyper-V 组件若需要宿主重启会停止并提示，再次运行复用缓存；不自动重启宿主。
+已有 VM 和检查点按身份记录复用，不覆盖同名的其他 VM、不重新格式化已有系统盘。
+
+准备状态和错误分别在 `prepare-progress.json`、`prepare-result.json`。
+默认创建随机密码的本地测试管理员，凭据用当前 Windows 用户的 DPAPI 加密保存在状态目录；
+无人值守应答文件在建立干净基线前删除。默认不启用自动登录，GUI 验证时需要登录测试桌面。
+`tests/hyperv_prepare.ps1` 的 `-Stage Host`、`Create`、`Baselines` 可分别准备宿主、Windows VM 和 WSL 基线；
+它还支持指定 VM 名称、内存、CPU、系统盘容量和映像索引。当前准备入口支持 x64 宿主与 x64 Windows 映像。
+
 `tests/hyperv.ps1` 复用独立 Windows 测试 VM。首次启动测试控制流程需要一次 UAC，
 后续同步、部署、恢复检查点和取日志通过同一个流程执行。它只管理状态文件中记录 ID 的测试 VM，
 两小时后退出；`Stop` 可以提前结束。测试用管理员会话只在 VM 中运行安装器。
@@ -234,8 +276,29 @@ WSL interop 承载的 Windows 连接和已安装发行版上的完整部署已�
 Windows 软件包缓存会在客户机与宿主的 `cache/downloads` 之间复用，位于 VM 检查点之外。
 当前 VM 已配置嵌套虚拟化、Secure Boot 和 vTPM；基线分别为干净 Windows 和已验证 WSL/wslc 的状态。
 首次 Windows 及 VM 准备与日常的检查点回归分开执行，VM 磁盘和凭据不放进仓库。
-当前仓库未提供创建 VM、安装 Windows 和创建上述基线的入口；`hyperv.ps1` 需要先准备好这些资源。
 最近新增的 WSL MSI 缓存引导已通过 PowerShell 5.1/7 的下载、复用与校验测试，尚未从 `Clean-Windows` 完整回归。
+
+### Docker 补全
+
+Docker Desktop 提供的 WSL Docker CLI 和补全链接随其 WSL 集成挂载出现，不由此仓库复制或维护。
+Docker Desktop 停止时这些链接可能悬空；命令及对象补全需先具备可用的 Docker CLI。
+
+| Shell | 加载方式 |
+|---|---|
+| Bash | 按实际安装位置加载 bash-completion，自动加载 Docker 提供的补全；MSYS2 为显式 alias 加载 CLI 生成的 Bash 补全。 |
+| zsh | 将存在的 XDG 数据目录下 `zsh/vendor-completions` 加入 `fpath`；补全缓存按有效文件列表失效，覆盖 Docker Desktop 链接由悬空恢复的情况。MSYS2 加载 CLI 生成的补全。 |
+| fish | WSL 使用 vendor completion；MSYS2 加载 CLI 生成的 fish 补全。 |
+| PowerShell 5.1/7 | 保留 PSCompletions，同时注册 Docker CLI 生成的原生补全；局部兼容严格错误策略并修正 stderr 重定向，避免诊断消息写到提示行，不改变调用方的错误策略。 |
+| Nushell | 外部补全器调用 Docker 的 `__complete` 接口，保留命令说明和 `--flag=value` 前缀；文件补全交回内置实现，其他命令交回原来的外部补全器或默认补全，不增加中转依赖。 |
+| CMD/Clink | Scoop 安装并注册 `clink-completions`，包含 Docker 和 Compose 补全。 |
+
+MSYS2 的 `docker` 是 `common.json` 中的显式 alias，指向现有 Windows Docker Desktop CLI；
+不创建链接、不扩展全局 PATH。若 Docker Desktop 安装在其他位置，只修改这个 alias。
+
+`tests/docker_completions.ps1` 在现有安装上验证 Windows、WSL、MSYS2 的命令、上下文和选项补全，
+以及 WSL zsh 补全链接恢复后的缓存失效；Docker Desktop 的 WSL 集成需要可用。
+`-Target Windows`、`WSL`、`MSYS2` 可选择环境，`-WslDistribution`、`-Msys2Root` 可指定目标。
+Clink 的自动检查验证脚本安装及注册，实际 Tab 补全另做交互验证；当前主机已验证 `docker ru` 补成 `docker run`。
 
 ### 下载缓存
 

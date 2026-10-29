@@ -1,0 +1,59 @@
+- name: Select available Debian package repositories
+  ansible.builtin.set_fact:
+    shell_selected_apt_sources: "{{ shell_debian_apt_sources | selectattr('uri') | list }}"
+
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Install scoped repository signing keys
+  ansible.builtin.get_url:
+    url: "{{ item.key }}"
+    dest: "/etc/apt/keyrings/shell-{{ item.name }}.asc"
+    checksum: "{{ ('sha256:' ~ item.key_sha256) if item.key_sha256 else omit }}"
+    mode: "0644"
+  loop: "{{ shell_selected_apt_sources }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: shell_apt_keys
+
+- name: Configure scoped apt repositories
+  ansible.builtin.copy:
+    dest: "/etc/apt/sources.list.d/shell-{{ item.name }}.sources"
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: {{ item.uri }}
+      Suites: {{ item.suite }}
+      {% if item.components | length %}
+      Components: {{ item.components | join(' ') }}
+      {% endif %}
+      Architectures: {{ shell_release_arch.deb }}
+      Signed-By: /etc/apt/keyrings/shell-{{ item.name }}.asc
+  loop: "{{ shell_selected_apt_sources }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: shell_apt_source_files
+
+- name: Restrict each third-party repository to its managed packages
+  ansible.builtin.copy:
+    dest: "/etc/apt/preferences.d/shell-{{ item.name }}"
+    mode: "0644"
+    content: |
+      Package: {{ item.packages | join(' ') }}
+      Pin: origin {{ item.uri | urlsplit('hostname') }}
+      Pin-Priority: 500
+
+      Package: *
+      Pin: origin {{ item.uri | urlsplit('hostname') }}
+      Pin-Priority: -1
+  loop: "{{ shell_selected_apt_sources }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Resolve complete apt package selection
+  ansible.builtin.set_fact:
+    shell_debian_apt_packages: "{{ (shell_apt_packages +
+      (shell_selected_apt_sources | map(attribute='packages') | flatten)) | unique }}"

@@ -1,0 +1,106 @@
+- name: Resolve system preparation scope
+  ansible.builtin.set_fact:
+    shell_system_windows_drive: "{{ shell_configuration.environments.windows.dev_drive | default({}) }}"
+    shell_system_wsl_drive: "{{ shell_configuration.environments.wsl.dev_drive | default({}) }}"
+    shell_system_manage_developer: "{{ 'all' in ansible_run_tags or 'developer_mode' in ansible_run_tags }}"
+    shell_system_manage_windows: "{{ 'all' in ansible_run_tags or
+      ansible_run_tags | intersect(['windows_dev_drive', 'packages', 'config', 'msys2']) | length > 0 }}"
+    shell_system_manage_wsl: "{{ ('all' in ansible_run_tags or 'dev_drive' in ansible_run_tags) and
+      shell_configuration.environments.wsl.dev_drive is defined and
+      (shell_dev_drive_task | string | lower == 'true' or
+       (shell_dev_drive_task == 'auto' and groups['wsl'] | default([]) | length > 0)) }}"
+    shell_system_directory: "{{ shell_home }}\\AppData\\Local\\shell-ansible\\system"
+
+- name: Prepare system initialization scripts
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Directory, [hashtable]$Scripts, [string]$Request)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = $false
+      $null = [IO.Directory]::CreateDirectory($Directory)
+      foreach ($name in $Scripts.Keys) {
+          if ($name -notmatch '^[a-z_]+\.ps1$') { throw 'Invalid system script name.' }
+          $path = Join-Path $Directory $name
+          if (-not [IO.File]::Exists($path) -or [IO.File]::ReadAllText($path) -cne $Scripts[$name]) {
+              [IO.File]::WriteAllText($path, $Scripts[$name], [Text.UTF8Encoding]::new($false))
+          }
+      }
+      [IO.File]::WriteAllText((Join-Path $Directory 'request.json'), $Request, [Text.UTF8Encoding]::new($false))
+    parameters:
+      Directory: "{{ shell_system_directory }}"
+      Scripts:
+        system_setup.ps1: "{{ lookup('ansible.builtin.file', 'system_setup.ps1') }}"
+        create_drive.ps1: "{{ lookup('ansible.builtin.file', 'create_drive.ps1') }}"
+        attach_drive.ps1: "{{ lookup('ansible.builtin.file', 'attach_drive.ps1') }}"
+        dev_drive.ps1: "{{ lookup('ansible.builtin.file', 'dev_drive.ps1') }}"
+      Request: "{{ shell_system_request | to_json }}"
+  vars:
+    shell_system_request:
+      Configuration: "{{ shell_configuration }}"
+      Home: "{{ shell_home }}"
+      Mode: "{{ shell_mode }}"
+      UserSid: "{{ ansible_facts.user_sid }}"
+      LegacyKey: "{{ '{' ~ ((('shell-dev-drive:' ~ shell_home ~ shell_backslash
+        ~ (shell_system_windows_drive.vhd | default('') | replace('/', shell_backslash))) | lower) | to_uuid) ~ '}' }}"
+      ManageDeveloperMode: "{{ shell_system_manage_developer | bool }}"
+      ManageWindowsDrive: "{{ shell_system_manage_windows | bool }}"
+      ManageWslDrive: "{{ shell_system_manage_wsl | bool }}"
+      AllowDetach: "{{ shell_windows_dev_drive_allow_detach | default(false) | bool }}"
+  check_mode: false
+
+- name: Inspect system initialization changes
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Directory)
+      $Ansible.Changed = $false
+      & (Join-Path $Directory 'system_setup.ps1') -RequestPath (Join-Path $Directory 'request.json')
+    parameters:
+      Directory: "{{ shell_system_directory }}"
+  register: shell_system_plan
+  changed_when: false
+  check_mode: false
+
+- name: Apply system initialization
+  ansible.windows.win_powershell:
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Directory)
+      $Ansible.Changed = $true
+      if ($Ansible.CheckMode) { return }
+      & (Join-Path $Directory 'system_setup.ps1') -RequestPath (Join-Path $Directory 'request.json') -Apply
+    parameters:
+      Directory: "{{ shell_system_directory }}"
+  when:
+    - shell_elevated | bool
+    - shell_system_plan.result.Pending | length > 0
+
+- name: Apply system initialization with one administrator approval
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'elevate.ps1') }}"
+    parameters:
+      Description: "{{ shell_system_plan.result.Pending | join(', ') }}"
+      Command: >-
+        & '{{ shell_system_directory | replace("'", "''") }}\system_setup.ps1'
+        -RequestPath '{{ shell_system_directory | replace("'", "''") }}\request.json' -Apply
+  when:
+    - not shell_elevated | bool
+    - shell_elevate | bool
+    - shell_system_plan.result.Pending | length > 0
+
+- name: Report pending system initialization
+  ansible.builtin.debug:
+    msg: "System initialization needs administrator rights: {{ shell_system_plan.result.Pending | join(', ') }}"
+  when:
+    - not shell_elevated | bool
+    - not shell_elevate | bool
+    - shell_system_plan.result.Pending | length > 0
+
+- name: Refresh Developer Mode
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock
+    name: AllowDevelopmentWithoutDevLicense
+  register: shell_developer_mode
+
+- name: Resolve symbolic link privileges
+  ansible.builtin.set_fact:
+    shell_symlinks: "{{ shell_elevated | bool or (shell_developer_mode.value | default(0)) == 1 }}"
