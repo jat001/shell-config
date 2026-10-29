@@ -3,8 +3,23 @@
     script: "{{ lookup('ansible.builtin.file', 'scoop.ps1') }}"
     parameters:
       Root: "{{ shell_scoop_root }}"
+      Cache: "{{ shell_scoop_cache }}"
       Mode: "{{ shell_mode }}"
       Bootstrap: "{{ shell_scoop_bootstrap }}"
       Buckets: "{{ shell_scoop_buckets }}"
       Apps: "{{ shell_scoop_apps }}"
   register: shell_scoop
+
+- name: Install or update Microsoft Store applications
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'store_app.ps1') }}"
+    parameters:
+      Mode: "{{ shell_mode }}"
+      Name: "{{ item.name }}"
+      StoreId: "{{ item.store_id }}"
+      Release: "{{ item.release }}"
+      Asset: "{{ item.asset }}"
+      Cache: "{{ shell_store_cache }}"
+  loop: "{{ shell_store_apps }}"
+  loop_control:
+    label: "{{ item.name }}"

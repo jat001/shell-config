@@ -1,0 +1,13 @@
+- name: Configure WSL
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'ini.ps1') }}"
+    parameters:
+      Path: "{{ shell_home }}\\.wslconfig"
+      Settings: "{{ shell_configuration.environments.windows.wslconfig | to_json }}"
+  register: shell_wslconfig
+  when: shell_configuration.environments.windows.wslconfig is defined
+
+- name: Report WSL settings change
+  ansible.builtin.debug:
+    msg: .wslconfig changed; it takes effect after wsl.exe --shutdown.
+  when: shell_wslconfig.changed | default(false)

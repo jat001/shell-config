@@ -22,6 +22,7 @@
       Installer: "{{ shell_msys2_installer }}"
       Packages: "{{ shell_msys2_packages }}"
       Cache: "{{ shell_msys2_cache }}"
+      Downloader: "{{ shell_repository }}\\ansible\\roles\\windows\\files\\download.ps1"
   tags: [packages]
 
 - name: Inspect MSYS2 tools
@@ -57,6 +58,7 @@
 - name: Resolve MSYS2 home
   ansible.builtin.set_fact:
     shell_msys2_home: "{{ shell_msys2_home_path.stdout | trim }}"
+    shell_msys2_user_home: "{{ shell_msys2_account.stdout.strip().split(':')[5] }}"
   when: shell_msys2_getent.stat.exists
   tags: [packages, config]
 
@@ -67,6 +69,8 @@
       Url: "{{ shell_blesh_archive }}"
       Destination: "{{ shell_msys2_home }}\\.local\\share\\blesh"
       Entry: ble.sh
+      Cache: "{{ shell_archive_cache }}"
+      Downloader: "{{ shell_repository }}\\ansible\\roles\\windows\\files\\download.ps1"
       Mode: "{{ shell_mode }}"
   when: shell_msys2_home is defined
   tags: [packages]

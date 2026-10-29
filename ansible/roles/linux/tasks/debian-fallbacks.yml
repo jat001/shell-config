@@ -1,0 +1,47 @@
+- name: Inspect ble.sh
+  ansible.builtin.stat:
+    path: /usr/local/share/blesh/ble.sh
+  register: shell_blesh_local
+  when: "'ble.sh' not in shell_apt_available"
+
+- name: Prepare ble.sh fallback directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /usr/local/share/blesh
+    - "{{ shell_release_cache }}/blesh"
+  when: "'ble.sh' not in shell_apt_available"
+
+- name: Cache official ble.sh archive
+  ansible.builtin.get_url:
+    url: "{{ shell_blesh_archive }}"
+    dest: "{{ shell_release_cache }}/blesh/ble-nightly.tar.xz"
+    mode: "0644"
+    force: "{{ shell_mode == 'update' }}"
+  register: shell_blesh_download
+  until: shell_blesh_download is succeeded
+  retries: 3
+  delay: 10
+  when:
+    - "'ble.sh' not in shell_apt_available"
+    - shell_mode == 'update' or not shell_blesh_local.stat.exists
+
+- name: Install ble.sh fallback
+  ansible.builtin.unarchive:
+    src: "{{ shell_release_cache }}/blesh/ble-nightly.tar.xz"
+    dest: /usr/local/share/blesh
+    remote_src: true
+    extra_opts: [--strip-components=1]
+  when:
+    - "'ble.sh' not in shell_apt_available"
+    - shell_blesh_download is changed or not shell_blesh_local.stat.exists
+
+- name: Install Antidote fallback
+  ansible.builtin.git:
+    repo: "{{ shell_antidote_repository }}"
+    dest: /usr/local/share/antidote
+    depth: 1
+    update: "{{ shell_mode == 'update' }}"
+  when: "'zsh-antidote' not in shell_apt_available"

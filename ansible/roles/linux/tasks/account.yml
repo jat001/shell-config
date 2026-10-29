@@ -22,6 +22,36 @@
   ansible.builtin.import_tasks: systemd.yml
   tags: [config, dev_drive]
 
+# After the user units, which mount the development drive.
+- name: Plan shared XDG directories
+  ansible.builtin.command:
+    argv:
+      - jq
+      - --arg
+      - platform
+      - wsl
+      - --arg
+      - home
+      - "{{ shell_user_home }}"
+      - --arg
+      - windows_home
+      - "{{ shell_windows_home_path }}"
+      - --rawfile
+      - mounts
+      - /proc/self/mounts
+      - --arg
+      - mode
+      - plan
+      - -f
+      - "{{ shell_repository }}/common.jq"
+      - "{{ shell_repository }}/common.json"
+  environment:
+    XDG_RUNTIME_DIR: "{{ '/run/user/' ~ shell_account_uid }}"
+  register: shell_xdg_plan
+  changed_when: false
+  check_mode: false
+  tags: [config, packages]
+
 - name: Share XDG data and state through the development drive
   ansible.builtin.import_tasks: xdg.yml
   when: shell_mode != 'init'

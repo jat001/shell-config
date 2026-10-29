@@ -1,6 +1,35 @@
+- name: Refresh Debian package metadata
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Inspect available Debian packages
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import apt, json, os
+    cache = apt.Cache()
+    names = json.loads(os.environ['SHELL_APT_PACKAGES'])
+    print(json.dumps([name for name in names if name in cache and cache[name].candidate]))
+    PY
+  environment:
+    SHELL_APT_PACKAGES: "{{ shell_apt_packages | to_json }}"
+  register: shell_apt_probe
+  changed_when: false
+  check_mode: false
+
+- name: Resolve available Debian packages
+  ansible.builtin.set_fact:
+    shell_apt_available: "{{ shell_apt_probe.stdout | from_json }}"
+
+- name: Require nonoptional Debian packages
+  ansible.builtin.assert:
+    that: shell_apt_packages | difference(shell_apt_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
+    fail_msg: "Packages unavailable: {{ shell_apt_packages | difference(shell_apt_available) }}"
+    quiet: true
+
 - name: Install or update Debian packages
   ansible.builtin.apt:
-    name: "{{ shell_apt_packages }}"
+    name: "{{ shell_apt_available }}"
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
     update_cache: true
     cache_valid_time: 3600
@@ -33,3 +62,6 @@
   loop_control:
     loop_var: shell_release
     label: "{{ shell_release.name }}"
+
+- name: Install unavailable Debian shell dependencies
+  ansible.builtin.import_tasks: debian-fallbacks.yml

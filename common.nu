@@ -16,6 +16,4 @@ if ($platform | is-empty) {
 
 source ($nu.default-config-dir | path join 'common-aliases.nu')
 
-oh-my-posh init nu --config (
-    $env.HOME | path join '.config' 'oh-my-posh' 'config.omp.json'
-)
+source ($nu.default-config-dir | path join 'oh-my-posh.nu')

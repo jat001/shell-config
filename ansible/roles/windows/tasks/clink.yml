@@ -1,0 +1,18 @@
+- name: Inspect Clink installation
+  ansible.windows.win_stat:
+    path: "{{ shell_scoop_root }}\\apps\\clink\\current\\clink.bat"
+  register: shell_clink
+
+- name: Configure Clink autorun for the current user
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'clink.ps1') }}"
+    parameters:
+      Root: "{{ shell_scoop_root }}"
+  when: shell_clink.stat.exists or ansible_check_mode
+
+- name: Report missing Clink installation
+  ansible.builtin.debug:
+    msg: Clink is not installed; run init before deploying its autorun configuration.
+  when:
+    - not shell_clink.stat.exists
+    - not ansible_check_mode

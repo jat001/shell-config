@@ -17,9 +17,34 @@
       ~ (shell_windows_dev_drive.vhd | replace('/', shell_backslash)) }}"
   when: shell_windows_dev_drive | length > 0
 
+- name: Identify legacy script registration
+  ansible.builtin.set_fact:
+    shell_windows_dev_drive_legacy_key: "{{ '{' ~ (('shell-dev-drive:' ~ shell_windows_dev_drive_vhd | lower) | to_uuid) ~ '}' }}"
+  when: shell_windows_dev_drive | length > 0
 - name: Inspect Windows development VHDX
   ansible.windows.win_stat:
     path: "{{ shell_windows_dev_drive_vhd }}"
+    get_checksum: false
+  register: shell_windows_dev_drive_file
+  when: shell_windows_dev_drive | length > 0
+
+- name: Provision missing Windows development VHDX
+  ansible.builtin.include_tasks:
+    file: create_drive.yml
+    apply:
+      tags: [dev_drive, windows_dev_drive, config, packages, msys2]
+  vars:
+    shell_create_drive_path: "{{ shell_windows_dev_drive_vhd }}"
+    shell_create_drive_size: "{{ shell_windows_dev_drive.size_gib }}"
+    shell_create_drive_filesystem: ReFS
+  when:
+    - shell_windows_dev_drive | length > 0
+    - not shell_windows_dev_drive_file.stat.exists
+
+- name: Refresh Windows development VHDX
+  ansible.windows.win_stat:
+    path: "{{ shell_windows_dev_drive_vhd }}"
+    get_checksum: false
   register: shell_windows_dev_drive_file
   when: shell_windows_dev_drive | length > 0
 
@@ -28,31 +53,39 @@
     that: shell_windows_dev_drive_file.stat.exists
     fail_msg: "Configured Windows development VHDX does not exist: {{ shell_windows_dev_drive_vhd }}"
     quiet: true
-  when: shell_windows_dev_drive | length > 0
+  when:
+    - shell_windows_dev_drive | length > 0
+    - not ansible_check_mode
 
 - name: Inspect Windows development drive
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'dev_drive.ps1') }}"
     parameters:
       Path: "{{ shell_windows_dev_drive_vhd }}"
+      LegacyKey: "{{ shell_windows_dev_drive_legacy_key }}"
   register: shell_windows_dev_drive_state
   changed_when: false
   check_mode: false
+  when:
+    - shell_windows_dev_drive | length > 0
+    - shell_windows_dev_drive_file.stat.exists
+
+- name: Resolve Windows development drive inspection
+  ansible.builtin.set_fact:
+    shell_windows_dev_drive_state:
+      result: "{{ shell_windows_dev_drive_state.result
+        | default({'registered': false, 'attached': false, 'letter': ''}) }}"
   when: shell_windows_dev_drive | length > 0
 
 - name: Plan Windows development drive changes
   ansible.builtin.set_fact:
     shell_windows_dev_drive_command: >-
-      {{ (([] if shell_windows_dev_drive_state.result.registered else [
-      "$key = New-Item -Force -Path '" ~ shell_auto_attach_key ~ shell_backslash ~ '{'
-      ~ ('shell-dev-drive:' ~ shell_windows_dev_drive_vhd | lower) | to_uuid ~ "}'",
-      "$null = New-ItemProperty -Force -LiteralPath $key.PSPath -Name Path -PropertyType String -Value '"
-      ~ shell_windows_dev_drive_vhd ~ "'"])
-      + ([] if shell_windows_dev_drive_state.result.attached else [
-      "$null = Mount-DiskImage -ImagePath '" ~ shell_windows_dev_drive_vhd ~ "'"]))
-      | join('; ') }}
+      {{ ("& '" ~ shell_repository ~ "\\ansible\\roles\\windows\\files\\attach_drive.ps1' -Path '"
+      ~ shell_windows_dev_drive_vhd ~ "' -LegacyKey '" ~ shell_windows_dev_drive_legacy_key ~ "'"
+      ~ (' -AllowDetach' if shell_windows_dev_drive_allow_detach | default(false) else '') )
+      if not shell_windows_dev_drive_state.result.registered or not shell_windows_dev_drive_state.result.attached
+      or (shell_windows_dev_drive_state.result.legacy_registration | default(false)) else '' }}
   when: shell_windows_dev_drive | length > 0
-
 - name: Attach Windows development drive at boot
   ansible.windows.win_powershell:
     script: |
@@ -97,6 +130,7 @@
     script: "{{ lookup('ansible.builtin.file', 'dev_drive.ps1') }}"
     parameters:
       Path: "{{ shell_windows_dev_drive_vhd }}"
+      LegacyKey: "{{ shell_windows_dev_drive_legacy_key }}"
       Wait: 30
   register: shell_windows_dev_drive_attached
   changed_when: false

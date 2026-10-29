@@ -1,0 +1,165 @@
+{
+    "actions": [
+        {
+            "command": {
+                "action": "globalSummon",
+                "desktop": "toCurrent",
+                "dropdownDuration": 200,
+                "monitor": "toMouse",
+                "toggleVisibility": true
+            },
+            "id": "User.globalSummon.3FC2751"
+        },
+        {
+            "command": {
+                "action": "scrollToMark",
+                "direction": "previous"
+            },
+            "id": "User.scrollToMark.D3F0B923"
+        },
+        {
+            "command": {
+                "action": "scrollToMark",
+                "direction": "next"
+            },
+            "id": "User.scrollToMark.2A0DA8E0"
+        },
+        {
+            "command": {
+                "action": "selectOutput",
+                "direction": "prev"
+            },
+            "id": "User.selectOutput.D3F0B923"
+        },
+        {
+            "command": {
+                "action": "selectOutput",
+                "direction": "next"
+            },
+            "id": "User.selectOutput.2A0DA8E0"
+        },
+        {
+            "command": {
+                "action": "selectCommand",
+                "direction": "prev"
+            },
+            "id": "User.selectCommand.D3F0B923"
+        },
+        {
+            "command": {
+                "action": "selectCommand",
+                "direction": "next"
+            },
+            "id": "User.selectCommand.2A0DA8E0"
+        }
+    ],
+    "copyFormatting": "none",
+    "copyOnSelect": true,
+    "defaultInputScope": "alphanumericHalfWidth",
+    "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+    "initialCols": 222,
+    "initialRows": 26,
+    "keybindings": [
+        {
+            "id": "User.globalSummon.3FC2751",
+            "keys": "win+`"
+        },
+        {
+            "id": "User.scrollToMark.D3F0B923",
+            "keys": "ctrl+up"
+        },
+        {
+            "id": "User.scrollToMark.2A0DA8E0",
+            "keys": "ctrl+down"
+        }
+    ],
+    "newTabMenu": [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
+    "profiles": {
+        "defaults": {
+            "autoMarkPrompts": true,
+            "closeOnExit": "never",
+            "colorScheme": "Catppuccin Mocha",
+            "experimental.rainbowSuggestions": true,
+            "experimental.repositionCursorWithMouse": true,
+            "font": {
+                "face": "Maple Mono NF CN"
+            },
+            "rightClickContextMenu": true,
+            "showMarksOnScrollbar": true
+        },
+        "list": [
+            {
+                "commandline": "${MSYS2_ROOT}\\msys2_shell.cmd -msys2 -defterm -here -no-start",
+                "environment": {
+                    "HOME": "${MSYS2_USER_HOME}"
+                },
+                "guid": "{6b080c1d-c97b-4585-8374-9e8822a326c8}",
+                "hidden": false,
+                "icon": "${MSYS2_ROOT}\\msys2.ico",
+                "name": "MSYS2",
+                "startingDirectory": "${MSYS2_HOME}"
+            },
+            {
+                "commandline": "${SCOOP}\\apps\\nu\\current\\nu.exe",
+                "guid": "{c74d5ed2-8d8a-4eb1-81f1-981d548b0f0e}",
+                "hidden": false,
+                "icon": "none",
+                "name": "Nushell",
+                "startingDirectory": "%USERPROFILE%"
+            }
+        ]
+    },
+    "schemes": [
+        {
+            "background": "#1E1E2E",
+            "black": "#45475A",
+            "blue": "#89B4FA",
+            "brightBlack": "#585B70",
+            "brightBlue": "#89B4FA",
+            "brightCyan": "#94E2D5",
+            "brightGreen": "#A6E3A1",
+            "brightPurple": "#F5C2E7",
+            "brightRed": "#F38BA8",
+            "brightWhite": "#A6ADC8",
+            "brightYellow": "#F9E2AF",
+            "cursorColor": "#F5E0DC",
+            "cyan": "#94E2D5",
+            "foreground": "#CDD6F4",
+            "green": "#A6E3A1",
+            "name": "Catppuccin Mocha",
+            "purple": "#F5C2E7",
+            "red": "#F38BA8",
+            "selectionBackground": "#585B70",
+            "white": "#BAC2DE",
+            "yellow": "#F9E2AF"
+        }
+    ],
+    "theme": "Catppuccin Mocha",
+    "themes": [
+        {
+            "name": "Catppuccin Mocha",
+            "tab": {
+                "background": "#1E1E2EFF",
+                "iconStyle": "default",
+                "showCloseButton": "always",
+                "unfocusedBackground": null
+            },
+            "tabRow": {
+                "background": "#181825FF",
+                "unfocusedBackground": "#11111BFF"
+            },
+            "window": {
+                "applicationTheme": "dark",
+                "experimental.rainbowFrame": false,
+                "frame": null,
+                "unfocusedFrame": null,
+                "useMica": false
+            }
+        }
+    ],
+    "windowingBehavior": "useExisting"
+}

@@ -3,3 +3,9 @@ shell_dev_drive_task: auto
 shell_backslash: '\'
 shell_elevate: true
 shell_auto_attach_key: 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
+
+shell_download_cache: "{{ shell_home }}\\AppData\\Local\\shell-ansible\\cache"
+shell_scoop_cache: "{{ shell_download_cache }}\\scoop"
+shell_msys2_cache: "{{ shell_download_cache }}\\msys2"
+shell_store_cache: "{{ shell_download_cache }}\\store"
+shell_archive_cache: "{{ shell_download_cache }}\\archives"

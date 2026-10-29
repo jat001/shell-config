@@ -23,16 +23,19 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1 ||
-    { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; }; then
+# python3-apt lets the apt module run in check mode, which cannot install it on demand.
+if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
+    ! command -v python3 >/dev/null 2>&1 ||
+    { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; } ||
+    { command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import apt' 2>/dev/null; }; then
     if command -v pacman >/dev/null 2>&1; then
         [ -s /etc/pacman.d/gnupg/pubring.gpg ] ||
             { pacman-key --init && pacman-key --populate archlinux; } >&2
-        retry pacman -Syu --needed --noconfirm openssh python >&2
+        retry pacman -Syu --needed --noconfirm openssh python btrfs-progs >&2
     elif command -v apt-get >/dev/null 2>&1; then
         retry apt-get update >&2
         DEBIAN_FRONTEND=noninteractive retry apt-get install -y --no-install-recommends \
-            openssh-server python3 >&2
+            openssh-server python3 python3-apt btrfs-progs >&2
     else
         printf 'Unsupported distribution.\n' >&2
         exit 1

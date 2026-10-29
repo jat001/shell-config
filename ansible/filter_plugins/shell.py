@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -143,9 +144,107 @@ def shell_link_items(links):
     ]
 
 
+class _Undefined(Exception):
+    pass
+
+
+def _strip_jsonc(text):
+    # Windows Terminal accepts comments and trailing commas in settings.json.
+    output = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            end = index + 1
+            while end < len(text) and text[end] != '"':
+                end += 2 if text[end] == '\\' else 1
+            output.append(text[index:end + 1])
+            index = end + 1
+        elif text.startswith('//', index):
+            end = text.find('\n', index)
+            index = len(text) if end < 0 else end
+        elif text.startswith('/*', index):
+            end = text.find('*/', index + 2)
+            index = len(text) if end < 0 else end + 2
+        else:
+            output.append(char)
+            index += 1
+    return re.sub(
+        r'"(?:\\.|[^"\\])*"|,(\s*[}\]])',
+        lambda match: match.group(1) if match.group(1) is not None else match.group(0),
+        ''.join(output),
+    )
+
+
+def _expand(value, variables):
+    if isinstance(value, dict):
+        return {key: _expand(item, variables) for key, item in value.items()}
+    if isinstance(value, list):
+        items = []
+        for item in value:
+            try:
+                items.append(_expand(item, variables))
+            except _Undefined:
+                pass
+        return items
+    if isinstance(value, str):
+        def replace(match):
+            if not variables.get(match.group(1)):
+                raise _Undefined(match.group(1))
+            return variables[match.group(1)]
+        return re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', replace, value)
+    return value
+
+
+_TERMINAL_KEYS = {
+    ('actions',): 'id',
+    ('keybindings',): 'id',
+    ('schemes',): 'name',
+    ('themes',): 'name',
+    ('profiles', 'list'): 'guid',
+}
+
+
+def _merge(existing, managed, path=()):
+    if isinstance(existing, dict) and isinstance(managed, dict):
+        merged = dict(existing)
+        for key, value in managed.items():
+            merged[key] = _merge(existing[key], value, path + (key,)) if key in existing else value
+        return merged
+    key = _TERMINAL_KEYS.get(path)
+    if key and isinstance(existing, list) and isinstance(managed, list):
+        merged = list(existing)
+        positions = {
+            item[key]: index for index, item in enumerate(merged) if isinstance(item, dict) and key in item
+        }
+        for item in managed:
+            if item.get(key) in positions:
+                merged[positions[item[key]]] = _merge(merged[positions[item[key]]], item, path + ('*',))
+            else:
+                merged.append(item)
+        return merged
+    return managed
+
+
+def shell_terminal_settings(existing, managed, variables):
+    """Merge the managed Windows Terminal settings into settings.json text.
+
+    Entries of managed lists that reference an undefined ${NAME} are dropped; list entries are matched by
+    their identity key, and everything not in the managed settings is kept.
+    """
+    existing = existing.lstrip('\ufeff')
+    current = json.loads(_strip_jsonc(existing)) if existing.strip() else {}
+    merged = _merge(current, _expand(managed, variables))
+    return {
+        'changed': merged != current,
+        'content': json.dumps(merged, indent=4, ensure_ascii=False) + '\n',
+    }
+
+
 class FilterModule:
     def filters(self):
         return {
+            'shell_terminal_settings': shell_terminal_settings,
             'shell_windows_items': shell_windows_items,
             'shell_unix_items': shell_unix_items,
             'shell_link_items': shell_link_items,

@@ -54,35 +54,3 @@
     content: "{{ shell_user }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
     mode: "0440"
     validate: visudo -cf %s
-
-- name: Read WSL accounts
-  ansible.builtin.getent:
-    database: passwd
-  when: shell_configuration.environments.wsl.default_user is defined
-
-- name: Require existing default WSL user
-  ansible.builtin.assert:
-    that: >-
-      shell_configuration.environments.wsl.default_user in ansible_facts.getent_passwd
-      or shell_configuration.environments.wsl.default_user == shell_user
-    fail_msg: "The default WSL user {{ shell_configuration.environments.wsl.default_user }} does not exist."
-    quiet: true
-  when: shell_configuration.environments.wsl.default_user is defined
-
-- name: Set default WSL user
-  community.general.ini_file:
-    path: /etc/wsl.conf
-    section: user
-    option: default
-    value: "{{ shell_configuration.environments.wsl.default_user }}"
-    no_extra_spaces: true
-    mode: "0644"
-  register: shell_default_user
-  when: shell_configuration.environments.wsl.default_user is defined
-
-- name: Report default WSL user change
-  ansible.builtin.debug:
-    msg: >-
-      The default WSL user is now {{ shell_configuration.environments.wsl.default_user }};
-      it takes effect after wsl.exe --terminate for this distribution.
-  when: shell_default_user.changed | default(false)

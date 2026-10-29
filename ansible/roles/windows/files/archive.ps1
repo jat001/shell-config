@@ -3,6 +3,8 @@ param(
     [string]$Url,
     [string]$Destination,
     [string]$Entry,
+    [string]$Cache,
+    [string]$Downloader,
     [string]$Mode
 )
 
@@ -35,8 +37,7 @@ if ($Ansible.CheckMode) {
 $work = Join-Path $env:TEMP ([IO.Path]::GetRandomFileName())
 $null = [IO.Directory]::CreateDirectory($work)
 try {
-    $archive = Join-Path $work ([IO.Path]::GetFileName(([uri]$Url).AbsolutePath))
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $archive
+    $archive = & $Downloader -Url $Url -Cache $Cache
     $global:LASTEXITCODE = 0
     & (Join-Path $env:SystemRoot 'System32/tar.exe') -xf $archive -C $work
     if ($LASTEXITCODE -ne 0) { throw "Could not extract $archive" }

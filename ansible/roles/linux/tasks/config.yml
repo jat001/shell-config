@@ -1,3 +1,10 @@
+# OMP_CACHE_DIR points here so oh-my-posh's init scripts, which name its binary, stay in this distribution;
+# oh-my-posh only uses the directory if it exists.
+- name: Create local cache directory
+  ansible.builtin.file:
+    path: "{{ shell_user_home }}/.cache"
+    state: directory
+
 - name: Install entries and shared links
   shell_paths:
     items: "{{ shell_entries | shell_unix_items(shell_user_home, shell_windows_home_path,

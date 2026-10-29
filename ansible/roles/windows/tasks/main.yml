@@ -60,8 +60,14 @@
   when: shell_mode != 'init'
   tags: [config]
 
+- name: Configure WSL
+  ansible.builtin.import_tasks: wslconfig.yml
+  tags: [config]
+
 - name: Manage MSYS2
   ansible.builtin.import_tasks: msys2.yml
   when: shell_msys2 | bool
   tags: [msys2]
 
+- name: Manage Windows Terminal
+  ansible.builtin.import_tasks: windows_terminal.yml

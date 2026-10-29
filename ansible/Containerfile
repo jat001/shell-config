@@ -6,8 +6,14 @@ RUN apt-get update \
 
 COPY requirements.txt requirements.yml /opt/ansible/
 
-RUN pip install --no-cache-dir -r /opt/ansible/requirements.txt \
-    && ansible-galaxy collection install -p /usr/share/ansible/collections \
-        -r /opt/ansible/requirements.yml
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.ansible/galaxy_cache \
+    pip install -r /opt/ansible/requirements.txt \
+    && for attempt in 1 2 3; do \
+        ansible-galaxy collection install -p /usr/share/ansible/collections \
+            -r /opt/ansible/requirements.yml && break; \
+        [ "$attempt" -lt 3 ] || exit 1; \
+        sleep 10; \
+    done
 
 WORKDIR /work

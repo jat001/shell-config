@@ -1,6 +1,7 @@
 shell_scoop_buckets:
   - main
   - versions
+  - nerd-fonts
 
 shell_scoop_bootstrap: https://raw.githubusercontent.com/ScoopInstaller/Versions/master/bucket/git-without-openssh.json
 
@@ -17,12 +18,21 @@ shell_scoop_apps:
     bucket: main
   - name: pscompletions
     bucket: main
-  - name: pwsh
-    bucket: main
-    command: pwsh
+  - name: Maple-Mono-NF-CN
+    bucket: nerd-fonts
+
+# Microsoft Store apps; the GitHub release is used where winget is unavailable.
+shell_store_apps:
+  - name: Microsoft.WindowsTerminal
+    store_id: 9N0DX20HK701
+    release: https://github.com/microsoft/terminal/releases
+    asset: Microsoft.WindowsTerminal_{version}_8wekyb3d8bbwe.msixbundle_Windows10_PreinstallKit.zip
+  - name: Microsoft.PowerShell
+    store_id: 9MZ1SNWT0N5D
+    release: https://github.com/PowerShell/PowerShell/releases
+    asset: PowerShell-{version}.msixbundle
 
 shell_msys2_installer: https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe
-shell_msys2_cache: ""
 shell_msys2_packages:
   - fish
   - git
@@ -63,6 +73,7 @@ shell_powershell_modules:
   - PSCompletions
 
 shell_apt_packages:
+  - xz-utils
   - ble.sh
   - ca-certificates
   - curl

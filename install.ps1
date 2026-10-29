@@ -10,6 +10,7 @@ param(
     [switch]$WslDevDriveOnly,
     [string]$Inventory,
     [string]$StateDirectory = (Join-Path $env:LOCALAPPDATA 'shell-ansible'),
+    [string]$CacheDirectory,
     [string]$Network,
     [string]$Playbook = 'site.yml',
     [string[]]$AnsibleArgument,
@@ -28,13 +29,32 @@ if ($WslDevDriveOnly -and $SkipWsl) {
 $repository = [IO.Path]::GetFullPath($PSScriptRoot)
 $utf8 = [Text.UTF8Encoding]::new($false)
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
+if (-not $CacheDirectory) { $CacheDirectory = Join-Path $StateDirectory 'cache' }
+$CacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
 $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 
+function Get-Wslc {
+    $command = Get-Command wslc.exe -CommandType Application -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $paths = @(
+        [Environment]::GetEnvironmentVariable('Path', 'Machine')
+        [Environment]::GetEnvironmentVariable('Path', 'User')
+    ) -join ';'
+    foreach ($directory in ($paths -split ';' | Where-Object { $_ })) {
+        $directory = [Environment]::ExpandEnvironmentVariables($directory.Trim('"'))
+        $candidate = Join-Path $directory 'wslc.exe'
+        if ([IO.File]::Exists($candidate)) { return $candidate }
+    }
+}
+
 function Invoke-Wslc {
+    param([switch]$AllowFailure)
+
+    $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
-    & wslc.exe @args
-    if ($LASTEXITCODE -ne 0) { throw "wslc $($args[0]) failed ($LASTEXITCODE)." }
+    & $wslc @args 2>&1 | ForEach-Object { $_.ToString() }
+    if ($LASTEXITCODE -ne 0 -and -not $AllowFailure) { throw "wslc $($args[0]) failed ($LASTEXITCODE)." }
 }
 
 function Invoke-Wsl {
@@ -42,7 +62,8 @@ function Invoke-Wsl {
 
     $user = if ($Root) { @('-u', 'root') } else { @() }
     $global:LASTEXITCODE = 0
-    $output = & $wsl -d $Distribution @user --exec @Arguments
+    $ErrorActionPreference = 'Continue'
+    $output = & $wsl -d $Distribution @user --exec @Arguments 2>&1 | ForEach-Object { $_.ToString() }
     if ($LASTEXITCODE -ne 0) {
         throw "WSL command failed in $Distribution ($LASTEXITCODE): $($Arguments -join ' ')"
     }
@@ -85,7 +106,79 @@ function Wait-Port {
     throw "The WSL SSH server did not start on port $Port."
 }
 
-if (-not (Get-Command wslc.exe -ErrorAction SilentlyContinue)) {
+function Test-Wsl {
+    if (-not [IO.File]::Exists($wsl)) { return $false }
+    # The inbox wsl.exe stub rejects --version; only an installed WSL release accepts it.
+    $ErrorActionPreference = 'Continue'
+    & $wsl --version 2>&1 | Out-Null
+    $LASTEXITCODE -eq 0
+}
+
+function Get-WslRegistration {
+    Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty $_.PSPath }
+}
+
+function Get-CachedDistribution {
+    param([string]$Name)
+
+    $downloader = Join-Path $repository 'ansible/roles/windows/files/download.ps1'
+    $metadataPath = & $downloader -Cache (Join-Path $CacheDirectory 'wsl/metadata') `
+        -Url 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
+    $metadata = [IO.File]::ReadAllText($metadataPath) | ConvertFrom-Json
+    $distribution = $metadata.ModernDistributions.PSObject.Properties |
+        ForEach-Object { $_.Value } | Where-Object Name -EQ $Name | Select-Object -First 1
+    if (-not $distribution) { return }
+    $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
+        $env:PROCESSOR_ARCHITEW6432
+    } else { $env:PROCESSOR_ARCHITECTURE }
+    $field = @{ AMD64='Amd64Url'; ARM64='Arm64Url' }[$nativeArchitecture]
+    if (-not $field -or -not $distribution.$field) { return }
+    $asset = $distribution.$field
+    $expected = $asset.Sha256 -replace '^0x', ''
+    if ($expected -notmatch '^[0-9a-fA-F]{64}$') { throw "Invalid published SHA256 for $Name." }
+    $directory = Join-Path $CacheDirectory 'wsl/packages'
+    $null = [IO.Directory]::CreateDirectory($directory)
+    $name = [IO.Path]::GetFileName(([uri]$asset.Url).AbsolutePath) -replace '[^A-Za-z0-9._-]', '_'
+    $path = Join-Path $directory ($expected.Substring(0, 16).ToUpperInvariant() + '-' + $name)
+    if (-not [IO.File]::Exists($path)) {
+        $partial = $path + '.' + [guid]::NewGuid().ToString('N') + '.part'
+        try {
+            $nativeDownloader = Join-Path $repository 'ansible/bootstrap/download-wsl.ps1'
+            & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File $nativeDownloader `
+                -Url $asset.Url -Path $partial | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "Downloading $Name failed ($LASTEXITCODE)." }
+            if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $expected) {
+                throw "The downloaded $Name image does not match the Microsoft distribution index; no package was cached."
+            }
+            [IO.File]::Move($partial, $path)
+        } finally {
+            if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
+        }
+    }
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $expected) {
+        throw "The cached $Name image does not match the Microsoft distribution index: $path"
+    }
+    $path
+}
+
+$configuration = [IO.File]::ReadAllText((Join-Path $repository 'common.json')) | ConvertFrom-Json
+$distributions = @($configuration.environments.wsl.distributions | Where-Object { $_ })
+
+# Ansible runs in a WSL container, so WSL itself is installed before anything else.
+if (-not (Test-Wsl)) {
+    if (-not $PSCmdlet.ShouldProcess('Windows Subsystem for Linux', 'Install with administrator approval')) {
+        Write-Warning 'WSL is not installed; the playbook cannot run until it is.'
+        return
+    }
+    & (Join-Path $repository 'ansible/bootstrap/wsl.ps1') -Cache $CacheDirectory -StateDirectory $StateDirectory
+    if (-not (Test-Wsl)) {
+        throw 'WSL setup finished; restart Windows, then run the installer again.'
+    }
+}
+
+$wslc = Get-Wslc
+if (-not $wslc) {
     throw 'wslc.exe was not found; install a WSL release that provides WSL containers.'
 }
 
@@ -98,17 +191,18 @@ $image = 'shell-ansible:' + [BitConverter]::ToString(
     $hash.ComputeHash($utf8.GetBytes($fingerprint -join ''))
 ).Replace('-', '').Substring(0, 12).ToLowerInvariant()
 
-& wslc.exe image inspect $image *> $null
+Invoke-Wslc -AllowFailure image inspect $image *> $null
 if ($LASTEXITCODE -ne 0) {
     Invoke-Wslc build -t $image -f (Join-Path $context 'Containerfile') $context
 } elseif ($Mode -eq 'update' -and -not $PrepareOnly) {
-    $previous = @((& wslc.exe image inspect $image | Out-String | ConvertFrom-Json))[0].Id
+    $previous = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
     Invoke-Wslc build --pull --no-cache -t $image -f (Join-Path $context 'Containerfile') $context
-    $current = @((& wslc.exe image inspect $image | Out-String | ConvertFrom-Json))[0].Id
-    if ($previous -and $previous -ne $current) { & wslc.exe rmi $previous *> $null }
+    $current = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
+    if ($previous -and $previous -ne $current) { & $wslc rmi $previous *> $null }
 }
 
 $null = [IO.Directory]::CreateDirectory($StateDirectory)
+[IO.File]::WriteAllText((Join-Path $StateDirectory 'controller-image.txt'), $image + [char]10, $utf8)
 if (-not [IO.File]::Exists((Join-Path $StateDirectory 'id_ed25519'))) {
     Invoke-Wslc run --rm -v "${StateDirectory}:/state" $image sh -c `
         "ssh-keygen -q -t ed25519 -N '' -C shell-ansible -f /state/id_ed25519"
@@ -123,6 +217,40 @@ try {
         $env:WSL_UTF8 = '1'
         $registered = @(& $wsl --list --quiet | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
             Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
+        if (-not $SkipWsl -and -not $WslDistribution) {
+            foreach ($name in $distributions) {
+                if ($registered -contains $name) { continue }
+                if (-not $PSCmdlet.ShouldProcess($name, 'Install WSL distribution')) { continue }
+                $global:LASTEXITCODE = 0
+                $package = Get-CachedDistribution $name
+                $installArguments = if ($package) {
+                    @('--install','--from-file',$package,'--name',$name,'--no-launch')
+                } else { @('--install','--distribution',$name,'--no-launch') }
+                $preference = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    & $wsl @installArguments 2>&1 | ForEach-Object { $_.ToString() }
+                } finally { $ErrorActionPreference = $preference }
+                if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $name failed ($LASTEXITCODE)." }
+                # The playbook prepares accounts and packages, so the distribution's first-run setup is skipped.
+                Get-WslRegistration | Where-Object { $_.DistributionName -eq $name } |
+                    ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name RunOOBE -Value 0 }
+                $registered += $name
+            }
+            if ($distributions -and $registered -contains $distributions[0]) {
+                $default = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultDistribution
+                $current = (Get-WslRegistration | Where-Object { $_.PSChildName -eq $default }).DistributionName
+                if ($current -ne $distributions[0] -and
+                    $PSCmdlet.ShouldProcess($distributions[0], 'Set the default WSL distribution')) {
+                    $global:LASTEXITCODE = 0
+                    & $wsl --set-default $distributions[0]
+                    if ($LASTEXITCODE -ne 0) { throw "Setting the default WSL distribution failed ($LASTEXITCODE)." }
+                }
+            }
+        }
+        if (-not $WslDistribution -and $distributions) {
+            $WslDistribution = @($distributions | Where-Object { $registered -contains $_ })
+        }
         if (-not $WslDistribution) {
             if ($registered.Count) {
                 $WslDistribution = @(& $wsl --exec printenv WSL_DISTRO_NAME)
@@ -160,9 +288,15 @@ try {
                 )
             }
             $sshd = (Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1
-            $process = Start-Process -FilePath $wsl -WindowStyle Hidden -PassThru -WhatIf:$false `
-                -ArgumentList @('-d', $distribution, '-u', 'root', '--exec', $sshd,
+            $start = @{
+                FilePath = $wsl
+                WindowStyle = 'Hidden'
+                PassThru = $true
+                ArgumentList = @('-d', $distribution, '-u', 'root', '--exec', $sshd,
                     '-D', '-e', '-f', '/etc/shell-ansible/sshd_config')
+            }
+            if ((Get-Command Start-Process).Parameters.ContainsKey('WhatIf')) { $start.WhatIf = $false }
+            $process = Start-Process @start
             $servers.Add(@{ Distribution = $distribution; Process = $process })
             Wait-Port $port
 
@@ -199,6 +333,7 @@ try {
     }
 
     $variables = @{ shell_mode = $Mode }
+    if ($PSBoundParameters.ContainsKey('CacheDirectory')) { $variables.shell_download_cache = $CacheDirectory }
     if ($WindowsHome) { $variables.shell_windows_home = [IO.Path]::GetFullPath($WindowsHome) }
     if ($Msys2Root) { $variables.shell_msys2_root = $Msys2Root }
     if ($SkipMsys2) { $variables.shell_msys2 = $false }
@@ -229,13 +364,20 @@ try {
     if ($WhatIfPreference) { $arguments += @('--check', '--diff') }
     if ($AnsibleArgument) { $arguments += $AnsibleArgument }
 
-    & wslc.exe @arguments
+    Invoke-Wslc @arguments
     $code = $LASTEXITCODE
 } finally {
     foreach ($server in $servers) {
-        & $wsl -d $server.Distribution -u root --exec sh -c `
-            'kill "$(cat /etc/shell-ansible/sshd.pid)" 2>/dev/null' *> $null
-        if (-not $server.Process.HasExited) { Stop-Process -Id $server.Process.Id -Force -WhatIf:$false }
+        try {
+            $sshdPid = Invoke-Wsl $server.Distribution @('cat', '/etc/shell-ansible/sshd.pid') -Root
+            if ($sshdPid -match '^[0-9]+$') {
+                $null = Invoke-Wsl $server.Distribution @('sh', '-c', 'kill $1', 'stop-sshd', $sshdPid) -Root
+            }
+        } catch { Write-Verbose $_.Exception.Message }
+        # wsl.exe usually exits by itself once sshd is gone, possibly between the check and the stop.
+        if (-not $server.Process.HasExited) {
+            Stop-Process -Id $server.Process.Id -Force -WhatIf:$false -ErrorAction SilentlyContinue
+        }
     }
 }
 

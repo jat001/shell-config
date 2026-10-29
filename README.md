@@ -17,7 +17,8 @@ WSL/MSYS2 的同名目录直接链接到仓库中的主题目录。
 运行时仍使用 `$HOME/.config/oh-my-posh`，主题的相对继承路径保持不变。
 
 安装和更新由 `ansible/` 下的 Ansible playbook 完成。
-`install.ps1` 只负责启动：准备连接，再用 `wslc` 构建并运行 Ansible 控制容器，
+`install.ps1` 只负责启动：缺少时先安装 WSL 和配置的发行版（见“WSL 与 Windows Terminal”），
+准备连接，再用 `wslc` 构建并运行 Ansible 控制容器，
 把仓库只读挂载到容器的 `/work`。容器经各 WSL 发行版内的专用 sshd 管理 WSL，
 并经同一条连接借助 WSL interop 以当前用户的普通权限管理 Windows 和 MSYS2。
 
@@ -25,8 +26,8 @@ WSL/MSYS2 的同名目录直接链接到仓库中的主题目录。
 
 | 模式 | 内容 |
 |---|---|
-| `init` | 初始化：开启开发人员模式，设置两个开发盘（见下文），安装 Scoop、MSYS2、Python 等前置程序，以及下文列出的 shell 和依赖；不部署其他配置。 |
-| `full` | 全量安装：`init` 的全部内容，加上入口文件、共享链接、用户级 `HOME` 和其余 systemd 用户单元。 |
+| `init` | 初始化：开启开发人员模式，设置两个开发盘（见下文），安装 Scoop、MSYS2、Python、Windows Terminal、PowerShell 和字体等前置程序，以及下文列出的 shell 和依赖，应用 WSL 与 Windows Terminal 设置；不部署 shell 入口等其余配置。 |
+| `full` | 全量安装：`init` 的全部内容，加上入口文件、共享链接、用户级 `HOME`、其余 systemd 用户单元、WSL 设置和 Windows Terminal 设置。 |
 | `update` | 增量更新：重新同步配置，只报告实际变化；升级已安装的受管软件，跳过一次性初始化步骤。 |
 
 各主机并行执行，互不等待。新机器先运行 `init`，再运行 `full`：
@@ -47,7 +48,9 @@ WSL 的 `links` 条目指向 Scoop 安装的程序，需要先由 `init` 装好�
 ```
 
 默认布置当前 Windows 用户、`common.json` 中 `environments.msys2.root` 指定的
-MSYS2，以及默认 WSL 发行版。当前 MSYS2 安装目录为 `${DEV_DRIVE}/msys2`，
+MSYS2，以及 `common.json` 中 `environments.wsl.distributions` 列出的 WSL 发行版。
+当前清单为 `archlinux` 和 `Debian`，第一项设为默认发行版；清单为空时使用现有默认发行版。
+当前 MSYS2 安装目录为 `${DEV_DRIVE}/msys2`，
 `${DEV_DRIVE}` 由 playbook 替换为 Windows 开发盘的盘符（见下文），目前是 `J:\msys2`。
 MSYS2 主目录从账户数据库读取，WSL 主目录和发行版名从运行环境读取；
 不固定 Windows 用户名、MSYS2 HOME 或 WSL 发行版名称。
@@ -97,14 +100,17 @@ Windows 用户主目录，设置注册表中的 `PSModulePath`，再经 WSL inte
 SSH 会话无法经过普通用户创建的目录联接（Scoop 的 `apps/*/current`、Clink 的 cmd AutoRun）；
 后者需要提权配置监听、证书映射并保存密码。至少需要一个 WSL 发行版，`-SkipWsl` 时仍用它承载连接。
 
-只有两项操作需要管理员权限，均只在需要时请求：
+以下操作需要管理员权限，均只在需要时请求：
 
+- WSL 尚未安装时，安装 WSL 本身；需要重启时，重启后重新运行安装器；
 - `init`/`full` 检测到开发人员模式未开启时，开启它（`AllowDevelopmentWithoutDevLicense`）；
+- Windows 或 WSL 开发盘文件缺失时，创建并格式化新的动态 VHDX；
 - Windows 开发盘未登记开机附加或尚未附加时，登记并附加它；
 - WSL 开发盘计划任务缺失或配置变化时，注册它。
 
 Ansible 在交互会话中以 `Start-Process -Verb RunAs` 启动提升的 Windows PowerShell 完成这些步骤，
 因此会出现 UAC 提示；`-WhatIf` 只报告而不请求。已在管理员会话中运行时直接执行。
+普通用户首次部署仍可能因不同的系统初始化步骤出现多次 UAC；一次提权复用目前用于 Hyper-V 测试控制流程。
 主机变量 `shell_elevate: false` 关闭提权请求，此时开发盘登记和计划任务只给出提示
 （未附加的 Windows 开发盘取不到盘符，依赖它的步骤会停止），
 开发人员模式未开启则在部署链接前停止。
@@ -138,7 +144,7 @@ Nushell alias、OMP 自动加载脚本、zsh 补全和插件缓存由运行时�
 
 | 环境 | 来源 |
 |---|---|
-| Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、nu、pscompletions；没有 `pwsh` 时安装 Scoop 的 pwsh。 |
+| Windows | Scoop：`git-without-openssh`（versions bucket）、jq、oh-my-posh、clink、nu、pscompletions、Maple-Mono-NF-CN（nerd-fonts bucket）；Microsoft Store：Windows Terminal、PowerShell。 |
 | MSYS2 | 缺少时下载官方 base 包解压到 `root`；pacman 安装 fish、git、jq、zsh 和 UCRT64 oh-my-posh；ble.sh 使用 nightly 包，Antidote 克隆到 Windows 的 `~/.local/share/antidote` 后链接。 |
 | Arch Linux | 官方仓库和 archlinuxcn（blesh-git、oh-my-posh、yay）；powershell-bin、wsl2-ssh-agent-bin、zsh-antidote 由 WSL 用户通过 yay 构建。 |
 | Debian | apt 安装 ble.sh、zsh-antidote 和 zsh 插件；Oh My Posh、Nushell、PowerShell 和 wsl2-ssh-agent 使用 GitHub 发布包，放在 `/opt/shell-releases`，链接到 `/usr/local/bin`。 |
@@ -150,13 +156,15 @@ Scoop 首次安装时先从清单 URL 安装 Git，添加 bucket 后改用 versi
 GitHub 发布包通过 `releases/latest` 重定向比较版本，不调用 GitHub API；
 下载的发布包保留在 `/var/cache/shell-releases`（只保留当前版本），AUR 构建目录默认为 WSL 用户的 `~/.cache/yay`（`shell_aur_cache` 可改为其他目录）。
 已由其他方式安装的同名命令保持不变，不改由本仓库管理。
-Windows Terminal profiles 和 Clink 注入不在安装范围内。
-个人化安装路径目前保留在 `common.json` 和 MSYS2 主题映射中；
-部署到其他 Windows 用户或 MSYS2 安装位置时应核对并调整这些路径。
+Windows Terminal 的受管设置和 MSYS2、Nushell profiles 由 `windows-terminal.json` 定义并合并部署；
+现有其他 profile 和未受管字段保留。Clink 自动注入在 `full`/`update` 的配置阶段注册（见“CMD 与 Clink”）。
+Debian 的 GitHub 发布包由 `install.ps1 -Mode update` 更新，`apt upgrade` 不会更新它们；
+当前不部署自动更新 timer。
 
 ### 测试
 
-`tests/run.ps1` 在隔离环境中依次运行 `init`、准备、`full`、
+`tests/run.ps1` 先验证 Terminal JSONC 字符串保留、配置合并和重复运行，
+再在隔离环境中依次运行 `init`、准备、`full`、
 重复 `full`（要求 `changed=0`）、`update`、验证和普通权限检查：
 
 - wslc 容器 `archlinux:latest`、`debian:testing`（与 WSL 中的 Debian forky 一致）：直接使用官方镜像，模拟全新系统；
@@ -188,7 +196,7 @@ Windows Terminal profiles 和 Clink 注入不在安装范围内。
 AUR 构建目录）、`shell-test-apt`、`shell-test-releases`（Debian 的包缓存和 GitHub 发布包），
 Debian 容器删除了丢弃包缓存的 `docker-clean` 配置；状态目录下的 `cache` 映射到沙盒的
 `C:\shell-cache`，保存 Scoop 缓存（`SCOOP_CACHE`）、MSYS2 基础包和 MSYS2 的 pacman 包
-（`shell_msys2_cache`，传给 pacman 的 `--cachedir`；生产环境默认为空，使用 MSYS2 自身的缓存）。
+（`shell_msys2_cache`，传给 pacman 的 `--cachedir`；生产环境默认使用用户目录下的持久缓存；设为空时使用 MSYS2 自身的缓存）。
 `cache/git` 保存 ScoopInstaller/Scoop、Main、Versions 的浅克隆裸镜像，每轮在主机上增量 `fetch`；
 沙盒管理员账户的 `.gitconfig` 用 `url.insteadOf` 把 `https://github.com/ScoopInstaller/` 指向这些镜像，
 因此添加 bucket、`update` 时把 main bucket 转为 git 仓库以及更新 Scoop 核心都从本地克隆。
@@ -197,8 +205,60 @@ Scoop 安装器自身下载的核心和 main bucket 压缩包不经过 git，仍
 测试启用 `ansible.posix.profile_tasks` 输出每个任务的耗时，结束时打印各准备和步骤的耗时，
 并写入状态目录的 `timings.json`。启动器会把宿主环境中的 `ANSIBLE_*` 和 `PROFILE_TASKS_*`
 变量传给控制容器。
-测试不覆盖：WSL interop 承载的 Windows 连接（已在本机以 `-WhatIf` 验证）、UAC 批准流程、
-启动 systemd 用户单元和挂载开发盘。
+隔离测试不覆盖：首次安装 WSL 和发行版、真实 Microsoft Store 下载、UAC 批准流程、
+启动 systemd 用户单元和挂载真实 WSL 开发盘。Sandbox 无 WSL，通过宿主的控制容器部署；
+无 winget 时使用官方 GitHub 发布的同包族 MSIX，不能据此证明 Store 下载流程。
+WSL interop 承载的 Windows 连接和已安装发行版上的完整部署已在本机验证。
+
+### Hyper-V 完整部署测试
+
+`tests/hyperv.ps1` 复用独立 Windows 测试 VM。首次启动测试控制流程需要一次 UAC，
+后续同步、部署、恢复检查点和取日志通过同一个流程执行。它只管理状态文件中记录 ID 的测试 VM，
+两小时后退出；`Stop` 可以提前结束。测试用管理员会话只在 VM 中运行安装器。
+
+```powershell
+& "$HOME/.config/shell/tests/hyperv.ps1" -Action Start
+& "$HOME/.config/shell/tests/hyperv.ps1" -Action Sync
+& "$HOME/.config/shell/tests/hyperv.ps1" -Action Run -Modes init
+& "$HOME/.config/shell/tests/hyperv.ps1" -Action Collect
+```
+
+动作异步执行，结果位于状态目录的 `operations/<操作 ID>.json`；
+前一步完成后再发送依赖它的动作。进度保存在 `progress.json`。
+`Run -Modes full,full,update` 检查完整部署、重复部署和更新，结束后会重启测试 VM，并在登录会话中检查实际启动。
+`Restore -Baseline WSL-Ready` 或 `Clean-Windows` 恢复指定基线，会丢弃 VM 中后续的改动。
+恢复后重新 `Sync` 再运行测试；`Collect` 保留日志和下载缓存。`Clean-Windows` 基线用于测试 WSL 引导与重启；完整回归默认从 `WSL-Ready` 开始。
+
+默认状态目录为当前用户的 `AppData/Local/shell-ansible-test/hyperv`，
+包含 VM 身份记录 `vm-created.json` 和本机加密的测试凭据 `guest-credential.xml`。
+Windows 软件包缓存会在客户机与宿主的 `cache/downloads` 之间复用，位于 VM 检查点之外。
+当前 VM 已配置嵌套虚拟化、Secure Boot 和 vTPM；基线分别为干净 Windows 和已验证 WSL/wslc 的状态。
+首次 Windows 及 VM 准备与日常的检查点回归分开执行，VM 磁盘和凭据不放进仓库。
+当前仓库未提供创建 VM、安装 Windows 和创建上述基线的入口；`hyperv.ps1` 需要先准备好这些资源。
+最近新增的 WSL MSI 缓存引导已通过 PowerShell 5.1/7 的下载、复用与校验测试，尚未从 `Clean-Windows` 完整回归。
+
+### 下载缓存
+
+Windows 默认缓存位于用户主目录的 `AppData/Local/shell-ansible/cache`。
+`install.ps1 -CacheDirectory <目录>` 可同时指定 WSL 发行版缓存和 Windows 下载缓存根目录。
+
+| 下载 | 缓存方式 |
+|---|---|
+| WSL 运行时 | GitHub 最新稳定版 MSI，按版本与架构保存在 `wsl/runtime`；下载后及复用前校验微软 Authenticode 签名。 |
+| WSL 发行版 | 从微软 `DistributionInfo.json` 解析 `.wsl` URL 和 SHA256，使用与 WSL 相同的 Windows 原生 HTTP 客户端；校验成功后才发布到 `wsl/packages`，复用前再次校验。 |
+| Scoop | `shell_scoop_cache` 传入 `SCOOP_CACHE`。 |
+| MSYS2 | `shell_msys2_cache` 保存 pacman 包和基础安装包。 |
+| Microsoft Store 应用的官方发布包 | `shell_store_cache` 保存按版本命名的 MSIX/PreinstallKit。 |
+| ble.sh 等归档 | `shell_archive_cache` 按 URL、ETag/Last-Modified 区分版本；下载完成后才发布缓存文件。 |
+| Ansible 控制镜像 | 复用已有镜像、构建层和 pip/Galaxy 缓存；更新模式仍检查更新。 |
+| Linux 包及发布包 | pacman/apt 自身缓存，以及 `/var/cache/shell-releases`；现有容器测试继续使用持久卷。 |
+
+元数据和版本查询仍需要联网。发行版文件名包含公布的 SHA256 前缀，不依赖下载服务器的 HEAD 响应；
+HTML 防护页或其他校验失败的下载会停止并删除临时文件，不进入缓存。Debian 和 Arch 安装包均已验证可缓存。
+WSL 尚未安装时，先取得并验证 MSI，再在一次管理员进程中启用 VirtualMachinePlatform、静默安装 MSI。
+安装日志保存在状态目录的 `wsl-install.log`；需要重启时停止并提示，不自动重启。已有 WSL 不重复安装运行时。
+
+`tests/wsl_cache.ps1 -CacheDirectory <目录>` 验证实际下载、缓存复用和无效安装包拒绝，不安装或卸载 WSL；已在 Windows PowerShell 5.1 与 PowerShell 7 验证。
 
 ## 维护原则
 
@@ -229,13 +289,14 @@ Scoop 安装器自身下载的核心和 main bucket 压缩包不经过 git，仍
 | `wsl-dev-drive.sh` | 读取共享开发盘配置、触发挂载并等待结果。 |
 | `common.json` | 共享数据：环境变量、PATH 前置目录和外部命令 alias。 |
 | `common.jq` | 平台识别、变量展开，以及 Bash/zsh、fish、PowerShell、Nushell、Clink 的配置转换。 |
+| `windows-terminal.json` | Windows Terminal 受管设置，由 playbook 合并进 `settings.json`。 |
 | `common.sh` | Bash/zsh 共用的环境加载、初始化文件查找，以及提示符主题选择。 |
 | `common.bash` | Bash 交互初始化、历史设置、Oh My Posh 和 ble.sh 配置。传入 `ble` 时只设置 ble.sh。 |
 | `common.zsh` | zsh 历史、按键、补全、Oh My Posh 和插件。传入 `environment` 时只加载共享环境。 |
 | `common.fish` | fish 的环境加载、前缀历史搜索、按键和 Oh My Posh 初始化。 |
 | `common.ps1` | Windows PowerShell 5.1、Windows/WSL PowerShell 7 的环境、PSReadLine、PSCompletions 和提示符。 |
-| `common-env.nu` | Nushell 环境加载和 alias 文件生成。 |
-| `common.nu` | Nushell 平台检查、生成的 alias 文件加载，以及 Oh My Posh 初始化。 |
+| `common-env.nu` | Nushell 环境加载，生成 alias 和当前环境的 Oh My Posh 初始化脚本。 |
+| `common.nu` | Nushell 平台检查，加载生成的 alias 和 Oh My Posh 初始化脚本。 |
 | `common.lua` | CMD/Clink 主题位置发现、初始化、UTF-8 代码页、Windows PATH 排序和共享 alias 加载。 |
 | `common.clink_settings` | Clink 的提示符选择、主题路径和历史共享设置。 |
 | `common.inputrc` | Bash/Clink 的 Readline 铃声设置，以及上下键前缀历史搜索。 |
@@ -447,13 +508,15 @@ journalctl --user -u wsl2-ssh-agent.service
 相对于 `-WindowsHome`，当前为 `AppData/Local/Dev.vhdx`（ReFS 开发盘，挂载为 `J:`）。
 Windows 不会在重启后自动重新附加普通 VHDX；从“设置”创建的开发盘登记在
 `HKLM\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks\{GUID}` 的 `Path` 值中，
-由系统开机附加。playbook 在每种模式下检查该登记和附加状态：
-缺少登记时用由 VHDX 路径生成的固定 GUID 添加一项，未附加时 `Mount-DiskImage`，
-两者合并为一次管理员批准；已登记且已附加时不做修改。
+由系统开机附加。playbook 通过 Windows 原生 `AttachVirtualDisk` 的 `AT_BOOT` 标志
+完成附加及启动登记，不再靠手写注册表模拟注册。已正确登记并附加的盘保持原样。
+旧脚本生成的登记可通过确定的 GUID 精确识别；迁移时默认不自动分离正在使用的盘。
+关闭盘上程序并手动分离后可重新部署；只有测试 VM 的受控迁移显式允许自动分离。
 
 盘符不写入配置：附加后从该 VHDX 对应磁盘的分区读取，设为用户级环境变量 `DEV_DRIVE`（如 `J:`），
 `common.json` 中 MSYS2 的 `root` 和 `oh-my-posh/msys2.omp.json` 的路径映射都通过它引用开发盘。
-playbook 只登记和附加已有 VHDX，不创建虚拟磁盘或格式化文件系统；VHDX 不存在时停止。
+VHDX 不存在时，playbook 会先创建动态 VHDX、GPT 分区和 ReFS Dev Drive，再登记和附加。
+`size_gib` 控制新盘容量上限，当前为 1024 GiB；已有 VHDX 不调整容量，也不进入格式化分支。
 `-WhatIf` 下未附加的开发盘使用已有的 `DEV_DRIVE` 预览。
 
 ## WSL 共享开发盘
@@ -490,7 +553,10 @@ playbook 同时部署并启用 `wsl-dev-drive.service` 用户服务（`init` 也
 服务停止时保留共享挂载，避免影响其他发行版。
 
 这项功能需要 systemd、WSL Windows 互操作、jq、findmnt，以及内核对应文件系统支持。
-它只附加已有 VHDX，不创建虚拟磁盘或格式化文件系统。
+VHDX 不存在时，Windows 任务会先在默认 WSL 发行版准备 `btrfs-progs`，创建动态 VHDX，
+校验新设备的容量、分区、挂载和文件系统签名，再建立 Btrfs。`size_gib` 当前为 1024 GiB。
+只有本次新建的临时 VHDX 可以格式化，成功分离后才移动到配置路径；
+失败的临时盘会保留以便检查，已有文件始终复用。`-WhatIf` 不创建或格式化磁盘。
 重建盘后删除 `~/.local/state/shell/dev-drive.uuid`，下次启动服务时重新记录。
 Windows 账户必须已登录，才能运行 Interactive 类型的计划任务。
 服务按 WSL 用户部署；其他发行版可通过 `-WslDistribution` 一并安装，
@@ -502,6 +568,15 @@ systemctl --user restart wsl-dev-drive.service
 journalctl --user -u wsl-dev-drive.service
 findmnt -M /mnt/wsl/dev
 ```
+
+开发盘创建的独立集成测试使用新的测试目录，保留结果供检查，需在管理员 PowerShell 中运行：
+
+```powershell
+& "$HOME/.config/shell/tests/dev_drives.ps1" -Distribution archlinux
+```
+
+测试默认使用 50 GiB 动态盘，可用 `-SizeGiB 1024` 验证部署容量。覆盖预览无写入、
+ReFS Dev Drive 属性、Btrfs 挂载读写及重复执行后 VHDX 哈希不变。
 
 ### 共享 XDG 目录
 
@@ -519,6 +594,11 @@ findmnt -M /mnt/wsl/dev
 
 `XDG_CONFIG_HOME` 留在本地：其中有各发行版自己的 systemd 用户单元，包括挂载开发盘的服务。
 `XDG_RUNTIME_DIR` 属于当前会话，也留在本地。pnpm 的目录跟随这些变量。
+各发行版的安装路径不同（例如 Oh My Posh 在 Arch 是 `/usr/bin/oh-my-posh`，在 Debian 是
+`/usr/local/bin/oh-my-posh`），记录了这些路径的缓存不能共享：Oh My Posh 的初始化脚本通过
+`OMP_CACHE_DIR=${HOME}/.cache` 留在本地的 `~/.cache/oh-my-posh`（Oh My Posh 只使用已存在的目录，
+playbook 会创建 `~/.cache`）；Nushell 的初始化脚本由 `env.nu` 每次启动时写到配置目录的
+`oh-my-posh.nu`，不使用共享数据目录中的 vendor autoload；zsh 的插件缓存按发行版分目录。
 
 各 shell 启动时读取 `/proc/self/mounts`：挂载点上是配置的文件系统时定义 `${DEV_DRIVE}`，
 使用开发盘上的目录；否则（例如 WSL 刚启动、服务还没挂载好）这个 shell 继续使用本地目录，
@@ -534,6 +614,44 @@ shell 自身在读取配置前就确定的目录另行处理：PowerShell 把 `$
 开发盘上已有同名条目时保留本地副本并给出提示，不合并内容（本地只有空目录时直接删除）；`~/.local/state/shell` 不移动；
 早期版本留下的、指向开发盘同名条目的链接保持不动。缓存可以重新生成，`~/.cache` 不迁移，
 共享缓存从空目录开始。
+
+## WSL 与 Windows Terminal
+
+`install.ps1` 在启动 Ansible 前准备 WSL，因为控制容器本身运行在 WSL 中：
+
+- `wsl.exe --version` 失败（没有安装 WSL 发行版本，只有系统自带的占位程序）时，
+  以一次管理员批准运行 `wsl.exe --install --no-distribution`；需要重启时停止并提示重启后再运行。
+- 安装 `common.json` 中 `environments.wsl.distributions` 列出、尚未注册的发行版
+  （目前为 `archlinux` 和 `Debian`），使用 `--no-launch`，并跳过发行版自带的首次启动设置
+  （注册表中的 `RunOOBE` 置 0），账户和软件由 playbook 准备。
+- 把列表中的第一个设为默认发行版。未指定 `-WslDistribution` 时，管理列表中已注册的全部发行版。
+
+`-WhatIf` 只列出这些操作。当前 Sandbox 测试没有安装或运行 WSL，因此没有覆盖首次安装 WSL 和发行版。
+
+playbook 管理两份 WSL 设置：
+
+| 文件 | 来源 | 说明 |
+|---|---|---|
+| `%USERPROFILE%\.wslconfig` | `environments.windows.wslconfig` | 只设置列出的节和键，其余内容保留；`wsl.exe --shutdown` 后生效。 |
+| 各发行版的 `/etc/wsl.conf` | `environments.wsl.wsl_conf` 和 `default_user` | 同样逐键设置；`wsl.exe --terminate` 该发行版后生效。 |
+
+Windows Terminal 和 PowerShell 7 从 Microsoft Store 安装（`shell_store_apps`）：
+有 winget 时用它的 `msstore` 源安装商店包，之后由商店更新，`update` 模式另外运行 `winget upgrade`；
+没有 winget 时（例如 Windows Sandbox），从 GitHub 最新发布安装同一个包系列的 MSIX，
+Windows Terminal 使用带依赖的 PreinstallKit。两者都只为当前用户安装，已安装时不改动。
+发布版本从 `releases/latest` 的跳转中读取，不使用有频率限制的 API；
+`shell_store_cache` 可以指定下载缓存目录。
+
+`windows-terminal.json` 保存受管设置：全局选项、动作和快捷键、默认配置、配色、主题，
+以及 MSYS2 和 Nushell 两个自定义配置。playbook 把它合并进 `settings.json`：
+对象逐键合并；`actions`、`keybindings` 按 `id`，`schemes`、`themes` 按 `name`，
+`profiles.list` 按 `guid` 匹配后合并，没有的条目追加；其他列表整体替换。
+自动生成的配置（Visual Studio、WSL、Docker 等）和界面中改动的其他设置保持不变；
+`settings.json` 中的注释和末尾逗号可以解析，但写回时不保留注释。
+受管设置中的 `${MSYS2_ROOT}`、`${MSYS2_HOME}`、`${MSYS2_USER_HOME}`、`${SCOOP}` 由检测到的路径替换；
+某个列表条目引用的变量没有值时（例如不管理 MSYS2），跳过该条目。
+窗口位置 `initialPosition` 与显示器有关，不纳入管理。
+字体 Maple Mono NF CN 通过 Scoop 的 `nerd-fonts` bucket 安装（`Maple-Mono-NF-CN`）。
 
 ## WSL 用户
 
@@ -559,6 +677,24 @@ root 和该用户得到相同的入口文件、`links`、systemd 用户单元和
 systemd 用户单元的 `default.target.wants` 链接直接创建，用户管理器未运行时也已启用，下次登录时启动。
 `links` 中当前账户读不到的目标会跳过：Windows 一侧的 `.ssh`、`.gnupg` 属于 root（权限 `0700`），
 所以只链接给 root，WSL 用户使用自己的 `~/.ssh`、`~/.gnupg`。
+
+## CMD 与 Clink
+
+Scoop 安装 Clink 不会自动注册 CMD 的启动命令。`init` 安装软件，`full`/`update`
+在部署入口文件和 `HOME` 后，使用官方 `clink autorun install` 为当前用户开启自动注入。
+注册位置是 `HKCU\Software\Microsoft\Command Processor\AutoRun`，使用 Scoop 的
+`apps/clink/current/clink.bat`，升级 Clink 后路径仍然有效；不设置全局 `HKLM` AutoRun。
+
+安装器保留 AutoRun 中的其他命令，已有当前 Clink 注册和额外参数时不重复注册。
+`-WhatIf` 只报告需要注册，不写注册表；`--tags clink` 可单独执行这个配置步骤。
+指定其他用户的 `-WindowsHome` 时跳过注册，避免把该用户的配置注册到当前账户。
+只执行配置任务但尚未安装 Clink 时，会提示先运行 `init`。
+
+新开的交互式 CMD 自动加载 Clink，再读取 `%LOCALAPPDATA%\clink\profile.lua`
+和共享的 `common.lua`、`common.clink_settings`。`cmd /d` 跳过 AutoRun；
+`cmd /c` 的非交互命令不是验证注入的方法。
+Sandbox 验证包含：预览不写入、保留其他 AutoRun 命令、保留已有 Clink 参数、重复部署，
+以及隐藏的交互式 CMD 进程实际加载 `clink_dll_*.dll`；测试后还原测试前的 AutoRun 值。
 
 ## ble.sh 历史搜索退出
 

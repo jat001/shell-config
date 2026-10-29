@@ -1,0 +1,52 @@
+- name: Resolve Windows Terminal settings
+  ansible.builtin.set_fact:
+    shell_windows_terminal_settings: "{{ shell_home }}\\AppData\\Local\\Packages\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\LocalState\\settings.json"
+    shell_windows_terminal_variables:
+      SCOOP: "{{ shell_scoop_root }}"
+      MSYS2_ROOT: "{{ shell_msys2_root_path | default('') if shell_msys2_home is defined else '' }}"
+      MSYS2_HOME: "{{ shell_msys2_home | default('') }}"
+      MSYS2_USER_HOME: "{{ shell_msys2_user_home | default('') }}"
+  tags: [config]
+
+- name: Inspect Windows Terminal settings
+  ansible.windows.win_stat:
+    path: "{{ shell_windows_terminal_settings }}"
+  register: shell_windows_terminal_file
+  tags: [config]
+
+- name: Read Windows Terminal settings
+  ansible.builtin.slurp:
+    src: "{{ shell_windows_terminal_settings }}"
+  register: shell_windows_terminal_current
+  when: shell_windows_terminal_file.stat.exists
+  tags: [config]
+
+# Only the settings in windows-terminal.json are managed; generated profiles and other changes stay.
+- name: Merge Windows Terminal settings
+  ansible.builtin.set_fact:
+    shell_windows_terminal_merged: "{{ (shell_windows_terminal_current.content | default('') | b64decode)
+      | shell_terminal_settings(lookup('ansible.builtin.file', shell_source ~ '/windows-terminal.json') | from_json,
+        shell_windows_terminal_variables) }}"
+  tags: [config]
+
+- name: Create Windows Terminal settings directory
+  ansible.windows.win_file:
+    path: "{{ shell_windows_terminal_settings | win_dirname }}"
+    state: directory
+  when: shell_windows_terminal_merged.changed
+  tags: [config]
+
+- name: Write Windows Terminal settings
+  ansible.windows.win_powershell:
+    script: |
+      [CmdletBinding(SupportsShouldProcess)]
+      param([string]$Path, [string]$Content)
+      $Ansible.Changed = $true
+      if (-not $Ansible.CheckMode) {
+          [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
+      }
+    parameters:
+      Path: "{{ shell_windows_terminal_settings }}"
+      Content: "{{ shell_windows_terminal_merged.content }}"
+  when: shell_windows_terminal_merged.changed
+  tags: [config]

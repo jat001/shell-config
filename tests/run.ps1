@@ -42,6 +42,10 @@ $volumes = @{
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $image = & $installer -PrepareOnly -StateDirectory $StateDirectory | Select-Object -Last 1
+Invoke-Native wslc.exe @(
+    'run', '--rm', '-v', "${repository}:/work:ro", $image,
+    'python', '-B', '/work/tests/test_terminal_settings.py'
+)
 $windowsUser = 'shelltest'
 $adminUser = 'WDAGUtilityAccount'
 $unprivileged = [ordered]@{}
@@ -50,7 +54,8 @@ $windows = [ordered]@{}
 $wsl = [ordered]@{}
 $jobs = [ordered]@{}
 
-if ($linux -and -not (Test-Wslc network inspect $network)) {
+# The control container joins this network for every target, including Windows Sandbox alone.
+if (-not (Test-Wslc network inspect $network)) {
     Invoke-Native wslc.exe @('network', 'create', $network)
 }
 
@@ -231,6 +236,7 @@ if ($Target -contains 'sandbox') {
             shell_msys2_root = 'C:/msys64'
             shell_msys2_installer = 'file:///C:/shell-cache/msys2-base-x86_64-latest.sfx.exe'
             shell_msys2_cache = 'C:\shell-cache\msys2'
+            shell_store_cache = 'C:\shell-cache\store'
         }
         if ($user -eq $adminUser) {
             $windows.sandbox = $connection
@@ -310,7 +316,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $StateDirectory 'timings.json'), ($report | ConvertTo-Json), $utf8)
     if (-not $Keep) {
         foreach ($target in $linux) { & wslc.exe remove -f "shell-test-$target" *> $null }
-        if ($linux) { & wslc.exe network remove $network *> $null }
+        & wslc.exe network remove $network *> $null
         if ($windows.Contains('sandbox')) {
             & wsb.exe stop --id ([IO.File]::ReadAllText((Join-Path $StateDirectory 'sandbox-id')).Trim()) *> $null
         }

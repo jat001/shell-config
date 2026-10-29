@@ -3,15 +3,39 @@
   "environments": {
     "windows": {
       "dev_drive": {
-        "vhd": "AppData/Local/Dev.vhdx"
+        "vhd": "AppData/Local/Dev.vhdx",
+        "size_gib": 1024
+      },
+      "wslconfig": {
+        "wsl2": {
+          "networkingMode": "Mirrored",
+          "telemetry": "false"
+        },
+        "experimental": {
+          "autoMemoryReclaim": "Gradual",
+          "hostAddressLoopback": "true"
+        }
       },
       "aliases": {
         "code": "${HOME}/scoop/apps/vscode/current/bin/code.cmd"
       }
     },
     "wsl": {
+      "distributions": ["archlinux", "Debian"],
+      "wsl_conf": {
+        "boot": {
+          "systemd": "true"
+        },
+        "automount": {
+          "options": "\"metadata\""
+        },
+        "interop": {
+          "appendWindowsPath": "false"
+        }
+      },
       "dev_drive": {
         "vhd": "AppData/Local/wsl/dev.vhdx",
+        "size_gib": 1024,
         "mountpoint": "/mnt/wsl/dev",
         "filesystem": "btrfs",
         "options": "compress=zstd:1",
@@ -30,6 +54,7 @@
         "XDG_CACHE_HOME": ["${DEV_DRIVE}${HOME}/.cache", "${HOME}/.cache"],
         "XDG_DATA_HOME": ["${DEV_DRIVE}${HOME}/.local/share", "${HOME}/.local/share"],
         "XDG_STATE_HOME": ["${DEV_DRIVE}${HOME}/.local/state", "${HOME}/.local/state"],
+        "OMP_CACHE_DIR": "${HOME}/.cache",
         "PNPM_HOME": "${XDG_DATA_HOME}/pnpm",
         "PNPM_CONFIG_CACHE_DIR": "${XDG_CACHE_HOME}/pnpm",
         "PNPM_CONFIG_STATE_DIR": "${XDG_STATE_HOME}/pnpm",

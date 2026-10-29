@@ -17,3 +17,8 @@
     value: "{{ shell_home }}"
     level: user
   when: shell_current_home | bool
+
+- name: Manage Clink autorun
+  ansible.builtin.import_tasks: clink.yml
+  when: shell_current_home | bool
+  tags: [clink]

@@ -43,6 +43,11 @@
   when: shell_user is defined
   tags: [packages, config, dev_drive]
 
+- name: Configure WSL distribution
+  ansible.builtin.import_tasks: wsl_conf.yml
+  become: "{{ shell_become }}"
+  tags: [packages, config]
+
 - name: Install AUR packages
   ansible.builtin.import_tasks: aur.yml
   become: "{{ shell_become }}"
@@ -57,13 +62,28 @@
 - name: Prepare shared XDG homes
   ansible.builtin.import_tasks: xdg_homes.yml
   become: "{{ shell_become }}"
-  when:
-    - shell_mode != 'init'
-    - shell_configuration.environments.wsl.dev_drive is defined
-  tags: [config]
+  when: shell_configuration.environments.wsl.dev_drive is defined
+  tags: [config, packages]
+
+- name: Inspect jq
+  ansible.builtin.command:
+    argv: [sh, -c, command -v jq]
+  register: shell_jq
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [always]
+
+# A preview of a distribution that has never been configured cannot plan without jq, which the packages add.
+- name: Report accounts that cannot be previewed
+  ansible.builtin.debug:
+    msg: jq is not installed yet, so the account configuration is previewed after the first real run.
+  when: shell_jq.rc != 0
+  tags: [config, dev_drive]
 
 # Each account gets the same entries, links, user units and XDG directories.
 - name: Configure accounts
+  when: shell_jq.rc == 0 or not ansible_check_mode
   ansible.builtin.include_tasks:
     file: account.yml
     apply:

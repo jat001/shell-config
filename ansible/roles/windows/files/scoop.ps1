@@ -2,6 +2,7 @@
 param(
     [string]$Root,
     [string]$Mode,
+    [string]$Cache,
     [string]$Bootstrap,
     [string[]]$Buckets,
     [object[]]$Apps
@@ -12,6 +13,7 @@ $Ansible.Changed = $false
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $scoop = Join-Path $Root 'shims/scoop.ps1'
 $env:SCOOP = $Root
+if ($Cache) { $env:SCOOP_CACHE = $Cache }
 $env:PATH = (Join-Path $Root 'shims') + ';' + $env:PATH
 
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'

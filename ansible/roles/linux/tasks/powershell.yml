@@ -6,6 +6,16 @@
   failed_when: false
   check_mode: false
 
+# The account's directory on the development drive exists only once the drive was mounted for the playbook.
+- name: Inspect account home on the development drive
+  ansible.builtin.stat:
+    path: "{{ shell_configuration.environments.wsl.dev_drive.mountpoint }}{{ shell_user_home }}"
+  register: shell_powershell_home
+  when:
+    - shell_configuration.environments.wsl.dev_drive is defined
+    - ((shell_xdg_plan.stdout | from_json).environment.XDG_DATA_HOME | default(''))
+      is match(shell_configuration.environments.wsl.dev_drive.mountpoint ~ '/')
+
 # Modules go where the account's shells look: the shared XDG_DATA_HOME when the drive is in use.
 # PSResourceGet's CurrentUser scope ignores XDG_DATA_HOME, so the directory is passed explicitly.
 - name: Install or update PowerShell modules
@@ -41,8 +51,9 @@
   environment:
     XDG_DATA_HOME: "{{ shell_powershell_data }}"
   vars:
-    shell_powershell_data: "{{ (shell_xdg_plan.stdout | from_json).environment.XDG_DATA_HOME
-      | default(shell_user_home ~ '/.local/share', true) if shell_xdg_plan.stdout is defined
+    shell_powershell_planned: "{{ (shell_xdg_plan.stdout | from_json).environment.XDG_DATA_HOME
+      | default(shell_user_home ~ '/.local/share', true) }}"
+    shell_powershell_data: "{{ shell_powershell_planned if shell_powershell_home.stat.exists | default(true)
       else shell_user_home ~ '/.local/share' }}"
   register: shell_powershell_result
   changed_when: shell_powershell_result.stdout | trim | length > 0

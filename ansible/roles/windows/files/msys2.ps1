@@ -4,7 +4,8 @@ param(
     [string]$Mode,
     [string]$Installer,
     [string[]]$Packages,
-    [string]$Cache
+    [string]$Cache,
+    [string]$Downloader
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,10 +68,9 @@ if (-not [IO.File]::Exists($bash)) {
 
     $null = [IO.Directory]::CreateDirectory($parent)
     if ([IO.Directory]::Exists($Root)) { [IO.Directory]::Delete($Root) }
-    $archive = Join-Path $env:TEMP 'msys2-base.sfx.exe'
-    Invoke-WebRequest -UseBasicParsing -Uri $Installer -OutFile $archive
+    $downloadCache = if ($Cache) { Join-Path $Cache 'installer' } else { Join-Path $env:TEMP 'shell-msys2-cache' }
+    $archive = & $Downloader -Url $Installer -Cache $downloadCache
     $process = Start-Process -FilePath $archive -ArgumentList '-y', "-o$parent" -Wait -PassThru -WindowStyle Hidden
-    Remove-Item -LiteralPath $archive -Force
     if ($process.ExitCode -ne 0) { throw "MSYS2 archive extraction failed ($($process.ExitCode))." }
     if ($leaf -ne 'msys64') { Rename-Item -LiteralPath $extracted -NewName $leaf }
 
