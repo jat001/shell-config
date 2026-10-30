@@ -11,7 +11,16 @@ if ($uri.IsFile) {
     $source = Get-Item -LiteralPath $uri.LocalPath
     $validator = "$($source.Length):$($source.LastWriteTimeUtc.Ticks)"
 } else {
-    $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $uri
+    $head = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $uri
+            break
+        } catch {
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
     $validator = [string]$head.Headers['ETag'] + [string]$head.Headers['Last-Modified']
 }
 $hash = [Security.Cryptography.SHA256]::Create()
@@ -26,9 +35,18 @@ $path = Join-Path $Cache ($key.Substring(0,16) + '-' + $name)
 if (-not [IO.File]::Exists($path)) {
     $partial = $path + '.' + [guid]::NewGuid().ToString('N') + '.part'
     try {
-        if ($uri.IsFile) { [IO.File]::Copy($source.FullName,$partial) }
-        else { Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $partial }
-        [IO.File]::Move($partial,$path)
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                if ($uri.IsFile) { [IO.File]::Copy($source.FullName, $partial) }
+                else { Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $partial }
+                break
+            } catch {
+                if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
+                if ($attempt -eq 3) { throw }
+                Start-Sleep -Seconds (5 * $attempt)
+            }
+        }
+        [IO.File]::Move($partial, $path)
     } finally { if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) } }
 }
 $path

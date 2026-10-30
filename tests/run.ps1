@@ -173,8 +173,19 @@ if ($Target -contains 'sandbox') {
     $msys2 = Join-Path $cache 'msys2-base-x86_64-latest.sfx.exe'
     if (-not [IO.File]::Exists($msys2)) {
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -UseBasicParsing -OutFile $msys2 `
-            -Uri 'https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe'
+        $partial = $msys2 + '.part'
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Invoke-WebRequest -UseBasicParsing -OutFile $partial `
+                    -Uri 'https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe'
+                Move-Item -LiteralPath $partial -Destination $msys2
+                break
+            } catch {
+                if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
+                if ($attempt -eq 3) { throw }
+                Start-Sleep -Seconds (5 * $attempt)
+            }
+        }
     }
     foreach ($user in @($windowsUser, $adminUser)) {
         if ([IO.File]::Exists((Join-Path $StateDirectory "winrm-$user.pem"))) { continue }

@@ -38,10 +38,19 @@ if ($Package) {
 }
 
 if (-not $Cache) { throw 'A WSL runtime cache directory is required.' }
-$request = [Net.HttpWebRequest]::Create('https://github.com/microsoft/WSL/releases/latest')
-$request.AllowAutoRedirect = $false
-$response = $request.GetResponse()
-try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+$tag = $null
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+        $request = [Net.HttpWebRequest]::Create('https://github.com/microsoft/WSL/releases/latest')
+        $request.AllowAutoRedirect = $false
+        $response = $request.GetResponse()
+        try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+        break
+    } catch {
+        if ($attempt -eq 3) { throw }
+        Start-Sleep -Seconds (5 * $attempt)
+    }
+}
 # GitHub's latest redirect is a numeric tag. A pre-release or an unexpected host must not be installed.
 if ($tag -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw 'Unexpected WSL release tag.' }
 # The published MSI name uses four version parts. A three-part tag is padded with .0.
@@ -58,8 +67,17 @@ $path = Join-Path $directory $name
 if (-not [IO.File]::Exists($path)) {
     $partial = $path + '.' + [guid]::NewGuid().ToString('N') + '.part'
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/microsoft/WSL/releases/download/$tag/$name" `
-            -OutFile $partial
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/microsoft/WSL/releases/download/$tag/$name" `
+                    -OutFile $partial
+                break
+            } catch {
+                if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
+                if ($attempt -eq 3) { throw }
+                Start-Sleep -Seconds (5 * $attempt)
+            }
+        }
         Assert-MicrosoftSignature $partial
         [IO.File]::Move($partial, $path)
     } finally {

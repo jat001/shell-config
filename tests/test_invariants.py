@@ -24,6 +24,12 @@ class InvariantTests(unittest.TestCase):
         install = bootstrap.index('ca-certificates openssh-server python3 python3-apt btrfs-progs')
         self.assertLess(reason, install)
 
+    def test_controller_build_retries_and_reuses_a_saved_image(self):
+        installer = (root / 'install.ps1').read_text(encoding='utf-8')
+        self.assertIn('function Invoke-ControllerBuild', installer)
+        self.assertEqual(installer.count('Invoke-ControllerBuild @('), 2)
+        self.assertIn("Join-Path $CacheDirectory 'images'", installer)
+
     def test_mirrored_networking_is_applied_before_sshd_listens_on_loopback(self):
         installer = (root / 'install.ps1').read_text(encoding='utf-8')
         shutdown = installer.index('& $wsl --shutdown')

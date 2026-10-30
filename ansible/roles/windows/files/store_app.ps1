@@ -16,22 +16,46 @@ $ProgressPreference = 'SilentlyContinue'
 $Ansible.Changed = $false
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+function Invoke-StoreDownload {
+    param([string]$Uri, [string]$Destination)
+
+    if ([IO.File]::Exists($Destination)) { return }
+    $partial = $Destination + '.part'
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $partial
+            Move-Item -LiteralPath $partial -Destination $Destination
+            return
+        } catch {
+            if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
+}
+
 function Update-WinGetClient {
     $release = 'https://github.com/microsoft/winget-cli/releases'
-    $request = [Net.HttpWebRequest]::Create("$release/latest")
-    $request.AllowAutoRedirect = $false
-    $response = $request.GetResponse()
-    try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+    $tag = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $request = [Net.HttpWebRequest]::Create("$release/latest")
+            $request.AllowAutoRedirect = $false
+            $response = $request.GetResponse()
+            try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+            break
+        } catch {
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds (5 * $attempt)
+        }
+    }
     if ($tag -notmatch '^v[0-9.]+$') { throw 'Unexpected WinGet release tag.' }
     $directory = Join-Path $Cache "winget/$tag"
     [void][IO.Directory]::CreateDirectory($directory)
     $assets = @('Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle','DesktopAppInstaller_Dependencies.zip')
     foreach ($asset in $assets) {
         $path = Join-Path $directory $asset
-        if (-not [IO.File]::Exists($path)) {
-            Invoke-WebRequest -UseBasicParsing -Uri "$release/download/$tag/$asset" -OutFile "$path.part"
-            Move-Item -LiteralPath "$path.part" -Destination $path
-        }
+        Invoke-StoreDownload -Uri "$release/download/$tag/$asset" -Destination $path
     }
     $work = Join-Path $directory ([guid]::NewGuid().ToString('N'))
     try {
@@ -65,18 +89,24 @@ if ($winget) {
     $Ansible.Result.source = 'msstore'
     if ($Ansible.CheckMode) { $Ansible.Changed = -not $installed; return }
     $action = if ($installed) { 'upgrade' } else { 'install' }
-    $global:LASTEXITCODE = 0
-    $output = & $winget.Source $action --id $StoreId --source msstore --exact --silent `
-        --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-String
-    if ($LASTEXITCODE -eq -1978335138) {
-        Update-WinGetClient
-        $currentWinget = Get-AppxPackage -Name Microsoft.DesktopAppInstaller | Sort-Object Version -Descending | Select-Object -First 1
-        $output = & (Join-Path $currentWinget.InstallLocation 'winget.exe') $action --id $StoreId --source msstore --exact --silent `
+    $executable = $winget.Source
+    $output = ''
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $global:LASTEXITCODE = 0
+        $output = & $executable $action --id $StoreId --source msstore --exact --silent `
             --accept-package-agreements --accept-source-agreements --disable-interactivity 2>&1 | Out-String
-    }
-    # 0x8A15002B: no applicable upgrade.
-    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) {
-        throw "winget $action $StoreId failed ($LASTEXITCODE): $output"
+        # -1978335138: this winget client cannot use the current source. Refresh it once, then retry.
+        if ($LASTEXITCODE -eq -1978335138 -and $executable -eq $winget.Source) {
+            Update-WinGetClient
+            $currentWinget = Get-AppxPackage -Name Microsoft.DesktopAppInstaller |
+                Sort-Object Version -Descending | Select-Object -First 1
+            $executable = Join-Path $currentWinget.InstallLocation 'winget.exe'
+            continue
+        }
+        # 0x8A15002B: no applicable upgrade.
+        if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { break }
+        if ($attempt -eq 3) { throw "winget $action $StoreId failed ($LASTEXITCODE): $output" }
+        Start-Sleep -Seconds 10
     }
     $current = Get-Installed
     if (-not $current) { throw "winget reported success, but $Name is not installed: $output" }
@@ -88,10 +118,19 @@ if ($winget) {
 # The latest-release page redirects to its tag; this avoids the rate-limited API.
 # The tag must be v plus three or four numeric parts. A preview tag is not installed over the Store package.
 $Ansible.Result.source = 'github'
-$request = [Net.HttpWebRequest]::Create("$Release/latest")
-$request.AllowAutoRedirect = $false
-$response = $request.GetResponse()
-try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+$tag = $null
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+        $request = [Net.HttpWebRequest]::Create("$Release/latest")
+        $request.AllowAutoRedirect = $false
+        $response = $request.GetResponse()
+        try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+        break
+    } catch {
+        if ($attempt -eq 3) { throw }
+        Start-Sleep -Seconds (5 * $attempt)
+    }
+}
 if ($tag -notmatch '^v(\d+(\.\d+){2,3})$') { throw "Unexpected $Name release: $tag" }
 $version = $Matches[1]
 if ($installed -and [version]$installed.Version -ge [version]$version) { return }
@@ -104,10 +143,7 @@ $file = $Asset.Replace('{version}', $version)
 $directory = if ($Cache) { $Cache } else { Join-Path $env:TEMP 'shell-store-apps' }
 $null = New-Item -ItemType Directory -Force -Path $directory
 $download = Join-Path $directory $file
-if (-not [IO.File]::Exists($download)) {
-    Invoke-WebRequest -UseBasicParsing -Uri "$Release/download/$tag/$file" -OutFile "$download.part"
-    Move-Item -Force -LiteralPath "$download.part" -Destination $download
-}
+Invoke-StoreDownload -Uri "$Release/download/$tag/$file" -Destination $download
 
 if ($download -notlike '*.zip') {
     Add-AppxPackage -Path $download -ForceApplicationShutdown

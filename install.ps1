@@ -58,6 +58,22 @@ function Invoke-Wslc {
     if ($LASTEXITCODE -ne 0 -and -not $AllowFailure) { throw "wslc $($args[0]) failed ($LASTEXITCODE)." }
 }
 
+function Invoke-ControllerBuild {
+    param([string[]]$Arguments)
+
+    # Docker Hub and Galaxy both drop connections. The image build is one wslc invocation, so the
+    # retry has to wrap that invocation; the three attempts inside the image do not cover the pull.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-Wslc @Arguments
+            return
+        } catch {
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds 10
+        }
+    }
+}
+
 function Invoke-Wsl {
     param([string]$Distribution, [string[]]$Arguments, [switch]$Root)
 
@@ -205,16 +221,43 @@ $image = 'shell-ansible:' + [BitConverter]::ToString(
     $hash.ComputeHash($utf8.GetBytes($fingerprint -join ''))
 ).Replace('-', '').Substring(0, 12).ToLowerInvariant()
 
+$imageCache = Join-Path $CacheDirectory 'images'
+$null = [IO.Directory]::CreateDirectory($imageCache)
+$imageArchive = Join-Path $imageCache ($image.Replace(':', '-') + '.tar')
+
+function Import-ControllerImage {
+    if (-not [IO.File]::Exists($imageArchive)) { return $false }
+    Invoke-Wslc -AllowFailure image load -i $imageArchive *> $null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    Invoke-Wslc -AllowFailure image inspect $image *> $null
+    $LASTEXITCODE -eq 0
+}
+
+function Export-ControllerImage {
+    $partial = $imageArchive + '.part'
+    if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
+    Invoke-Wslc image save -o $partial $image
+    if ([IO.File]::Exists($imageArchive)) { [IO.File]::Delete($imageArchive) }
+    [IO.File]::Move($partial, $imageArchive)
+}
+
 Invoke-Wslc -AllowFailure image inspect $image *> $null
-if ($LASTEXITCODE -ne 0) {
-    Invoke-Wslc build -t $image -f (Join-Path $context 'Containerfile') $context
+if ($LASTEXITCODE -ne 0 -and -not (Import-ControllerImage)) {
+    Invoke-ControllerBuild @(
+        'build', '-t', $image, '-f', (Join-Path $context 'Containerfile'), $context
+    )
+    Export-ControllerImage
 } elseif ($Mode -eq 'update' -and -not $PrepareOnly) {
     $previous = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
-    Invoke-Wslc build --pull --no-cache -t $image -f (Join-Path $context 'Containerfile') $context
+    Invoke-ControllerBuild @(
+        'build', '--pull', '--no-cache', '-t', $image, '-f', (Join-Path $context 'Containerfile'), $context
+    )
     $current = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
     # A rebuild that keeps the same image id must not delete the tag that still points at it.
     if ($previous -and $previous -ne $current) { & $wslc rmi $previous *> $null }
+    Export-ControllerImage
 }
+if (-not [IO.File]::Exists($imageArchive)) { Export-ControllerImage }
 
 $null = [IO.Directory]::CreateDirectory($StateDirectory)
 [IO.File]::WriteAllText((Join-Path $StateDirectory 'controller-image.txt'), $image + [char]10, $utf8)

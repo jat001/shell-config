@@ -24,7 +24,16 @@ if (-not $installed -and [IO.Directory]::Exists($Destination) -and
     throw "Existing directory is not empty: $Destination"
 }
 
-$head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
+$head = $null
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    try {
+        $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
+        break
+    } catch {
+        if ($attempt -eq 3) { throw }
+        Start-Sleep -Seconds (5 * $attempt)
+    }
+}
 $release = @($head.Headers['ETag'])[0]
 if (-not $release) { $release = @($head.Headers['Last-Modified'])[0] }
 if ($installed -and [IO.File]::Exists($marker) -and

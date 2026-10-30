@@ -71,12 +71,28 @@ if ($Ansible.CheckMode) {
 if (-not [IO.File]::Exists($scoop)) {
     # update refuses to bootstrap Scoop. A missing install is an init failure, not an upgrade.
     if ($Mode -eq 'update') { throw "Scoop is not installed at $Root; run the init mode first." }
-    $installer = Join-Path $env:TEMP 'scoop-install.ps1'
-    Invoke-WebRequest -UseBasicParsing -Uri 'https://get.scoop.sh' -OutFile $installer
+    $installer = if ($Cache) {
+        $null = [IO.Directory]::CreateDirectory($Cache)
+        Join-Path $Cache 'scoop-install.ps1'
+    } else { Join-Path $env:TEMP 'scoop-install.ps1' }
+    if (-not [IO.File]::Exists($installer)) {
+        $partial = $installer + '.part'
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri 'https://get.scoop.sh' -OutFile $partial
+                Move-Item -LiteralPath $partial -Destination $installer
+                break
+            } catch {
+                if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
+                if ($attempt -eq 3) { throw }
+                Start-Sleep -Seconds (5 * $attempt)
+            }
+        }
+    }
     try {
         $null = Invoke-PowerShell $installer -RunAsAdmin -ScoopDir $Root
     } finally {
-        Remove-Item -LiteralPath $installer -Force
+        if (-not $Cache) { Remove-Item -LiteralPath $installer -Force }
     }
     if (-not [IO.File]::Exists($scoop)) { throw 'Scoop installation failed.' }
     $Ansible.Changed = $true

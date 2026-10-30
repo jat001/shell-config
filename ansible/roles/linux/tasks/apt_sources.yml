@@ -18,6 +18,9 @@
   loop_control:
     label: "{{ item.name }}"
   register: shell_apt_keys
+  until: shell_apt_keys is succeeded
+  retries: 3
+  delay: 10
 
 - name: Configure scoped apt repositories
   ansible.builtin.copy:

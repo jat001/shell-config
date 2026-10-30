@@ -21,7 +21,7 @@ Playbook 以 `strategy: free` 并行配置 Windows/MSYS2 和各 Linux 主机。�
 - `${DEV_DRIVE}` 和 `${WINDOWS_HOME}` 只用于展开，不导出。WSL 上 `DEV_DRIVE` 仅在 `/proc/self/mounts` 里挂载点的文件系统与配置一致时定义。
 - 已由其他方式安装的同名命令不接管。GitHub 发布包先校验长度、上游 SHA256 和 ELF，再原子切换链接；失败时恢复旧链接。
 - 开发盘的 VHDX 路径必须落在 `-WindowsHome` 下面，并且是 `.vhdx`。已有盘不调整容量、不格式化。
-- 控制容器标签是 `Containerfile` 与两份 `requirements` 的哈希。`update` 才 `--pull --no-cache` 重建。
+- 控制容器标签是 `Containerfile` 与两份 `requirements` 的哈希。已有同标签镜像或缓存里的 tar 直接用。`update` 才 `--pull --no-cache` 重建，构建失败会再试两次。成功后的镜像 tar 写到下载缓存的 `images`。pip 和 Galaxy 仍用构建缓存挂载，基础镜像留在 wslc 的本地镜像库。
 
 ## 测试
 
