@@ -9,12 +9,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The downloader is a script file. A Restricted policy, as on Windows Sandbox, blocks it.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $ProgressPreference = 'SilentlyContinue'
 $Ansible.Changed = $false
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $marker = Join-Path $Destination '.shell-release'
 $installed = [IO.File]::Exists((Join-Path $Destination $Entry))
 
+# No marker means this tree was not installed here. update does not take it over, and a non-update run leaves it alone.
 if ($installed -and ($Mode -ne 'update' -or -not [IO.File]::Exists($marker))) { return }
 if (-not $installed -and [IO.Directory]::Exists($Destination) -and
     [IO.Directory]::GetFileSystemEntries($Destination).Length) {

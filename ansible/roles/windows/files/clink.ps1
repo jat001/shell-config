@@ -11,6 +11,7 @@ $before = (Get-ItemProperty -LiteralPath $key -Name AutoRun -ErrorAction Silentl
 $expanded = [Environment]::ExpandEnvironmentVariables([string]$before)
 $pattern = '(?i)(?:^|&)\s*(?:call\s+)?' + [regex]::Escape($expected) + '(?=\s|&|$)'
 
+# The match is on the expanded value, so an existing registration that already names this clink.bat is kept with its extra arguments.
 if ($expanded -match $pattern) { return }
 
 $Ansible.Changed = $true

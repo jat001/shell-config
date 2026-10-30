@@ -41,7 +41,8 @@ def shell_windows_items(entries, home, repository, fish, plugins, clink):
     return items
 
 
-def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys=False, skel=None):
+def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys=False, skel=None,
+                     nushell_defaults=''):
     items = [
         {'path': _join(home, '.config/shell'), 'state': 'link', 'src': repository},
         {
@@ -77,7 +78,12 @@ def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys
             'type': 'file',
             'content': entry['content'],
         }
-        if '/' not in unix:
+        # Only a top-level name exists in /etc/skel or base-files. The Debian Nushell package
+        # writes a scaffold under .config/nushell; those two files are defaults only when a
+        # capture from this nu was supplied. Any other content still conflicts.
+        if nushell_defaults and unix in ('.config/nushell/env.nu', '.config/nushell/config.nu'):
+            item['defaults'] = [_join(nushell_defaults, unix.rsplit('/', 1)[-1])]
+        elif '/' not in unix:
             if msys:
                 item['defaults'] = [_join(skel, unix)] if skel else []
             else:
@@ -149,7 +155,7 @@ class _Undefined(Exception):
 
 
 def _strip_jsonc(text):
-    # Windows Terminal accepts comments and trailing commas in settings.json.
+    # Windows Terminal accepts comments and trailing commas. Strings are copied intact before either is removed.
     output = []
     index = 0
     while index < len(text):
@@ -185,6 +191,7 @@ def _expand(value, variables):
             try:
                 items.append(_expand(item, variables))
             except _Undefined:
+                # A list entry whose variable is unset is dropped. The existing settings entry is then left as it was.
                 pass
         return items
     if isinstance(value, str):

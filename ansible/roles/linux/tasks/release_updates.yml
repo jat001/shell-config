@@ -20,6 +20,7 @@
       'users': shell_accounts | default([ansible_facts.user_id])} | to_nice_json }}\n"
   register: shell_release_manifest_copy
 
+# The updater binary and the manifest have to be on disk before a check can compare versions.
 - name: Install or update fallback release packages
   ansible.builtin.command:
     argv: "{{ ['/usr/bin/python3', shell_release_updater, '--manifest', shell_release_manifest]

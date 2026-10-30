@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
   "extends": "msys2.omp.json",
   "version": 4,
+  // fish already emits shell-integration marks. Leaving this on prints them twice.
   "shell_integration": false,
   "blocks": []
 }

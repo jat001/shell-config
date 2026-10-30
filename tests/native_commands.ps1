@@ -14,6 +14,7 @@ $wslc = Get-Wslc
 if (-not $wslc) { throw 'The installed WSL container executable could not be resolved.' }
 $savedPath = $env:PATH
 try {
+    # A stale process PATH is the case Get-Wslc exists for. System32 alone must still resolve the registered binary.
     $env:PATH = Join-Path $env:SystemRoot 'System32'
     if ((Get-Wslc) -ine $wslc) { throw 'WSL cannot be resolved when the process PATH is stale.' }
 } finally { $env:PATH = $savedPath }

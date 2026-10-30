@@ -75,6 +75,7 @@
   tags: [always]
 
 # A preview of a distribution that has never been configured cannot plan without jq, which the packages add.
+# The account loop still runs in check mode once jq exists; otherwise the first real run does the configuration.
 - name: Report accounts that cannot be previewed
   ansible.builtin.debug:
     msg: jq is not installed yet, so the account configuration is previewed after the first real run.

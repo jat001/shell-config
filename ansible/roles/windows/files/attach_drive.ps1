@@ -58,6 +58,7 @@ public static void Attach(string path) {
     if (error != 0) { throw new System.ComponentModel.Win32Exception(error); }
     using (handle) {
         var attach = new AttachParameters { Version=1 };
+        // 0x400 attaches at boot and 0x4 keeps the disk after this process exits. Both are required.
         error = AttachVirtualDisk(handle, IntPtr.Zero, 0x404, 0, ref attach, IntPtr.Zero);
         if (error != 0) { throw new System.ComponentModel.Win32Exception(error); }
     }
@@ -71,6 +72,7 @@ $legacy=@(Get-ChildItem -LiteralPath $key -ErrorAction SilentlyContinue | Where-
 })
 $detached = $false
 try {
+    # A legacy registration is removed only for a test VM that opted into detach. A live disk is left mounted.
     if ($AllowDetach -and $legacy.Count) {
         Dismount-DiskImage -ImagePath $Path
         $detached = $true

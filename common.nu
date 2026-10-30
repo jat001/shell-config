@@ -36,6 +36,7 @@ $env.config.completions.external.completer = {|place|
             return null
         }
         let lines = ($response.stdout | lines)
+        # Docker's last line is ":<bits>". Bit 1 is an error, 8 and 16 ask for file filtering, 4 means no file fallback.
         let directive = (try { $lines | last | str trim | str substring 1.. | into int } catch { 1 })
         if ($directive bit-and 1) != 0 {
             return null

@@ -19,6 +19,7 @@ $linux = if ($Distribution) { @('-d',$Distribution) } else { @() }
 foreach ($filesystem in 'ReFS','btrfs') {
     $path = Join-Path $Directory "$filesystem.vhdx"
     $directoryExisted = Test-Path -LiteralPath $Directory
+    # WhatIf has to be first. A later success must not hide a preview that already created the disk.
     & $creator -Path $path -FileSystem $filesystem -SizeGiB $SizeGiB -Distribution $Distribution -WhatIf
     if ([IO.File]::Exists($path) -or (-not $directoryExisted -and (Test-Path -LiteralPath $Directory))) {
         throw 'Preview created a filesystem entry.'

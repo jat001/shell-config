@@ -1,3 +1,4 @@
+# The Linux containers have no Windows disk. These files stand in for the Windows profile the links point at.
 - name: Create the Windows side of the simulated WSL hosts
   hosts: linux
   gather_facts: false

@@ -13,6 +13,7 @@
 - name: Configure Windows, MSYS2 and Linux hosts
   hosts: windows:linux:wsl
   gather_facts: false
+  # free runs every host without waiting for the others, including the Windows connection and the WSL distributions.
   strategy: free
   tasks:
     - name: Configure Windows and MSYS2

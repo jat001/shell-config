@@ -37,6 +37,7 @@
     label: "{{ item.name }}"
   register: shell_apt_source_files
 
+# Priority -1 keeps every other package on Debian's own mirrors, including libraries these packages link against.
 - name: Restrict each third-party repository to its managed packages
   ansible.builtin.copy:
     dest: "/etc/apt/preferences.d/shell-{{ item.name }}"

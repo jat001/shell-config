@@ -43,6 +43,7 @@
     - shell_windows_dev_drive | length > 0
     - shell_windows_dev_drive_file.stat.exists
 
+# The letter comes from the attached disk. The configuration stores only the VHDX path.
 - name: Resolve Windows development drive letter
   ansible.builtin.set_fact:
     shell_dev_drive_letter: "{{ shell_windows_dev_drive_state.result.letter

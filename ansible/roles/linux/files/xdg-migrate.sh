@@ -18,11 +18,13 @@ for path in "$source_dir"/* "$source_dir"/.[!.]* "$source_dir"/..?*; do
         [ "$name" != "$exclude" ] || continue 2
     done
     target=$shared_dir/$name
+    # An older revision left a link at the local path. Leave it; do not replace it with a second copy.
     if [ -L "$path" ] && [ "$(readlink -- "$path")" = "$target" ]; then
         continue
     fi
     if [ -e "$target" ] || [ -L "$target" ]; then
         # Directories without files, as programs create at startup, hold nothing to keep.
+        # Same name on both sides is a conflict, except a directory that contains only empty directories.
         if [ -d "$path" ] && [ ! -L "$path" ] && [ -z "$(find "$path" ! -type d -print | head -n 1)" ]; then
             [ "$mode" = check ] || find "$path" -depth -type d -empty -delete
             printf 'remove %s\n' "$path"

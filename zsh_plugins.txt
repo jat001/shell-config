@@ -1,3 +1,4 @@
+# Completions stay before highlighting. The pre hook finishes compinit before the highlighter is loaded.
 zsh-users/zsh-autosuggestions branch:v0.7.1
 zsh-users/zsh-completions branch:0.36.0 kind:fpath path:src
 zsh-users/zsh-syntax-highlighting branch:0.8.0 pre:_shell_init_completion

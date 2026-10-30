@@ -10,6 +10,7 @@ $null = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentT
 $null = [Windows.Web.Http.HttpProgress, Windows.Web.Http, ContentType=WindowsRuntime]
 
 $filter = [Windows.Web.Http.Filters.HttpBaseProtocolFilter]::new()
+# The Windows HTTP stack is what WSL itself uses. A cached or proxied body must not be reused before the hash check.
 $filter.CacheControl.WriteBehavior = 'NoCache'
 $client = [Windows.Web.Http.HttpClient]::new($filter)
 $client.DefaultRequestHeaders.Append('Accept', 'application/octet-stream')

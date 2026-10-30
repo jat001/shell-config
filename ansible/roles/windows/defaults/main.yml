@@ -1,6 +1,7 @@
 shell_msys2: true
 shell_dev_drive_task: auto
 shell_backslash: '\'
+# false makes the play report the missing admin step and continue. Links then fail closed if Developer Mode is off.
 shell_elevate: true
 shell_auto_attach_key: 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
 

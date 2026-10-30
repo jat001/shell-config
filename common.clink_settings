@@ -1,3 +1,4 @@
+# Clink expands the tilde itself. Readline's $include does not, which is why the inputrc entry uses ~ too.
 ohmyposh.theme = ~/.config/oh-my-posh/config.omp.json
 
 history.shared = True

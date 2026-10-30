@@ -1,3 +1,4 @@
+# Empty values are passed on purpose: an inherited WSL or MSYS variable must not reclassify this shell.
 _shell_environment="$(
     MSYSTEM="${MSYSTEM-}" \
         WSL_DISTRO_NAME="${WSL_DISTRO_NAME-}" \
@@ -18,6 +19,7 @@ fi
 _shell_windows_home=
 _shell_mounts=
 if [ "$_shell_environment" = wsl ]; then
+    # cd -P resolves the symlink; two parents up is the Windows profile because the repo lives at <profile>/.config/shell.
     _shell_windows_home="$(cd -P "$HOME/.config/shell" && cd ../.. && pwd)"
     _shell_mounts="$(</proc/self/mounts)"
 fi

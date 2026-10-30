@@ -1,3 +1,4 @@
+# Created even when the development drive is mounted. Oh My Posh ignores OMP_CACHE_DIR until the directory exists.
 # OMP_CACHE_DIR points here so oh-my-posh's init scripts, which name its binary, stay in this distribution;
 # oh-my-posh only uses the directory if it exists.
 - name: Create local cache directory
@@ -5,10 +6,25 @@
     path: "{{ shell_user_home }}/.cache"
     state: directory
 
+# `config reset -w` writes nothing unless .config/nushell already exists, and it still exits 0.
+# --no-config-file also writes nothing. `config nu --default` is a different embedded file.
+# The fingerprint check refuses a capture that rewrote the account's own files.
+# A distribution without nu, or a nu that writes nothing, leaves the directory empty and succeeds.
+- name: Capture unmodified Nushell configuration
+  ansible.builtin.command:
+    argv:
+      - sh
+      - "{{ shell_repository }}/ansible/roles/linux/files/nushell-defaults.sh"
+      - "{{ '/tmp/shell-nushell-defaults-' ~ shell_account_uid }}"
+      - "{{ shell_user_home }}"
+  changed_when: false
+  check_mode: false
+
 - name: Install entries and shared links
   shell_paths:
     items: "{{ shell_entries | shell_unix_items(shell_user_home, shell_windows_home_path,
-      shell_repository, shell_fish_directories, shell_plugin_content) }}"
+      shell_repository, shell_fish_directories, shell_plugin_content,
+      nushell_defaults='/tmp/shell-nushell-defaults-' ~ shell_account_uid) }}"
 
 - name: Plan configured links
   ansible.builtin.command:

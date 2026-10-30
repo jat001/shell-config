@@ -24,6 +24,7 @@ $definition = $ast.Find({
 if (-not $definition) { throw 'The distribution cache function is missing.' }
 . ([scriptblock]::Create($definition.Extent.Text))
 
+# DownloadOnly stops before the elevated install. This test must not enable the Windows feature or install the MSI.
 $package = & $bootstrap -Cache $CacheDirectory -DownloadOnly
 $stamp = (Get-Item -LiteralPath $package).LastWriteTimeUtc.Ticks
 $reused = & $bootstrap -Cache $CacheDirectory -DownloadOnly

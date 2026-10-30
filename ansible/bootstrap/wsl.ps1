@@ -42,7 +42,9 @@ $request = [Net.HttpWebRequest]::Create('https://github.com/microsoft/WSL/releas
 $request.AllowAutoRedirect = $false
 $response = $request.GetResponse()
 try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
+# GitHub's latest redirect is a numeric tag. A pre-release or an unexpected host must not be installed.
 if ($tag -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw 'Unexpected WSL release tag.' }
+# The published MSI name uses four version parts. A three-part tag is padded with .0.
 $version = if (($tag -split '\.').Count -eq 3) { "$tag.0" } else { $tag }
 $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
     $env:PROCESSOR_ARCHITEW6432

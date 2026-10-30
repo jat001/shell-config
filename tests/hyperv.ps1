@@ -26,6 +26,7 @@ $identity = [IO.File]::ReadAllText((Join-Path $StateDirectory 'vm-created.json')
 $vmName = $identity.Name
 $utf8 = [Text.UTF8Encoding]::new($false)
 
+# Start is the only action that elevates. Later actions only queue a file for that worker.
 if ($Action -eq 'Start') {
     if ([IO.File]::Exists($workerPath)) {
         $worker = [IO.File]::ReadAllText($workerPath) | ConvertFrom-Json
@@ -52,6 +53,7 @@ if ($Action -ne 'Worker') {
 
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Worker requires elevation.' }
+# The name is not enough. A different VM that reused the name is refused instead of receiving this deployment.
 if ([string](Get-VM -Name $vmName).Id -ne $identity.Id) { throw 'Unexpected VM identity.' }
 $credential = Import-Clixml (Join-Path $StateDirectory 'guest-credential.xml')
 $resultDirectory = Join-Path $StateDirectory 'operations'
@@ -160,13 +162,23 @@ try {
                         $files = & git.exe -C $Repository ls-files --cached --others --exclude-standard
                         if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate repository files.' }
                         foreach ($relative in $files) {
-                            $destination=Join-Path $target $relative
-                            Invoke-Command -Session $session -ArgumentList ([IO.Path]::GetDirectoryName($destination)) -ScriptBlock {
-                                param($Path)
-                                [void][IO.Directory]::CreateDirectory($Path)
+                            $source = Join-Path $Repository $relative
+                            $destination = Join-Path $target ($relative -replace '/', '\')
+                            # ArgumentList unwraps a byte array into separate arguments. A string does not.
+                            # Copy-Item -ToSession also leaves an existing guest file unchanged.
+                            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($source))
+                            Invoke-Command -Session $session -ArgumentList $destination, $encoded -ScriptBlock {
+                                param($Path, $Encoded)
+                                $parent = Split-Path -Parent $Path
+                                if ($parent) { [void][IO.Directory]::CreateDirectory($parent) }
+                                [IO.File]::WriteAllBytes($Path, [Convert]::FromBase64String($Encoded))
                             }
-                            Copy-Item -ToSession $session -LiteralPath (Join-Path $Repository $relative) -Destination $destination -Force
                         }
+                        $updated = Invoke-Command -Session $session -ScriptBlock {
+                            Select-String -LiteralPath (Join-Path $env:USERPROFILE '.config\shell\install.ps1') `
+                                -Pattern 'start-sshd.sh' -SimpleMatch -Quiet
+                        }
+                        if (-not $updated) { throw 'Guest installer was not updated.' }
                         Copy-Cache -Direction ToGuest
                         Invoke-Command -Session $session -ArgumentList $target -ScriptBlock {
                             param($Repository)
@@ -174,6 +186,7 @@ try {
                         }
                     }
                     'Restore' {
+                        # Restoring discards every guest change made after that snapshot, including a deployment in progress.
                         if ($request.Baseline -notin @('Clean-Windows','WSL-Ready')) { throw 'Invalid baseline.' }
                         if ($jobPid) { throw 'Wait for the current deployment to finish.' }
                         if ($session) { Remove-PSSession $session; $session=$null }

@@ -17,6 +17,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 
 if ((Get-Service WinRM).Status -ne 'Running') { Start-Service WinRM }
 
+# A network logon otherwise gets a filtered admin token, which cannot create the symlinks this test deploys.
 if ($FullToken) {
     Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
         -Name LocalAccountTokenFilterPolicy -Value 1 -Type DWord

@@ -1,2 +1,3 @@
+# Minimum only. The update rebuild pulls the newest ansible-core that still supports the image's Python.
 ansible-core>=2.21
 pypsrp>=0.9

@@ -37,6 +37,7 @@ else
         end
         | expand($variables);
 
+    # Only a Windows absolute path is rewritten. WSL and MSYS2 aliases stay POSIX even when they point at a drive.
     def native_alias_path:
         if $platform == "windows" and test("^([A-Za-z]:[/\\\\]|[/\\\\]{2})") then
             gsub("/"; "\\")
@@ -182,6 +183,7 @@ else
     | {environment: $environment, aliases: $aliases, links: $links}
 
     | if $mode == "plan" then
+        # Nushell load-env wants PATH as a list. Every other mode exports the joined string instead.
         .environment |= (if has("PATH") then .PATH = $path else . end)
 
       elif $mode == "sh" then

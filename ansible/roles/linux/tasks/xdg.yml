@@ -1,3 +1,4 @@
+# An unmounted drive resolves to the local directory. Moving that directory onto itself is rejected here.
 - name: Resolve shared XDG directories
   ansible.builtin.set_fact:
     shell_xdg_migrations: "{{ [

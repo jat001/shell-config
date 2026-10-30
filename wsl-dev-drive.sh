@@ -7,7 +7,7 @@ drive=$(jq -c '.environments.wsl.dev_drive // null' "$configuration")
 [ "$drive" != null ] || exit 0
 mountpoint=$(printf '%s' "$drive" | jq -er '.mountpoint')
 filesystem=$(printf '%s' "$drive" | jq -er '.filesystem')
-# Kept off the drive: it is read before the drive is mounted.
+# Kept off the drive: it is read before the drive is mounted, and it must not follow XDG_STATE_HOME onto that drive.
 state=$HOME/.local/state/shell/dev-drive.uuid
 uuid=$(cat "$state" 2>/dev/null || true)
 task=$(printf '%s' "$drive" | jq -er '.task')
@@ -16,6 +16,7 @@ schtasks=$(printf '%s' "$drive" | jq -er '.schtasks')
 check_mount() {
     actual=$(findmnt -rn -M "$mountpoint" -o UUID,FSTYPE) || return 1
     actual_uuid=${actual%% *}
+    # exit, not return: a wrong filesystem at the mountpoint fails the service instead of requesting another attach.
     if [ "${actual#* }" != "$filesystem" ] || [ -z "$actual_uuid" ] ||
         { [ -n "$uuid" ] && [ "$actual_uuid" != "$uuid" ]; }; then
         printf 'Unexpected filesystem at %s: %s\n' "$mountpoint" "$actual" >&2

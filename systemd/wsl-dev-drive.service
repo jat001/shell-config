@@ -6,9 +6,11 @@ StartLimitBurst=3
 [Service]
 Type=oneshot
 ExecStart=/bin/sh %h/.config/shell/wsl-dev-drive.sh
+# The mount is shared by every distribution, so stopping this user service must not detach it.
 RemainAfterExit=yes
 Restart=on-failure
 RestartSec=5
+# The script waits up to 60 seconds for the mount; the unit limit has to be longer than that.
 TimeoutStartSec=75
 
 [Install]

@@ -12,6 +12,7 @@
           "type": "path",
           "style": "plain",
           "options": {
+            // DEV_DRIVE is the Windows letter. Without this map the MSYS home is shown as a Windows path.
             "mapped_locations": {
               "{{ .Env.DEV_DRIVE }}/msys2/home/{{ .UserName }}": "~"
             }

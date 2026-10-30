@@ -26,6 +26,7 @@ $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding =
 # Windows PowerShell drops empty native arguments, so WSL-only values are passed only on WSL.
 $_shared_arguments = @()
 if ($_shared_platform -eq 'wsl') {
+    # The repository is always <Windows home>/.config/shell, whether this path is the link or its target.
     $_shared_arguments = @(
         '--arg', 'windows_home',
         (Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)),
@@ -64,6 +65,7 @@ if ($_shared_platform -ne 'windows' -and $env:XDG_DATA_HOME) {
 Import-Module PSCompletions
 
 if (Get-Command docker -ErrorAction SilentlyContinue) {
+    # The replacement is a no-op unless it matches the Docker CLI script exactly, which keeps the caller's error policy.
     $_shared_completion = docker completion powershell | Out-String
     $_shared_completion.Replace(
         'Invoke-Expression -OutVariable out "$RequestComp" 2>&1 | Out-Null',
@@ -81,6 +83,7 @@ Set-PSReadlineKeyHandler -Key UpArrow -Function HistorySearchBackward
 Set-PSReadlineKeyHandler -Key DownArrow -Function HistorySearchForward
 
 if ($_shared_platform -eq 'windows') {
+    # Machine entries are moved after the user entries so Scoop shims stay ahead of System32.
     $alias = @(
         'cat', 'cp', 'echo', 'ls', 'mv', 'pwd',
         'rm', 'rmdir', 'sleep', 'sort', 'tee'

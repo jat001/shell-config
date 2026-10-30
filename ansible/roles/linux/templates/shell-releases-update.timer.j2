@@ -4,6 +4,7 @@ Description=Check managed shell release updates
 [Timer]
 OnCalendar={{ shell_release_update_calendar }}
 RandomizedDelaySec={{ shell_release_update_delay }}
+# Persistent runs a missed daily check after the machine was off. The service still updates only programs it already manages.
 Persistent=true
 
 [Install]

@@ -22,6 +22,7 @@
   tags: [config]
 
 # Only the settings in windows-terminal.json are managed; generated profiles and other changes stay.
+# A profile whose ${VARIABLE} is empty is omitted by the merge, which leaves a hand-edited profile in place.
 - name: Merge Windows Terminal settings
   ansible.builtin.set_fact:
     shell_windows_terminal_merged: "{{ (shell_windows_terminal_current.content | default('') | b64decode)

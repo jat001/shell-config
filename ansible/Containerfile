@@ -1,3 +1,4 @@
+# 3.14 is the newest Python the current stable ansible-core supports. requirements.txt only sets minimums.
 FROM python:3.14-slim
 
 RUN apt-get update \

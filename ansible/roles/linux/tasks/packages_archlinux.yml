@@ -30,11 +30,19 @@
     argv: [pacman-key, --init]
   when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
 
+# farseerfc's key ships in archlinux-keyring but is only marginal trust until locally signed.
+# --init does not import that keyring; without --populate the signature is not present to sign.
+- name: Import official Arch Linux keys before trusting archlinuxcn
+  ansible.builtin.command:
+    argv: [pacman-key, --populate, archlinux]
+  when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
+
 - name: Trust archlinuxcn packager key
   ansible.builtin.command:
     argv: [pacman-key, --lsign-key, farseerfc@archlinux.org]
   when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
 
+# The whole system is upgraded before individual packages. Arch does not support installing from a half-updated set.
 - name: Upgrade Arch Linux
   community.general.pacman:
     update_cache: true

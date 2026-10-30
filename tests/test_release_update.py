@@ -3,6 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import platform
+import stat
 import tarfile
 import tempfile
 import unittest
@@ -33,6 +34,7 @@ def elf():
 
 
 class ReleaseUpdateTests(unittest.TestCase):
+    # These tests import the Linux updater, so they run in the controller image. Windows CPython has no fcntl.
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -46,10 +48,87 @@ class ReleaseUpdateTests(unittest.TestCase):
         binary = Path(self.manifest['root']) / self.item['name'] / 'v1.0.0' / self.item['command']
         binary.parent.mkdir(parents=True)
         binary.write_bytes(elf())
+        binary.chmod(0o755)
+        # mkdir honors umask, so pin the tree. These tests are about version changes, not permissions.
+        current = binary.parent
+        root = Path(self.manifest['root'])
+        while True:
+            current.chmod(0o755)
+            if current == root:
+                break
+            current = current.parent
         link = Path(self.manifest['bin']) / self.item['command']
         link.parent.mkdir(parents=True)
         link.symlink_to(binary)
         return link, binary
+
+    def assert_shared(self, binary):
+        current = Path(binary).resolve()
+        root = Path(self.manifest['root']).resolve()
+        self.assertTrue(current.is_relative_to(root))
+        while True:
+            mode = stat.S_IMODE(current.stat().st_mode)
+            self.assertEqual(mode & 0o005, 0o005, str(current))
+            if current == root:
+                break
+            current = current.parent
+
+    def test_new_release_is_executable_by_other_accounts(self):
+        payload = self.directory / 'program'
+        payload.write_bytes(elf())
+        with patch.object(updater, 'latest_asset', return_value=self.release), \
+                patch.object(updater, 'cached_download', return_value=payload):
+            self.assertEqual(updater.update_item(self.item, self.manifest, False, False), 'changed')
+        installed = (Path(self.manifest['bin']) / self.item['command']).resolve()
+        self.assert_shared(installed)
+        self.assertNotEqual(stat.S_IMODE(installed.parent.stat().st_mode) & 0o077, 0)
+
+    def test_private_release_is_repaired_without_a_new_version(self):
+        link, binary = self.managed_installation()
+        binary.parent.chmod(0o700)
+        binary.chmod(0o700)
+        release = ('v1.0.0', '1.0.0', self.item['command'], 'https://example.test')
+        with patch.object(updater, 'latest_asset', return_value=release) as latest, \
+                patch.object(updater, 'cached_download') as download:
+            self.assertEqual(updater.update_item(self.item, self.manifest, True, False), 'changed')
+            download.assert_not_called()
+        self.assertEqual(link.resolve(), binary)
+        self.assert_shared(binary)
+        with patch.object(updater, 'latest_asset', return_value=release), \
+                patch.object(updater, 'cached_download') as download:
+            self.assertEqual(updater.update_item(self.item, self.manifest, True, False), 'unchanged')
+            download.assert_not_called()
+        latest.assert_called()
+
+    def test_permission_repair_runs_on_a_full_install(self):
+        _link, binary = self.managed_installation()
+        binary.parent.chmod(0o700)
+        with patch.object(updater, 'latest_asset') as latest:
+            self.assertEqual(updater.update_item(self.item, self.manifest, False, False), 'changed')
+            latest.assert_not_called()
+        self.assert_shared(binary)
+        with patch.object(updater, 'latest_asset') as latest:
+            self.assertEqual(updater.update_item(self.item, self.manifest, False, False), 'unchanged')
+            latest.assert_not_called()
+
+    def test_permission_preview_does_not_chmod(self):
+        _link, binary = self.managed_installation()
+        binary.parent.chmod(0o700)
+        before = stat.S_IMODE(binary.parent.stat().st_mode)
+        with patch.object(updater, 'latest_asset') as latest:
+            self.assertEqual(updater.update_item(self.item, self.manifest, True, True), 'changed')
+            latest.assert_not_called()
+        self.assertEqual(stat.S_IMODE(binary.parent.stat().st_mode), before)
+
+    def test_external_file_permissions_are_left_alone(self):
+        external = self.directory / 'external-bin'
+        external.write_bytes(elf())
+        external.chmod(0o700)
+        with patch.object(updater.shutil, 'which', return_value=str(external)), \
+                patch.object(updater, 'latest_asset') as latest:
+            self.assertEqual(updater.update_item(self.item, self.manifest, True, False), 'external')
+            latest.assert_not_called()
+        self.assertEqual(stat.S_IMODE(external.stat().st_mode), 0o700)
 
     def test_external_installation_is_not_taken_over(self):
         with patch.object(updater.shutil, 'which', return_value='/usr/bin/external'), \

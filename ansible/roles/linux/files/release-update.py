@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import stat
 import pwd
 import re
 import shutil
@@ -53,6 +54,7 @@ def latest_asset(item):
     with request(f'{base}/latest', method='HEAD') as response:
         final = urllib.parse.urlsplit(response.url)
     prefix = f'/{repository}/releases/tag/'
+    # releases/latest is a redirect. Anything that does not land on this repository's tag page is rejected.
     if final.hostname != 'github.com' or not final.path.startswith(prefix):
         raise ValueError('Unexpected latest-release redirect')
     tag = urllib.parse.unquote(final.path[len(prefix):])
@@ -196,6 +198,52 @@ def validate_binary(path):
         raise ValueError('The downloaded ELF program headers are incomplete')
 
 
+def share_mode(path):
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o755 == 0o755:
+        return False
+    path.chmod(mode | 0o755)
+    return True
+
+
+def release_is_shared(binary, release_root):
+    current = binary.resolve()
+    release_root = release_root.resolve()
+    if not current.is_relative_to(release_root):
+        return True
+    while True:
+        if stat.S_IMODE(current.stat().st_mode) & 0o755 != 0o755:
+            return False
+        if current == release_root:
+            return True
+        parent = current.parent
+        if parent == current:
+            return True
+        current = parent
+
+
+def share_release(binary, release_root):
+    """Every account executes the command. A private directory hides it from non-root users.
+
+    PowerShell's executable check is access(X_OK). When that fails it treats the path as a
+    document and refuses to run it in a pipeline.
+    """
+    current = binary.resolve()
+    release_root = release_root.resolve()
+    if not current.is_relative_to(release_root):
+        return False
+    changed = False
+    while True:
+        changed = share_mode(current) or changed
+        if current == release_root:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return changed
+
+
 def install_binary(item, archive, destination, version):
     destination.parent.mkdir(parents=True, exist_ok=True)
     relative = Path(item.get('archive', '').replace('{version}', version)) / item['command']
@@ -215,6 +263,9 @@ def install_binary(item, archive, destination, version):
         binary = temporary / relative
         validate_binary(binary)
         binary.chmod(0o755)
+        # TemporaryDirectory is mode 0700, and renaming it keeps that mode.
+        for directory, _dirnames, _filenames in os.walk(temporary):
+            share_mode(Path(directory))
         os.replace(temporary, destination)
     return destination / relative
 
@@ -244,29 +295,41 @@ def update_item(item, manifest, update, check, installed_only=False):
         raise ValueError('Unknown release installation format')
     cache = Path(manifest['cache']) / name
     managed = target is not None
+    # A command that already exists outside this updater is left alone, including on the first install.
     if not managed and shutil.which(item['command']) is not None:
         return 'external'
     if installed_only and not managed and target is None:
         return 'unchanged'
     if managed and target is not None and not target.is_file():
         managed = False
+    release_root = Path(manifest['root'])
+    repaired = False
+    if managed and target is not None and target.is_file():
+        if check:
+            if not release_is_shared(target, release_root):
+                return 'changed'
+        else:
+            repaired = share_release(target, release_root)
     if managed and not update:
-        return 'unchanged'
+        return 'changed' if repaired else 'unchanged'
     tag, version, filename, url = latest_asset(item)
     if target is not None and target.is_file():
         current_tag = target.relative_to(root.resolve()).parts[0]
+        # An older published tag must not replace the installed build, even when --update is set.
         if version_key(tag) <= version_key(current_tag):
-            return 'unchanged'
+            return 'changed' if repaired else 'unchanged'
     if check:
         return 'changed'
     expected = published_digest(item, tag, filename)
     asset = cached_download(cache / tag, filename, url, expected)
     binary = install_binary(item, asset, root / tag, version)
+    share_release(binary, release_root)
     link.parent.mkdir(parents=True, exist_ok=True)
     publish_link(link, binary)
     try:
         restart_user_units(item, manifest)
     except Exception:
+        # The new files stay on disk, but the command link goes back to the previous binary.
         if target is not None:
             publish_link(link, target)
         else:

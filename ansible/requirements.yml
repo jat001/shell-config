@@ -1,3 +1,4 @@
+# Floors only. Galaxy installs the newest matching collection when the controller image is rebuilt.
 collections:
   - name: ansible.windows
     version: ">=3.0.0"

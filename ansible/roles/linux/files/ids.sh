@@ -57,6 +57,7 @@ sed 's/^/change /' "$work/changes"
 [ "$mode" = apply ] || exit 0
 
 # Record owned files before any ID moves, since old and new IDs may be swapped.
+# -xdev keeps the walk on the root filesystem. The shared development drive is another mount and is not rewritten.
 index=0
 while read -r kind name old new; do
     index=$((index + 1))
@@ -66,6 +67,7 @@ while read -r kind name old new; do
 done < "$work/changes"
 
 free_id() {
+    # A temporary id breaks a swap. Moving straight to the target id would collide with the account that still holds it.
     id=60000
     while getent "$1" "$id" >/dev/null; do id=$((id + 1)); done
     printf '%s\n' "$id"

@@ -17,6 +17,7 @@
     shell_wsl_ids: "{{ shell_configuration.environments.wsl.ids | default({}) }}"
 
 # The same IDs in every distribution keep files on the shared development drive usable.
+# WhatIf still runs the script in check mode; ids.sh prints the planned changes and does not renumber.
 - name: Align WSL account IDs
   ansible.builtin.command:
     argv: "{{ ['sh', '-c', lookup('ansible.builtin.file', 'ids.sh'), 'ids',

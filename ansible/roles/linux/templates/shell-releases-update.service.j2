@@ -6,6 +6,7 @@ ConditionPathExists={{ shell_release_manifest }}
 
 [Service]
 Type=oneshot
+# installed-only: a program removed by hand is not downloaded again by the timer.
 ExecStart=/usr/bin/python3 "{{ shell_release_updater }}" --manifest "{{ shell_release_manifest }}" --update --installed-only
 Nice=19
 IOSchedulingClass=idle

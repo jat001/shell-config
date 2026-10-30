@@ -1,5 +1,7 @@
+# Source in this directory is tracked. Only local secrets, backups and temporary files stay out of git.
 .env
 .env.*
 *.local.*
 *.bak
 *.tmp
+__pycache__/

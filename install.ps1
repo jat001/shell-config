@@ -35,6 +35,7 @@ $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
 $windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 
 function Get-Wslc {
+    # The process PATH can still be the pre-install value, so the registered Machine and User paths are searched too.
     $command = Get-Command wslc.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($command) { return $command.Source }
     $paths = @(
@@ -73,6 +74,7 @@ function Invoke-Wsl {
 function Get-FreePort {
     param([string]$Seed)
 
+    # The port is derived from the distribution name so a rerun asks for the same loopback port.
     $digest = [Security.Cryptography.SHA256]::Create().ComputeHash($utf8.GetBytes($Seed.ToLowerInvariant()))
     $port = 22000 + [BitConverter]::ToUInt16($digest, 0) % 1000
     for ($attempt = 0; $attempt -lt 1000; $attempt++) {
@@ -90,9 +92,21 @@ function Get-FreePort {
 }
 
 function Wait-Port {
-    param([int]$Port)
+    param(
+        [int]$Port,
+        [System.Diagnostics.Process]$Process,
+        [string]$Distribution,
+        [string]$Log
+    )
 
-    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    # A distribution started after wsl --shutdown can take longer than a warm one to accept connections.
+    $deadline = (Get-Date).AddSeconds(60)
+    do {
+        if ($Process -and $Process.HasExited) {
+            $detail = ''
+            if ($Log -and [IO.File]::Exists($Log)) { $detail = ([IO.File]::ReadAllText($Log)).Trim() }
+            throw "The WSL SSH server for $Distribution exited ($($Process.ExitCode)) before listening on port ${Port}. $detail"
+        }
         $client = [Net.Sockets.TcpClient]::new()
         try {
             $client.Connect([Net.IPAddress]::Loopback, $Port)
@@ -102,8 +116,8 @@ function Wait-Port {
         } finally {
             $client.Dispose()
         }
-    }
-    throw "The WSL SSH server did not start on port $Port."
+    } while ((Get-Date) -lt $deadline)
+    throw "The WSL SSH server for $Distribution did not start on port $Port."
 }
 
 function Test-Wsl {
@@ -198,6 +212,7 @@ if ($LASTEXITCODE -ne 0) {
     $previous = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
     Invoke-Wslc build --pull --no-cache -t $image -f (Join-Path $context 'Containerfile') $context
     $current = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
+    # A rebuild that keeps the same image id must not delete the tag that still points at it.
     if ($previous -and $previous -ne $current) { & $wslc rmi $previous *> $null }
 }
 
@@ -266,11 +281,26 @@ try {
         $profileHome = if ($WindowsHome) { [IO.Path]::GetFullPath($WindowsHome) } else {
             [Environment]::GetFolderPath('UserProfile')
         }
+        # NAT forwards only the default distribution's 127.0.0.1. These servers all listen there, so mirrored
+        # mode has to be active first. Shutting down later would drop the connection the servers are carrying.
+        $wslSettings = $configuration.environments.windows.wslconfig
+        if ($wslSettings) {
+            $Ansible = [pscustomobject]@{ Changed = $false; CheckMode = [bool]$WhatIfPreference }
+            & (Join-Path $repository 'ansible/roles/windows/files/ini.ps1') `
+                -Path (Join-Path $profileHome '.wslconfig') `
+                -Settings ($wslSettings | ConvertTo-Json -Compress -Depth 5)
+            if ($Ansible.Changed -and -not $WhatIfPreference) {
+                $global:LASTEXITCODE = 0
+                & $wsl --shutdown
+                if ($LASTEXITCODE -ne 0) { throw "wsl.exe --shutdown failed ($LASTEXITCODE)." }
+            }
+        }
         $key = [IO.File]::ReadAllText((Join-Path $StateDirectory 'id_ed25519.pub')).Trim()
         $windowsHosts = [ordered]@{}
         $wslHosts = [ordered]@{}
 
         foreach ($distribution in $WslDistribution) {
+            # Windows has no management listener of its own; only the first distribution's sshd carries that connection.
             $transport = $windowsHosts.Count -eq 0
             if ($SkipWsl -and -not $transport) { break }
 
@@ -287,18 +317,20 @@ try {
                     ) -ne $null -join ';')
                 )
             }
-            $sshd = (Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1
+            $sshd = ((Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1).Trim()
+            if ($sshd -notmatch '^/[\w./+-]+$') { throw "Unexpected sshd path: $sshd" }
+            # wsl.exe splits a multi-word --exec command, so the launcher is a file with no arguments.
+            $serverLog = Join-Path $StateDirectory ('sshd-' + ($distribution -replace '[^A-Za-z0-9_-]', '-') + '.log')
             $start = @{
                 FilePath = $wsl
-                WindowStyle = 'Hidden'
                 PassThru = $true
-                ArgumentList = @('-d', $distribution, '-u', 'root', '--exec', $sshd,
-                    '-D', '-e', '-f', '/etc/shell-ansible/sshd_config')
+                RedirectStandardError = $serverLog
+                ArgumentList = @('-d', $distribution, '-u', 'root', '--exec', '/etc/shell-ansible/start-sshd.sh')
             }
             if ((Get-Command Start-Process).Parameters.ContainsKey('WhatIf')) { $start.WhatIf = $false }
             $process = Start-Process @start
             $servers.Add(@{ Distribution = $distribution; Process = $process })
-            Wait-Port $port
+            Wait-Port $port -Process $process -Distribution $distribution -Log $serverLog
 
             $connection = [ordered]@{
                 ansible_host = 'host.wslc.internal'
@@ -344,6 +376,7 @@ try {
     )
 
     $inventoryPath = [IO.Path]::GetFullPath($Inventory)
+    # The controller mounts only the state directory, so a path outside it cannot be rewritten into the container.
     if (-not $inventoryPath.StartsWith($StateDirectory + '\', [StringComparison]::OrdinalIgnoreCase)) {
         throw '-Inventory must be inside -StateDirectory.'
     }

@@ -55,7 +55,7 @@ foreach ($user in @($settings.User, $settings.AdminUser)) {
     $null = New-Item -ItemType Directory -Force (Split-Path $vhd)
     if (-not (Test-Path $vhd)) { $null = New-Item -ItemType File $vhd }
     # The administrator's drive starts detached so the playbook attaches it; the unprivileged
-    # account cannot attach, so its drive is attached here.
+    # account cannot attach, so its drive is attached here. NTFS is used because Sandbox has no ReFS Dev Drive.
     New-DevDrive -Path (Join-Path $profilePath 'AppData\Local\Dev.vhdx') -Attached ($user -eq $settings.User)
 
     $credentialFile = Join-Path $env:TEMP "shell-test-$user.xml"

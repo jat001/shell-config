@@ -8,6 +8,7 @@
     - shell_windows_home is not defined
     - shell_windows_home_native is defined
 
+# cmd.exe is the fallback when the installer did not pass the Windows profile. The CR from cmd is stripped before wslpath.
 - name: Discover Windows home
   ansible.builtin.shell: wslpath -a -u "$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
   register: shell_windows_home_discovered

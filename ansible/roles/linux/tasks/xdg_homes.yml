@@ -7,6 +7,7 @@
   check_mode: false
 
 # Accounts cannot create their directory under the root-owned mount point themselves.
+# 0700 and the account's own ids are required because every distribution shares this tree.
 - name: Create account homes on the development drive
   ansible.builtin.file:
     path: "{{ shell_configuration.environments.wsl.dev_drive.mountpoint }}{{ ansible_facts.getent_passwd[item][4] }}"

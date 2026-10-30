@@ -24,10 +24,12 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.
+# A clean Debian image has no CA bundle. Ansible then downloads signing keys over HTTPS.
 if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
     ! command -v python3 >/dev/null 2>&1 ||
     { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; } ||
-    { command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import apt' 2>/dev/null; }; then
+    { command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import apt' 2>/dev/null; } ||
+    { command -v apt-get >/dev/null 2>&1 && ! dpkg -s ca-certificates >/dev/null 2>&1; }; then
     if command -v pacman >/dev/null 2>&1; then
         [ -s /etc/pacman.d/gnupg/pubring.gpg ] ||
             { pacman-key --init && pacman-key --populate archlinux; } >&2
@@ -35,7 +37,7 @@ if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
     elif command -v apt-get >/dev/null 2>&1; then
         retry apt-get update >&2
         DEBIAN_FRONTEND=noninteractive retry apt-get install -y --no-install-recommends \
-            openssh-server python3 python3-apt btrfs-progs >&2
+            ca-certificates openssh-server python3 python3-apt btrfs-progs >&2
     else
         printf 'Unsupported distribution.\n' >&2
         exit 1
@@ -62,6 +64,7 @@ UsePAM no
 Subsystem sftp internal-sftp
 EOF
 
+# The wrapper exists only on the distribution that also serves Windows. Other distributions stay ordinary SSH targets.
 if [ -n "$powershell" ]; then
     if [ ! -x "$powershell" ] || ! "$powershell" -NoProfile -Command exit >/dev/null 2>&1; then
         printf 'WSL interop cannot start %s.\n' "$powershell" >&2
@@ -84,4 +87,11 @@ fi
 
 sshd=$(command -v sshd || printf /usr/sbin/sshd)
 "$sshd" -t -f "$directory/sshd_config"
+# The next Windows process is a new distribution instance, so /run may already be gone.
+cat > "$directory/start-sshd.sh" <<EOF
+#!/bin/sh
+mkdir -p -m 700 /run/sshd
+exec $sshd -D -e -f $directory/sshd_config
+EOF
+chmod 755 "$directory/start-sshd.sh"
 printf '%s\n' "$sshd"

@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
+  // Base palette. shell-integration, msys2 and msys2-fish extend this file rather than copying it.
   "palette": {
     "os": "#ACB0BE",
     "closer": "p:os",

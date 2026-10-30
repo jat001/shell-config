@@ -33,6 +33,7 @@ public static extern bool CreateSymbolicLink(string link, string target, int fla
 function New-SymbolicLink {
     param([string]$Path, [string]$Target, [bool]$Directory)
 
+    # Flag 2 allows the link without elevation when Developer Mode is on. Flag 1 marks a directory link.
     $flags = 2
     if ($Directory) { $flags = $flags -bor 1 }
     if (-not [ShellPaths.Native]::CreateSymbolicLink($Path, $Target, $flags)) {
@@ -80,6 +81,7 @@ function Test-Item {
     if ($state.Type -eq 'Missing') { return @{ Action = 'create' } }
 
     if ($Item.type -eq 'external') {
+        # Unlike the Linux module, any existing path is a conflict. An empty directory is not replaced.
         if ($state.Type -eq 'Link' -and $state.Target -eq $Item.src) { return @{} }
         return @{ Conflict = 'An existing path occupies a configured link' }
     }
@@ -160,6 +162,7 @@ function Install-Item {
     try {
         New-SymbolicLink $Item.path $Item.src $directory
     } catch {
+        # The previous object was already removed, so put that exact object back before reporting the failure.
         if ($state.Type -eq 'File') {
             [IO.File]::WriteAllText($Item.path, $Item.content + [char]10, $utf8)
         } elseif ($state.Type -eq 'Link') {

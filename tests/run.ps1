@@ -10,6 +10,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Python, git and wslc report progress on stderr. On PowerShell 7 that must not fail the run.
+$PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path $PSScriptRoot
 $installer = Join-Path $repository 'install.ps1'
 $network = 'shell-test'
@@ -20,12 +22,17 @@ $linux = @($Target | Where-Object { $_ -ne 'sandbox' })
 function Invoke-Native {
     param([string]$File, [string[]]$Arguments)
 
+    # Successful programs such as Python's unittest write progress to stderr. Stop would turn
+    # that into a terminating error when this script's output is redirected; the exit code decides.
+    $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
     & $File @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$File $($Arguments[0]) failed ($LASTEXITCODE)." }
 }
 
 function Test-Wslc {
+    # A missing network or container is reported on stderr and is not a failure of this probe.
+    $ErrorActionPreference = 'Continue'
     & wslc.exe @args *> $null
     $LASTEXITCODE -eq 0
 }
@@ -42,10 +49,15 @@ $volumes = @{
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
 $image = & $installer -PrepareOnly -StateDirectory $StateDirectory | Select-Object -Last 1
-Invoke-Native wslc.exe @(
-    'run', '--rm', '-v', "${repository}:/work:ro", $image,
-    'python', '-B', '/work/tests/test_terminal_settings.py'
-)
+foreach ($test in @(
+    'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
+    'test_nushell_defaults.py', 'test_invariants.py'
+)) {
+    Invoke-Native wslc.exe @(
+        'run', '--rm', '-v', "${repository}:/work:ro", $image,
+        'python', '-B', "/work/tests/$test"
+    )
+}
 $windowsUser = 'shelltest'
 $adminUser = 'WDAGUtilityAccount'
 $unprivileged = [ordered]@{}
@@ -55,26 +67,57 @@ $wsl = [ordered]@{}
 $jobs = [ordered]@{}
 
 # The control container joins this network for every target, including Windows Sandbox alone.
-if (-not (Test-Wslc network inspect $network)) {
-    Invoke-Native wslc.exe @('network', 'create', $network)
+# wslc's next default pool is inside 172.16.0.0/12. 172.18.0.0/16 contains the Hyper-V Default
+# Switch, so a sandbox address looks on-link and the connection fails with "No route to host".
+$networkSubnet = '10.77.90.0/24'
+$networkGateway = '10.77.90.1'
+
+function Get-TestNetworkSubnet {
+    param([string]$Name)
+
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = 0
+    $details = & wslc.exe network inspect $Name 2>$null
+    $inspected = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = 'Stop'
+    if (-not $inspected) { return $null }
+    [string]@(@(($details | Out-String | ConvertFrom-Json))[0].IPAM.Config)[0].Subnet
+}
+
+if ((Get-TestNetworkSubnet $network) -ne $networkSubnet) {
+    $ErrorActionPreference = 'Continue'
+    foreach ($name in @('arch', 'debian')) { & wslc.exe remove -f "shell-test-$name" *> $null }
+    & wslc.exe network remove $network *> $null
+    $ErrorActionPreference = 'Stop'
+    Invoke-Native wslc.exe @(
+        'network', 'create', '--subnet', $networkSubnet, '--gateway', $networkGateway, $network
+    )
 }
 
 $linuxSetup = {
     param($Name, $Image, $Network, $Repository, $Volumes, $Key, $Reuse, $Log)
 
     $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
     $container = "shell-test-$Name"
     function Invoke-Logged {
+        # wslc writes progress to stderr, and a missing container makes remove fail; the exit code is the result.
+        $ErrorActionPreference = 'Continue'
         $global:LASTEXITCODE = 0
         & wslc.exe @args *>> $Log
         if ($LASTEXITCODE -ne 0) { throw "wslc $($args[0]) failed for $container ($LASTEXITCODE); see $Log" }
     }
 
+    $ErrorActionPreference = 'Continue'
     $details = & wslc.exe inspect $container 2>$null
-    $running = $LASTEXITCODE -eq 0 -and
+    $inspected = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = 'Stop'
+    $running = $inspected -and
         @(($details | Out-String | ConvertFrom-Json))[0].State.Running -eq $true
     if (-not ($Reuse -and $running)) {
+        $ErrorActionPreference = 'Continue'
         & wslc.exe remove -f $container *> $null
+        $ErrorActionPreference = 'Stop'
         Invoke-Logged (@(
             'run', '-d', '--name', $container, '--hostname', $Name, '--network', $Network
             '-v', "${Repository}:/mnt/c/Users/shell/.config/shell:ro"
@@ -82,6 +125,8 @@ $linuxSetup = {
         Invoke-Logged exec $container rm -f /etc/apt/apt.conf.d/docker-clean
     }
 
+    # Bootstrap logs package installation on stderr. In a job, Stop would fail the job on that progress.
+    $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
     $sshd = & wslc.exe exec $container sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
         Select-Object -Last 1
@@ -116,11 +161,13 @@ if ($Target -contains 'sandbox') {
     foreach ($mirrorName in @('Scoop', 'Main', 'Versions')) {
         $mirror = Join-Path $cache "git/$mirrorName.git"
         $global:LASTEXITCODE = 0
+        $ErrorActionPreference = 'Continue'
         if (-not [IO.Directory]::Exists($mirror)) {
             & git clone -q --bare --depth 1 "https://github.com/ScoopInstaller/$mirrorName" $mirror
         } else {
             & git -C $mirror fetch -q --depth 1 origin '+refs/heads/*:refs/heads/*'
         }
+        $ErrorActionPreference = 'Stop'
         if ($LASTEXITCODE -ne 0) { throw "Could not mirror ScoopInstaller/$mirrorName." }
     }
     $msys2 = Join-Path $cache 'msys2-base-x86_64-latest.sfx.exe'
@@ -149,6 +196,7 @@ if ($Target -contains 'sandbox') {
         param($StateDirectory, $Sandbox, $Cache, $Repository, $WindowsUser, $AdminUser, $Reuse)
 
         $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $false
         $utf8 = [Text.UTF8Encoding]::new($false)
         $idFile = Join-Path $StateDirectory 'sandbox-id'
         $id = if ([IO.File]::Exists($idFile)) { [IO.File]::ReadAllText($idFile).Trim() }
@@ -200,9 +248,16 @@ if ($Target -contains 'sandbox') {
         }
         $ready = Join-Path $Sandbox 'ready'
         if ([IO.File]::Exists($ready)) { [IO.File]::Delete($ready) }
-        $command = 'cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File C:\shell-test\sandbox.ps1 > C:\shell-test\setup.log 2>&1"'
+        # wsb splits a command string on powershell switches, so the switches live in a launcher file.
+        $launcher = Join-Path $Sandbox 'launch.cmd'
+        [IO.File]::WriteAllText($launcher, @"
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\shell-test\sandbox.ps1 > C:\shell-test\setup.log 2>&1
+"@, [Text.Encoding]::ASCII)
         for ($attempt = 0; $attempt -lt 30 -and -not [IO.File]::Exists($ready); $attempt++) {
-            & wsb.exe exec --id $id -r System -c $command *> $null
+            $ErrorActionPreference = 'Continue'
+            & wsb.exe exec --id $id -r System -c 'C:\shell-test\launch.cmd' *> $null
+            $ErrorActionPreference = 'Stop'
             if (-not [IO.File]::Exists($ready)) { Start-Sleep -Seconds 5 }
         }
         if (-not [IO.File]::Exists($ready)) {
@@ -255,6 +310,7 @@ $userInventory = Join-Path $StateDirectory 'inventory-user.json'
 [IO.File]::WriteAllText($userInventory, (@{ all = @{ children = @{ windows = @{ hosts = $unprivileged } } } } |
     ConvertTo-Json -Depth 8), $utf8)
 
+# Ansible colors the recap. The escape sequences are removed before changed= is read, or a clean run looks dirty.
 function Assert-Unchanged {
     param([object[]]$Output, [string]$Label)
 
@@ -315,6 +371,7 @@ try {
     $report | Format-Table -AutoSize | Out-Host
     [IO.File]::WriteAllText((Join-Path $StateDirectory 'timings.json'), ($report | ConvertTo-Json), $utf8)
     if (-not $Keep) {
+        $ErrorActionPreference = 'Continue'
         foreach ($target in $linux) { & wslc.exe remove -f "shell-test-$target" *> $null }
         & wslc.exe network remove $network *> $null
         if ($windows.Contains('sandbox')) {

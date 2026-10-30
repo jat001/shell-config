@@ -20,6 +20,7 @@ if ($ansibleContext) {
 if (-not $PSCmdlet.ShouldProcess($Path, "Create $SizeGiB GiB dynamic $FileSystem development disk")) { return }
 
 [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))
+# The published path is moved into place only after format and detach succeed. A failed disk stays beside it as *.new.vhdx.
 $temporary = Join-Path ([IO.Path]::GetDirectoryName($Path)) ([guid]::NewGuid().ToString() + '.new.vhdx')
 $diskpart = Join-Path $env:TEMP ([guid]::NewGuid().ToString() + '.diskpart.txt')
 $attached = $false
@@ -79,6 +80,7 @@ command -v mkfs.btrfs >/dev/null
         if (-not $disk -or $disk.IsBoot -or $disk.IsSystem -or $disk.PartitionStyle -ne 'RAW') {
             throw 'The new VHDX did not resolve to a single empty data disk.'
         }
+        # diskpart's maximum is MiB. SizeGiB * 1024 MiB must equal SizeGiB * 1GB or this is not the disk just created.
         if ($disk.Size -ne [long]$SizeGiB * 1GB) { throw 'Unexpected virtual disk capacity.' }
         $partition = $disk | Initialize-Disk -PartitionStyle GPT -PassThru |
             New-Partition -UseMaximumSize -AssignDriveLetter

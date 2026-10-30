@@ -1,5 +1,6 @@
 set bell-style none
 
+# Bash uses ble.sh for this behavior. The Readline setting applies only where Clink is the line editor.
 $if clink
     set history-point-at-end-of-anchored-search on
 $endif

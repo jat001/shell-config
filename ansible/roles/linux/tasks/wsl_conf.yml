@@ -40,6 +40,7 @@
     label: "[{{ item.section }}] {{ item.option }}"
   register: shell_wsl_conf_result
 
+# wsl.conf is read only when the distribution starts. This play does not terminate it, or it would drop the SSH session.
 - name: Report WSL distribution settings change
   ansible.builtin.debug:
     msg: /etc/wsl.conf changed; it takes effect after wsl.exe --terminate for this distribution.

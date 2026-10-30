@@ -22,6 +22,7 @@ $request = @{
 }
 $global:ShellSystemTestDeveloperMode = 0
 $global:ShellSystemTestTask = $null
+# These functions hide the real cmdlets for the child script. They are visible because the child runs in a child scope.
 function Get-ItemProperty {
     param([string]$LiteralPath, [string]$ErrorAction)
     if ($LiteralPath -notlike 'HKLM:*AppModelUnlock') { throw 'Unexpected registry read.' }
@@ -37,7 +38,8 @@ function Write-Request {
 function Invoke-Plan {
     Write-Request
     $Ansible = @{ Changed=$false; Result=$null }
-    & $scriptPath -RequestPath $requestPath
+    $plan = & $scriptPath -RequestPath $requestPath
+    if ($null -ne $plan) { return @($plan)[-1] }
     $Ansible.Result
 }
 
@@ -46,7 +48,7 @@ try {
     $expected = @('DeveloperMode', 'CreateDrive', 'AttachDrive', 'CreateDrive', 'RegisterTask')
     if (($plan.Pending -join ',') -cne ($expected -join ',')) { throw 'First deployment did not aggregate all system changes.' }
     $Ansible = @{ Changed=$false; Result=$null }
-    & $scriptPath -RequestPath $requestPath -Apply -WhatIf
+    $null = & $scriptPath -RequestPath $requestPath -Apply -WhatIf
     if ([IO.File]::Exists((Join-Path $homePath 'windows.vhdx')) -or
         [IO.File]::Exists((Join-Path $homePath 'linux.vhdx'))) { throw 'Preview created a disk.' }
 

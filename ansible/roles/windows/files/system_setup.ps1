@@ -33,8 +33,10 @@ function Get-DrivePath {
 function Read-Drive {
     param([string]$Path)
 
+    # An external script cannot see this local variable. Dot-source it so the disk probe
+    # cannot replace the caller's Ansible result with the disk status.
     $Ansible = @{ Changed=$false; Result=$null }
-    & (Join-Path $PSScriptRoot 'dev_drive.ps1') -Path $Path -LegacyKey $request.LegacyKey
+    . (Join-Path $PSScriptRoot 'dev_drive.ps1') -Path $Path -LegacyKey $request.LegacyKey
     $Ansible.Result
 }
 
@@ -45,6 +47,7 @@ function Get-PrincipalSid {
     ([Security.Principal.NTAccount]::new($Name)).Translate([Security.Principal.SecurityIdentifier]).Value
 }
 
+# update never turns Developer Mode on. It is a one-time init step, not something an upgrade should repeat.
 if ($request.ManageDeveloperMode -and $request.Mode -ne 'update' -and $developerMode -ne 1) {
     $operations.Add(@{ Kind='DeveloperMode' })
 }
@@ -76,7 +79,16 @@ if ($request.ManageWslDrive -and $wslDrive) {
         ' --name ' + ($wslDrive.mountpoint -split '/')[-1]
     if ($wslDrive.options) { $arguments += ' --options "' + $wslDrive.options + '"' }
     $description = 'Shared shell configuration: attach the WSL development VHDX.'
-    $task = Get-ScheduledTask -TaskPath '\' -TaskName $wslDrive.task -ErrorAction SilentlyContinue
+    # A standard user cannot open the task service. That is not a missing task, and this
+    # account cannot register one; an elevated run owns the registration.
+    $wslTaskUnreadable = $false
+    try {
+        $task = Get-ScheduledTask -TaskPath '\' -TaskName $wslDrive.task -ErrorAction Stop
+    } catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {
+        $task = $null
+        $wslTaskUnreadable = $true
+    }
+    # A task with this name that runs a different program is left in place. Matching arguments can be updated.
     if ($task -and $task.Description -ne $description -and
         ($task.Actions.Count -ne 1 -or $task.Actions[0].Execute -ine $executable -or
          $task.Actions[0].Arguments -cne $arguments)) {
@@ -89,7 +101,7 @@ if ($request.ManageWslDrive -and $wslDrive) {
         $task.Settings.Enabled -and $task.Settings.AllowDemandStart -and
         -not $task.Settings.DisallowStartIfOnBatteries -and -not $task.Settings.StopIfGoingOnBatteries -and
         [string]$task.Settings.MultipleInstances -eq 'IgnoreNew' -and $task.Settings.ExecutionTimeLimit -eq 'PT1M'
-    if (-not $matches) {
+    if (-not $wslTaskUnreadable -and -not $matches) {
         $operations.Add(@{ Kind='RegisterTask'; Name=$wslDrive.task; Executable=$executable;
             Arguments=$arguments; Description=$description })
     }
@@ -137,4 +149,5 @@ $ansibleContext = Get-Variable -Name Ansible -ValueOnly -ErrorAction SilentlyCon
 if ($ansibleContext) {
     $ansibleContext.Changed = $Apply -and $operations.Count -gt 0
     $ansibleContext.Result = $result
-} else { $result }
+}
+$result

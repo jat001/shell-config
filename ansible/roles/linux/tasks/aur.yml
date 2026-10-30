@@ -29,6 +29,7 @@
     - shell_aur_cache | length > 0
     - shell_aur_missing.rc == 127 or shell_mode == 'update'
 
+# yay builds as the WSL user. A root build would leave the package cache owned by root.
 - name: Install AUR packages
   ansible.builtin.command:
     argv: "{{ ['sudo', '-u', shell_user, '-H', 'yay', '-S', '--needed'] + shell_aur_options
@@ -47,6 +48,7 @@
   check_mode: false
   when: shell_mode == 'update'
 
+# -Sua upgrades the foreign set together. Upgrading one AUR package at a time can break the rest.
 - name: Update AUR packages
   ansible.builtin.command:
     argv: "{{ ['sudo', '-u', shell_user, '-H', 'yay', '-Sua'] + shell_aur_options }}"

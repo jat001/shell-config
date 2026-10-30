@@ -15,6 +15,7 @@ shell_fish_directories:
   - functions
   - completions
 
+# unix: false skips that entry on WSL and MSYS2. msys: false skips it only on MSYS2.
 shell_entries:
   - path: .bash_profile
     content: '. "$HOME/.config/shell/common.bash"'

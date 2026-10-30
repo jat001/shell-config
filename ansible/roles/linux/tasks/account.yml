@@ -4,6 +4,7 @@
     shell_user_home: "{{ ansible_facts.getent_passwd[shell_account][4] }}"
   tags: [always]
 
+# init still links the repository when a development drive is configured, because that service reads the script from it.
 - name: Link shared repository
   shell_paths:
     items:

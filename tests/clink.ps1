@@ -59,6 +59,7 @@ try {
     if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
+    # The test borrows the live AutoRun value and must put the original kind back, not a new String value.
     $registry.SetValue('AutoRun', $original, $kind)
     $registry.Close()
 }

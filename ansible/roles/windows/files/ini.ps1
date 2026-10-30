@@ -5,6 +5,7 @@ param(
 )
 
 # Sets the given section keys (JSON, in file order) in an INI file and leaves every other line as it is.
+# A CR in the file is itself a change: the rewrite is LF, which is what WSL and .wslconfig consumers read.
 $ErrorActionPreference = 'Stop'
 $Ansible.Changed = $false
 $Settings_ = $Settings | ConvertFrom-Json

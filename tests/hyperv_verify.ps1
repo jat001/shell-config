@@ -9,6 +9,7 @@ $script = Join-Path $repository 'tests/hyperv_verify.ps1'
 
 if ($RestartGuest -or $Queue) {
     $computer = Get-CimInstance Win32_ComputerSystem
+    # Restart-Computer here is only safe inside the test guest. The same script on the host would reboot the user.
     if ($computer.Manufacturer -ne 'Microsoft Corporation' -or $computer.Model -ne 'Virtual Machine') {
         throw 'Restart verification is restricted to the Hyper-V test guest.'
     }

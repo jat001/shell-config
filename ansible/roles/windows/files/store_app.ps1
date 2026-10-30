@@ -86,6 +86,7 @@ if ($winget) {
 }
 
 # The latest-release page redirects to its tag; this avoids the rate-limited API.
+# The tag must be v plus three or four numeric parts. A preview tag is not installed over the Store package.
 $Ansible.Result.source = 'github'
 $request = [Net.HttpWebRequest]::Create("$Release/latest")
 $request.AllowAutoRedirect = $false

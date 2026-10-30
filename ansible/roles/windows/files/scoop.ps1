@@ -69,6 +69,7 @@ if ($Ansible.CheckMode) {
 }
 
 if (-not [IO.File]::Exists($scoop)) {
+    # update refuses to bootstrap Scoop. A missing install is an init failure, not an upgrade.
     if ($Mode -eq 'update') { throw "Scoop is not installed at $Root; run the init mode first." }
     $installer = Join-Path $env:TEMP 'scoop-install.ps1'
     Invoke-WebRequest -UseBasicParsing -Uri 'https://get.scoop.sh' -OutFile $installer

@@ -50,6 +50,7 @@
   ansible.builtin.import_tasks: repository.yml
   tags: [always]
 
+# init installs software only. Entry files wait for full, after Developer Mode and the tools exist.
 - name: Deploy Windows configuration
   ansible.builtin.import_tasks: config.yml
   when: shell_mode != 'init'

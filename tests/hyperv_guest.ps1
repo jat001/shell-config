@@ -10,6 +10,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 [void][IO.Directory]::CreateDirectory($state)
 [void][IO.Directory]::CreateDirectory($imageCache)
 $variables = @{
+    # Only this test guest may detach a disk that is already in use. A normal install refuses that.
     shell_windows_dev_drive_allow_detach = $true
     shell_download_cache = $cache
     shell_scoop_cache = Join-Path $cache 'scoop'
@@ -85,6 +86,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Deployment mode $mode failed ($LASTEXITCODE)." }
         $timings += @{ Mode=$mode; Seconds=[int]$clock.Elapsed.TotalSeconds; Log=$log }
         [IO.File]::WriteAllText('C:\shell-test\timings.json', ($timings | ConvertTo-Json), $utf8)
+        # The second full run is the idempotence check. Any changed= on a recap line fails the guest deployment.
         if ($index -gt 0 -and $mode -eq 'full' -and $timings[$index-1].Mode -eq 'full') {
             $text = [IO.File]::ReadAllText($log) -replace '\x1b\[[0-9;]*m',''
             $recaps = [regex]::Matches($text, '(?m)^\S+\s*:\s*ok=\d+\s+changed=(\d+)')

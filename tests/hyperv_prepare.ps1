@@ -244,6 +244,7 @@ try {
         Write-ProgressFile 'Apply Windows image to a new system VHDX'
         $directory = Join-Path $StateDirectory $Name
         $vhd = Join-Path $directory 'system.vhdx'
+        # A disk that is already in this directory is never reformatted, even when Prepare is repeated.
         if ([IO.File]::Exists($vhd)) { throw 'A system VHDX already exists; refusing to replace it.' }
         $null = [IO.Directory]::CreateDirectory($directory)
         $mounted = $false

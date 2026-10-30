@@ -14,6 +14,7 @@ if ($platform | is-empty) {
     return
 }
 
+# Nushell keeps an empty argument, unlike Windows PowerShell, so the unused WSL inputs can be passed as ''.
 let windows_home = if $platform == 'wsl' {
     $shared_directory | path expand | path dirname --num-levels 2
 } else {

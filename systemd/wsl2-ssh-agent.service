@@ -3,6 +3,8 @@ Description=WSL2 SSH Agent Bridge
 After=network.target
 
 [Service]
+# The program name is resolved by systemd, so the Arch package and the Debian /usr/local/bin install share this unit.
+# ConditionUser=!root from upstream is omitted because the default WSL account is root.
 ExecStart=wsl2-ssh-agent --verbose --foreground --socket=%t/wsl2-ssh-agent.sock
 Restart=on-failure
 

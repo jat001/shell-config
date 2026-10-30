@@ -3,6 +3,7 @@
     path: "{{ shell_repository }}\\common.json"
   register: shell_repository_state
 
+# An existing checkout is never cloned over. update will not create a missing tree; init has to do that.
 - name: Clone shared repository
   ansible.windows.win_command:
     argv:

@@ -21,6 +21,7 @@ def read(path):
 
 
 def evaluate(item):
+    # Every item is classified before any path is changed, so one conflict leaves the whole set untouched.
     path = item['path']
     state = item['state']
     kind = item['type']
@@ -34,6 +35,7 @@ def evaluate(item):
         return 'create', None
 
     if kind == 'external':
+        # An empty directory is the only occupant replaced; a real file or a non-empty directory is a conflict.
         if current['type'] == 'link' and current['target'] == item['src']:
             return None, None
         if current['type'] == 'directory' and not os.listdir(path):
@@ -57,6 +59,7 @@ def evaluate(item):
         except OSError:
             existing = None
         if existing != item['content']:
+            # A file that still matches a distro skeleton is unmodified, so it can become the managed link.
             if existing is not None and current['type'] == 'file' and any(
                 os.path.isfile(default) and read(default) == existing
                 for default in item['defaults']

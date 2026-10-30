@@ -1,3 +1,4 @@
+# Prefixed assignments, including empty ones, keep detection on this shell instead of an inherited WSL or MSYS value.
 set _shell_environment (
     MSYSTEM="$MSYSTEM" \
         WSL_DISTRO_NAME="$WSL_DISTRO_NAME" \
@@ -34,6 +35,7 @@ jq -r \
     source
 
 # fish fixes its data directory, and with it the history, at startup; restart once with the shared one.
+# The restarted process sees the same XDG_DATA_HOME, so __fish_user_data_dir matches and this does not loop.
 if test "$_shell_environment" = wsl; and status is-interactive; and set -q XDG_DATA_HOME
     and test "$__fish_user_data_dir" != "$XDG_DATA_HOME/fish"
     set -l fish (status fish-path)

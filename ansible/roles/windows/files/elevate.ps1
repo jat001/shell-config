@@ -18,6 +18,7 @@ $Command
     exit 1
 }
 "@
+# EncodedCommand is UTF-16. The elevated process has no profile and no access to this session's variables.
 $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 

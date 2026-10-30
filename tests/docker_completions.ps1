@@ -65,6 +65,7 @@ if [[ "$(uname -s)" != Linux ]]; then
     exit 0
 fi
 mkdir -p "$HOME/.cache"
+# The probe cache is removed on exit. A completion file that appears after the first compinit must invalidate it.
 probe_tmp=$(mktemp -d "$HOME/.cache/shell-docker.XXXXXXXX")
 TRAPEXIT() {
     [[ "$probe_tmp" == "$HOME/.cache"/shell-docker.* && -d "$probe_tmp" ]] && rm -rf -- "$probe_tmp"

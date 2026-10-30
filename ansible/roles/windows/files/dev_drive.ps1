@@ -10,6 +10,7 @@ $Ansible.Changed = $false
 
 # Storage CIM (Get-DiskImage, Get-Partition) needs administrator rights and enumerates nothing in
 # Windows Sandbox, so the attached disk and its volumes are read through Win32 directly.
+# GetDiskNumber returns -1 when the VHDX is not attached. That is a status, not a failed call.
 Add-Type -Namespace Shell -Name DevDrive -MemberDefinition @'
 [StructLayout(LayoutKind.Sequential)]
 struct StorageType { public int DeviceId; public Guid VendorId; }

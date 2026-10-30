@@ -47,6 +47,7 @@
       changed_when: false
       check_mode: false
 
+    # The task is registered by the Windows play, which runs at the same time. Querying it avoids starting before it exists.
     # schtasks prints in the Windows console code page, which is not UTF-8 on every system.
     - name: Wait for Windows development drive task
       ansible.builtin.command:

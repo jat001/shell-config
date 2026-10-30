@@ -17,6 +17,7 @@ local function read_shared(mode, platform)
 end
 
 clink.oninject(function()
+    # OS is Windows_NT for a native CMD even when a parent left WSL or MSYS variables behind.
     local platform = read_shared("platform", os.getenv("OS") or ""):match("%S+")
     if not platform then
         return
@@ -24,6 +25,7 @@ clink.oninject(function()
 
     os.execute("mode con cp select=65001 >nul")
 
+    # HKCU Path is already in the process. Only the machine value is read so it can be moved to the end.
     local f = io.popen(
         'reg query "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v Path'
     )

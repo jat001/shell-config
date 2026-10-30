@@ -21,6 +21,7 @@
   changed_when: false
   check_mode: false
 
+# A name that apt does not have becomes a GitHub release instead. ble.sh and antidote may instead use the archive fallback.
 - name: Resolve available Debian packages
   ansible.builtin.set_fact:
     shell_apt_available: "{{ shell_apt_probe.stdout | from_json }}"
@@ -71,6 +72,7 @@
     - shell_powershell_archive
     - shell_icu_package.stdout | default('') | trim | length > 0
 
+# Only a symlink whose target is still under this updater's root is removed. Another install of the same command stays.
 - name: Remove only old managed command links after apt migration
   ansible.builtin.shell: |
     set -e

@@ -1,1 +1,2 @@
+# Checkout is LF on every platform. A CR introduced on Windows is a change the shell scripts will not accept.
 * text=auto eol=lf

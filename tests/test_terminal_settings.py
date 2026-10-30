@@ -11,6 +11,7 @@ spec.loader.exec_module(filters)
 
 
 class TerminalSettingsTests(unittest.TestCase):
+    # The second call of each merge test is the idempotence check: a rewritten file must not look changed.
     def test_jsonc_preserves_string_contents(self):
         value = 'literal,} and ,] with "quotes", \\ and https://example.test/*literal*/'
         source = '\ufeff{\n// comment\n"custom": ' + json.dumps(value) + ',\n"items": [1, /* comment */],\n}'

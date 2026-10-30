@@ -9,6 +9,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The downloader is a script file. A Restricted policy, as on Windows Sandbox, blocks it.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $ProgressPreference = 'SilentlyContinue'
 $Ansible.Changed = $false
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -19,6 +21,7 @@ $env:MSYSTEM = 'MSYS'
 function Invoke-Msys {
     param([string]$Command, [int[]]$Allowed = @(0))
 
+    # gpgconf is stopped after pacman so the keyring is not left locked, and the saved status is pacman's, not gpgconf's.
     $script = $Command + '; status=$?; gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1; exit $status'
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0

@@ -1,4 +1,6 @@
+# ble.sh sources this file again with "ble" and must return before the interactive bash setup below.
 if [ "${1-}" = ble ]; then
+    # One millisecond is enough for a lone Esc to leave incremental search without delaying Meta prefixes.
     bind 'set keyseq-timeout 1'
 
     bleopt edit_bell=
@@ -33,6 +35,7 @@ if ! declare -F _init_completion >/dev/null; then
     unset _shell_bash_completion
 fi
 
+# WSL loads Docker's completion through bash-completion. MSYS2 has no vendor file, so the CLI output is sourced.
 if [[ "$_shell_environment" == msys2 ]] && docker --version >/dev/null 2>&1; then
     source <(docker completion bash)
 fi

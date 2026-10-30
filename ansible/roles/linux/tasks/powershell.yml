@@ -18,6 +18,7 @@
 
 # Modules go where the account's shells look: the shared XDG_DATA_HOME when the drive is in use.
 # PSResourceGet's CurrentUser scope ignores XDG_DATA_HOME, so the directory is passed explicitly.
+# The drive directory is used only after it exists; otherwise the module would be written onto the unmounted mountpoint.
 - name: Install or update PowerShell modules
   ansible.builtin.command:
     argv:

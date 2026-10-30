@@ -70,6 +70,7 @@
         done
       changed_when: false
 
+    # bash -ic and the nushell --config pair actually execute the shared files. A parse-only check would miss a runtime error.
     - name: Load shared environment in each shell
       ansible.builtin.command:
         argv: "{{ item.argv }}"
@@ -333,6 +334,8 @@
         script: |
           $ErrorActionPreference = 'Stop'
           $Ansible.Changed = $false
+          # Windows Sandbox keeps the Restricted execution policy. This process has to allow the test file.
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
           & C:\shell-repo\tests\clink.ps1 -Root '{{ scoop }}' `
               -Installer C:\shell-repo\ansible\roles\windows\files\clink.ps1
       register: clink_verification

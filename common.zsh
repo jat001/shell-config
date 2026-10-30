@@ -33,6 +33,7 @@ fi
 
 source "$_shell_antidote" || return
 
+# The cache embeds this distribution's install paths, so WSL distributions cannot share one directory.
 _shell_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
 mkdir -p "$_shell_cache_dir"
 
@@ -45,6 +46,7 @@ _shell_init_completion() {
     done
     typeset -gU fpath
     mkdir -p "$_cache"
+    # Regular files only: a dangling Docker completion link drops out, and its return changes this context.
     _completion_files=(${^fpath}/_*(N-.))
     _context="${(F)fpath}
 ${(F)_completion_files}"
@@ -156,6 +158,7 @@ _shell_resolve_plugins() {
                     "zsh/$_name"
             )"
 
+            # A system package that already dropped _* files onto fpath is used as-is; its path: annotation would miss.
             if [[ -z "$_installed" && "$_kind" == fpath ]]; then
                 _package_dir="$(_shell_package_completion_dir "$_name")"
 
@@ -216,6 +219,7 @@ if [[ ! -r "$_shell_plugins_script" ||
     "$_shell_plugin_file" -nt "$_shell_plugins_script" ||
     "$_shell_antidote" -nt "$_shell_plugins_script" ||
     "$ANTIDOTE_CONFIG" -nt "$_shell_plugins_script" ]]; then
+    # Git's own directory goes first so its helpers are the ones next to this git, not a hardcoded /usr/bin.
     if PATH="${commands[git]:h}:$PATH" \
         antidote bundle < "$_shell_plugins_list" \
         > "$_shell_plugins_script.$$.tmp"; then

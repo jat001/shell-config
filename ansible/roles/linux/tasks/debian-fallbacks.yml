@@ -14,6 +14,7 @@
     - "{{ shell_release_cache }}/blesh"
   when: "'ble.sh' not in shell_apt_available"
 
+# Nightly is refreshed only in update mode. A present file is reused so a repeated full run does not download it again.
 - name: Cache official ble.sh archive
   ansible.builtin.get_url:
     url: "{{ shell_blesh_archive }}"

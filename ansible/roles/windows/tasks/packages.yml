@@ -10,6 +10,7 @@
       Apps: "{{ shell_scoop_apps }}"
   register: shell_scoop
 
+# Store apps follow Scoop. The terminal profile merge later needs both nu.exe and the terminal package to exist.
 - name: Install or update Microsoft Store applications
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'store_app.ps1') }}"

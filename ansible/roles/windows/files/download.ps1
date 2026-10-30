@@ -22,6 +22,7 @@ $name = [IO.Path]::GetFileName($uri.AbsolutePath) -replace '[^A-Za-z0-9._-]', '_
 if (-not $name) { $name='download' }
 [void][IO.Directory]::CreateDirectory($Cache)
 $path = Join-Path $Cache ($key.Substring(0,16) + '-' + $name)
+# The cache name includes the validator. A changed ETag or file length is a different object, not an overwrite of a partial download.
 if (-not [IO.File]::Exists($path)) {
     $partial = $path + '.' + [guid]::NewGuid().ToString('N') + '.part'
     try {

@@ -53,7 +53,11 @@
     script: |
       param([string]$Directory)
       $Ansible.Changed = $false
-      & (Join-Path $Directory 'system_setup.ps1') -RequestPath (Join-Path $Directory 'request.json')
+      # Windows Sandbox leaves the process policy at Restricted. Inline module scripts are
+      # exempt; this file is not, until the process allows it.
+      Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+      $plan = & (Join-Path $Directory 'system_setup.ps1') -RequestPath (Join-Path $Directory 'request.json')
+      if ($null -ne $plan) { $Ansible.Result = @($plan)[-1] }
     parameters:
       Directory: "{{ shell_system_directory }}"
   register: shell_system_plan
@@ -67,6 +71,7 @@
       param([string]$Directory)
       $Ansible.Changed = $true
       if ($Ansible.CheckMode) { return }
+      Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
       & (Join-Path $Directory 'system_setup.ps1') -RequestPath (Join-Path $Directory 'request.json') -Apply
     parameters:
       Directory: "{{ shell_system_directory }}"
@@ -74,6 +79,7 @@
     - shell_elevated | bool
     - shell_system_plan.result.Pending | length > 0
 
+# Developer Mode, both disks and the scheduled task are one elevated process. A second prompt is a separate code path.
 - name: Apply system initialization with one administrator approval
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'elevate.ps1') }}"

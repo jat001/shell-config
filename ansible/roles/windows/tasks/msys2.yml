@@ -13,6 +13,7 @@
     quiet: true
   tags: [packages, config]
 
+# The official archive always unpacks to a sibling named msys64. A different root is a rename after that unpack.
 - name: Install or update MSYS2 packages
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'msys2.ps1') }}"

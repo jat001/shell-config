@@ -3,6 +3,7 @@
     path: "{{ shell_scoop_root }}\\apps\\clink\\current\\clink.bat"
   register: shell_clink
 
+# Check mode still runs so the preview can report a missing registration. The script itself does not write in check mode.
 - name: Configure Clink autorun for the current user
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'clink.ps1') }}"
