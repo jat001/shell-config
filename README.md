@@ -39,7 +39,7 @@ Windows、WSL 和 MSYS2 使用同一套 shell 配置。
 - `-WslDistribution`、`-Msys2Root`：改 WSL 发行版或 MSYS2 位置。
 - `-WslDevDriveOnly`：只处理 WSL 共享开发盘。
 - `-WindowsHome`：把配置部署到另一个 Windows 用户目录。只有目标就是当前账户时，才会设置这个账户的 `HOME`。
-- `-CacheDirectory`：同时指定 WSL 与 Windows 的下载缓存。
+- `-CacheDirectory`：同时指定 WSL 与 Windows 的下载缓存。不指定时用 `%LOCALAPPDATA%\shell-ansible\cache`。中断的下载会再试，已经下完的文件会直接复用。
 
 安装器会在需要时申请一次管理员权限，用来安装 WSL、打开开发人员模式、创建或附加开发盘、注册 WSL 开发盘任务。Scoop、MSYS2 和用户配置在普通权限下进行。安装器不会自动重启电脑。
 

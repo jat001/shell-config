@@ -21,7 +21,8 @@ Playbook 以 `strategy: free` 并行配置 Windows/MSYS2 和各 Linux 主机。�
 - `${DEV_DRIVE}` 和 `${WINDOWS_HOME}` 只用于展开，不导出。WSL 上 `DEV_DRIVE` 仅在 `/proc/self/mounts` 里挂载点的文件系统与配置一致时定义。
 - 已由其他方式安装的同名命令不接管。GitHub 发布包先校验长度、上游 SHA256 和 ELF，再原子切换链接；失败时恢复旧链接。
 - 开发盘的 VHDX 路径必须落在 `-WindowsHome` 下面，并且是 `.vhdx`。已有盘不调整容量、不格式化。
-- 控制容器标签是 `Containerfile` 与两份 `requirements` 的哈希。已有同标签镜像或缓存里的 tar 直接用。`update` 才 `--pull --no-cache` 重建，构建失败会再试两次。成功后的镜像 tar 写到下载缓存的 `images`。pip 和 Galaxy 仍用构建缓存挂载，基础镜像留在 wslc 的本地镜像库。
+- 控制容器标签是 `Containerfile` 与两份 `requirements` 的哈希。已有同标签镜像或缓存里的 tar 直接用。`update` 才 `--pull --no-cache` 重建，构建一共试 3 次。成功后的镜像 tar 写到下载缓存的 `images`。pip 和 Galaxy 仍用构建缓存挂载，基础镜像留在 wslc 的本地镜像库。
+- 一次性下载（WSL 安装包、Scoop 安装脚本、通用文件、归档头、apt 签名密钥、Store 的 GitHub 回退）失败时一共试 3 次。winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。`-1978335138` 先刷新一次 winget 客户端再继续。其余失败，包括 `-2147012867`（连不上 Microsoft Store），用完 3 次才失败。有 winget 时 Store 应用不写入这份下载缓存。
 
 ## 测试
 
@@ -59,7 +60,7 @@ Playbook 以 `strategy: free` 并行配置 Windows/MSYS2 和各 Linux 主机。�
 
 容器和沙盒回归（`tests/run.ps1 -StateDirectory $env:TEMP\shell-audit -Target arch,debian,sandbox`，沙盒用完已停）：Arch、Debian 和 Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update` 和 `verify` 都是 failed=0。无提权账户的第二次 `full` 也是 `changed=0`。Debian 上 WSL 用户 `shell` 加载 PowerShell 通过：发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
-干净虚拟机仍用状态目录里已有的 `ShellConfig-Test`（不要另建同名虚拟机）。从 `WSL-Ready` 恢复并同步仓库后跑 `init,full,full,update`。`init`、第一次 `full` 和重复 `full`（三台都是 `changed=0`）都是 `failed=0`。`update` 停在 Windows 升级 Microsoft Store 里的 PowerShell：`winget upgrade 9MZ1SNWT0N5D failed (-2147012867)`，搜索源 `msstore` 失败。Debian 和 Arch 的这次 `update` 是 `failed=0`。测试脚本只停止提权 worker，不删除这台虚拟机。NAT 只转发默认发行版的 `127.0.0.1`，所以安装器要在启动 sshd 之前写好镜像网络并在 `.wslconfig` 有变化时 `wsl --shutdown`。同步客户机文件必须整文件覆盖；`Copy-Item -ToSession -Force` 不会替换已有文件。
+干净虚拟机仍用状态目录里已有的 `ShellConfig-Test`（不要另建同名虚拟机）。从 `WSL-Ready` 恢复并同步仓库后跑 `init,full,full,update`。`init`、第一次 `full` 和重复 `full`（三台都是 `changed=0`）都是 `failed=0`。这次 `update` 还没有下载重试，停在 Windows 升级 Microsoft Store 里的 PowerShell：`winget upgrade 9MZ1SNWT0N5D failed (-2147012867)`，搜索源 `msstore` 失败。这个退出码现在会再试，商店一直连不上时第三次仍然失败。这次虚拟机没有用加重试之后的代码再跑。Debian 和 Arch 的这次 `update` 是 `failed=0`。测试脚本只停止提权 worker，不删除这台虚拟机。NAT 只转发默认发行版的 `127.0.0.1`，所以安装器要在启动 sshd 之前写好镜像网络并在 `.wslconfig` 有变化时 `wsl --shutdown`。同步客户机文件必须整文件覆盖；`Copy-Item -ToSession -Force` 不会替换已有文件。
 
 ## 改代码时要注意
 
