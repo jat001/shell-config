@@ -70,6 +70,8 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 可以单独跑、也不碰现网的：
 
 - `tests/system_setup.ps1`：临时目录里的系统步骤计划。PowerShell 5.1 和 7 都能跑。
+- `tests/msys2_update.ps1`：临时命令替身测试核心升级重启和普通错误，不运行 MSYS2。
+- `tests/hyperv_worker_test.ps1`：模拟启动、热加载与错误恢复，测试并发文件读写和客户机脚本参数，不申请管理员权限。
 - `tests/native_commands.ps1`：本机要有 `wslc.exe`。只解析命令，并检查一个不存在的镜像。
 - `tests/wsl_cache.ps1 -CacheDirectory <临时目录>`：下载并复用 WSL 缓存，不安装 WSL。
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
@@ -85,17 +87,44 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 `shell-test` 网络固定 `10.77.90.0/24`。wslc 默认的下一个地址池可能是 `172.18.0.0/16`，这台机器的 Hyper-V 默认交换机是 `172.18.144.0/20`。重叠时沙盒 IP 像在本地网桥上，连接报 `No route to host`。
 沙盒执行策略是 Restricted。写进模块参数的脚本能跑，磁盘上的 `.ps1` 不行。调用 `system_setup.ps1`、`download.ps1`、`clink.ps1` 之前，把当前进程的执行策略设成 Bypass。
 `wsb exec -c` 会把命令字符串里的 PowerShell 开关当成自己的参数。启动命令放进映射进去的 `launch.cmd`，传给 `wsb` 的只是这个文件的路径。
-普通用户读不到计划任务服务。读失败不是“任务没注册”，不要再排一次。
+普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
 容器和沙盒（`-Target arch,debian,sandbox`，沙盒用完已停）：Arch、Debian、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
 无提权账户的第二次 `full` 也是 `changed=0`。
 Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
 虚拟机用状态目录里已有的 `ShellConfig-Test`。从 `WSL-Ready` 恢复，同步仓库，再跑 `init,full,full,update`。不要另建同名虚拟机，测完也不要删。
-`init`、第一次 `full`、重复 `full` 都是 failed=0，重复那次三台都是 `changed=0`。
-这次 `update` 还没有下载重试。Windows 升级 Store 里的 PowerShell 时，`winget upgrade 9MZ1SNWT0N5D` 返回 `-2147012867`，搜索源 `msstore` 失败。Debian 和 Arch 是 failed=0。
-这个退出码现在会再试。商店一直连不上，第三次还是失败。这台虚拟机还没用这版再跑。
+`init`、连续两次 `full`、`update` 已回归，三台都是 failed=0，重复 `full` 的三台都是 `changed=0`。
+断电冷启动后，开发盘、各 shell、Clink 和 Terminal GUI 启动的 13 项检查通过，临时自动登录及凭据已清理。
+更新构建曾遇 Docker Hub 和 Galaxy TLS EOF，重试后通过；别关闭 TLS 校验或把失败当成成功。
+MSYS2 核心升级会主动关闭当前 Bash。只有退出 1 且出现明确核心重启提示时，第一轮升级才能接续；第二轮用新进程执行，仍检查退出码。
 测试脚本只停提权 worker。
+
+Hyper-V 测试只用一个宿主管理员执行器。先 `tests/hyperv.ps1 -Action Start`，已有进程时直接复用。
+后续 `Prepare`、`Sync`、`Run`、`Status`、`Collect`、`Restore`、`ColdBoot`、`EnableLogon`、`ClearLogon` 和 `Stop` 都排到它的队列；没启动时直接报错，不为每个动作另弹 UAC。
+`Prepare` 调用的准备子进程继承管理员令牌，不再请求提权。首次启用宿主组件需要重启时，重启后仍要重新启动执行器。
+
+`tests/hyperv.ps1` 保留启动和请求循环，`tests/hyperv_actions.ps1` 在每次操作、进度查询时重新加载。
+修改或修复操作脚本后继续提交请求，别重启管理员进程。固定入口自身的修改在下一次启动时生效。
+状态目录由 PID、进程启动时间和执行器 Instance 标识，PS5.1/PS7 都能识别；不靠 PID 单独判断。
+默认空闲两小时退出，运行中的客户机任务结束后重新计算空闲时间。
+
+临时诊断和附加测试用同一入口，例如：
+
+```powershell
+& .\tests\hyperv.ps1 -Action Guest -ScriptPath C:\Temp\check.ps1 -ScriptArguments @{ Label = 'probe' }
+```
+
+`Guest` 在已核对身份的 VM 中执行独立脚本，不执行任意宿主脚本。源文件和结构化参数直接传入，无需再起一个诊断 worker。
+客户机临时执行副本带 UTF-8 BOM，以兼容 Windows PowerShell 5.1；仓库源码仍保持 UTF-8 无 BOM / LF。
+要调用客户机仓库里的现有测试，可在独立脚本中使用 `$env:USERPROFILE/.config/shell/tests/...`，别假定临时脚本的 `$PSScriptRoot` 是仓库目录。
+`Run` 和 `Guest` 是后台任务，`operations/<id>.json` 只表示成功启动；看对应 `<id>.progress.json` 的 Running 和 Success 判断完成结果。
+客户机输出在 `guest-logs/operations/<id>/`，参数文件不在日志收集范围内。
+
+`Sync`、恢复、断电和准备 VM 之前先等后台任务结束，避免覆盖运行中的源码。日常诊断与日志收集可在任务运行时进行。
+`Collect` 最后再做一次，将下载缓存取回宿主；日志允许共享读取，写入中的日志也能采集。
+临时自动登录只在显式 `EnableLogon` 时设置，`ClearLogon`、验证结束及正常 `Stop` 会清理注册表密码和 LSA 凭据。
+完成后 `Stop` 退出管理员执行器，保留测试 VM 和快照，不注册常驻宿主服务或关闭 UAC。
 NAT 只转发默认发行版的 `127.0.0.1`，每个 sshd 都听在这个地址上。启动 sshd 之前按 `common.json` 写好 `.wslconfig`，里面要有镜像网络和 `hostAddressLoopback`。文件有变化就 `wsl --shutdown`。连接建立之后不能再 shutdown。
 同步进客户机的文件要整文件覆盖。`Copy-Item -ToSession -Force` 换不掉已有文件。
 

@@ -1,10 +1,17 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [ValidateSet('Prepare','Start','Worker','Sync','Run','Collect','Status','Restore','Stop')][string]$Action = 'Start',
+    [ValidateSet('Prepare', 'Start', 'Worker', 'Sync', 'Run', 'Guest', 'Collect', 'Status',
+        'Restore', 'ColdBoot', 'EnableLogon', 'ClearLogon', 'Stop')]
+    [string]$Action = 'Start',
     [string]$StateDirectory = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData/Local/shell-ansible-test/hyperv'),
     [string]$Repository,
-    [ValidateSet('init','full','update')][string[]]$Modes = @('init','full','full','update'),
-    [ValidateSet('Clean-Windows','WSL-Ready')][string]$Baseline = 'WSL-Ready',
+    [ValidateSet('init', 'full', 'update')][string[]]$Modes = @('init', 'full', 'full', 'update'),
+    [ValidateSet('Clean-Windows', 'WSL-Ready')][string]$Baseline = 'WSL-Ready',
+    [string]$ScriptPath,
+    [hashtable]$ScriptArguments = @{},
+    [ValidateRange(1, 10)][int]$AutoLogonCount = 2,
+    [ValidateRange(1, 480)][int]$IdleTimeoutMinutes = 120,
+    [ValidateSet('All', 'Host', 'Create', 'Baselines')][string]$PreparationStage = 'All',
     [string]$IsoSource,
     [string]$IsoSha256,
     [string]$IsoLanguage = (Get-Culture).Name
@@ -14,225 +21,202 @@ $ErrorActionPreference = 'Stop'
 if (-not $Repository) { $Repository = Split-Path $PSScriptRoot }
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
 $Repository = [IO.Path]::GetFullPath($Repository)
-if ($Action -eq 'Prepare') {
-    & (Join-Path $PSScriptRoot 'hyperv_prepare.ps1') -StateDirectory $StateDirectory -Repository $Repository `
-        -IsoSource $IsoSource -IsoSha256 $IsoSha256 -IsoLanguage $IsoLanguage -WhatIf:$WhatIfPreference
-    return
-}
-if (-not $PSCmdlet.ShouldProcess('Hyper-V test environment', $Action)) { return }
-$requestPath = Join-Path $StateDirectory 'request.json'
 $workerPath = Join-Path $StateDirectory 'worker.json'
-$identity = [IO.File]::ReadAllText((Join-Path $StateDirectory 'vm-created.json')) | ConvertFrom-Json
-$vmName = $identity.Name
+$handlerPath = Join-Path $Repository 'tests/hyperv_actions.ps1'
 $utf8 = [Text.UTF8Encoding]::new($false)
 
-# Start is the only action that elevates. Later actions only queue a file for that worker.
-if ($Action -eq 'Start') {
-    if ([IO.File]::Exists($workerPath)) {
-        $worker = [IO.File]::ReadAllText($workerPath) | ConvertFrom-Json
-        if (Get-Process -Id $worker.Pid -ErrorAction SilentlyContinue) { 'Worker already running.'; return }
+function Get-HypervWorker {
+    param([string]$Path)
+    if (-not [IO.File]::Exists($Path)) { return }
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        $stream = $null
+        $reader = $null
+        try {
+            $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+            $stream = [IO.File]::Open($Path, 'Open', 'Read', $share)
+            $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true)
+            $record = $reader.ReadToEnd() | ConvertFrom-Json
+            break
+        } catch [IO.IOException] {
+            if ($attempt -eq 9) { throw }
+            Start-Sleep -Milliseconds 25
+        } finally {
+            if ($reader) { $reader.Dispose() }
+            elseif ($stream) { $stream.Dispose() }
+        }
     }
-    $process = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
-        -Verb RunAs -WindowStyle Hidden -PassThru -ArgumentList @(
-            '-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$PSCommandPath+'"'),
-            '-Action','Worker','-StateDirectory',('"'+$StateDirectory+'"'),'-Repository',('"'+$Repository+'"')
+    $process = Get-Process -Id $record.Pid -ErrorAction SilentlyContinue
+    if (-not $process -or $process.ProcessName -notin @('powershell', 'pwsh')) { return }
+    if (-not $record.Instance -or -not $record.Started) {
+        throw 'The old worker is still running. Stop it before starting this version.'
+    }
+    $started = ([DateTimeOffset]$record.Started).UtcDateTime.ToString('o')
+    if ($process.StartTime.ToUniversalTime().ToString('o') -ne $started) { return }
+    $record
+}
+
+function Invoke-HypervOperation {
+    param([hashtable]$Context, [object]$Request)
+    # A fresh script scope on every call lets a repaired handler run without another UAC.
+    & (Join-Path $Context.Repository 'tests/hyperv_actions.ps1') -Context $Context -Request $Request
+}
+
+function Write-WorkerRecord {
+    param([hashtable]$Context)
+    $record = @{
+        Pid = $PID
+        Started = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')
+        Instance = $Context.Instance
+        Repository = $Context.Repository
+        Expires = $Context.IdleUntil.ToString('o')
+        Jobs = @($Context.Jobs.Keys)
+    }
+    $temporary = $workerPath + '.' + $Context.Instance + '.tmp'
+    [IO.File]::WriteAllText($temporary, ($record | ConvertTo-Json), $utf8)
+    if ([IO.File]::Exists($workerPath)) { [IO.File]::Replace($temporary, $workerPath, [NullString]::Value) }
+    else { [IO.File]::Move($temporary, $workerPath) }
+}
+
+if (-not $PSCmdlet.ShouldProcess('Hyper-V test environment', $Action)) { return }
+
+if ($Action -eq 'Start') {
+    if (Get-HypervWorker $workerPath) { 'Worker already running.'; return }
+    # Catch syntax and UTF-8/JSON problems before asking Windows to elevate.
+    foreach ($path in @($PSCommandPath, $handlerPath,
+        (Join-Path $Repository 'tests/hyperv_guest_command.ps1'),
+        (Join-Path $Repository 'tests/hyperv_logon.ps1'))) {
+        if (-not [IO.File]::Exists($path)) { throw "Required test script is missing: $path" }
+        $tokens = $null
+        $parseErrors = $null
+        [void][Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors)
+        if ($parseErrors) { throw ($parseErrors -join "`n") }
+    }
+    $identityPath = Join-Path $StateDirectory 'vm-created.json'
+    if ([IO.File]::Exists($identityPath)) { $null = [IO.File]::ReadAllText($identityPath) | ConvertFrom-Json }
+    $null = [IO.Directory]::CreateDirectory($StateDirectory)
+    # Serialize simultaneous Start calls, including the time spent waiting for consent.
+    $startLock = [IO.File]::Open((Join-Path $StateDirectory 'worker-start.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    try {
+        if (Get-HypervWorker $workerPath) { 'Worker already running.'; return }
+        $arguments = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"'),
+            '-Action', 'Worker', '-StateDirectory', ('"' + $StateDirectory + '"'),
+            '-Repository', ('"' + $Repository + '"'), '-IdleTimeoutMinutes', $IdleTimeoutMinutes
         )
-    "Worker starting: $($process.Id)"
-    return
+        $start = @{
+            FilePath = "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe"
+            WindowStyle = 'Hidden'
+            PassThru = $true
+            ArgumentList = $arguments
+        }
+        $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+        if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { $start.Verb = 'RunAs' }
+        $process = Start-Process @start
+        $deadline = (Get-Date).AddSeconds(30)
+        while ((Get-Date) -lt $deadline -and -not $process.HasExited) {
+            $record = Get-HypervWorker $workerPath
+            if ($record -and $record.Pid -eq $process.Id) { "Worker ready: $($process.Id)"; return }
+            Start-Sleep -Milliseconds 200
+            $process.Refresh()
+        }
+        throw 'Worker did not become ready. See worker-error.json; do not start another diagnostic worker.'
+    } finally { $startLock.Dispose() }
 }
 
 if ($Action -ne 'Worker') {
+    $worker = Get-HypervWorker $workerPath
+    if (-not $worker) { throw 'Start the test worker once with -Action Start before queuing operations.' }
+    $requestPath = Join-Path $StateDirectory 'request.json'
     if ([IO.File]::Exists($requestPath)) { throw 'Another operation is queued.' }
-    $request = @{ Id=[guid]::NewGuid().ToString(); Action=$Action; Modes=$Modes; Baseline=$Baseline }
-    $temporary = $requestPath + '.tmp'
-    [IO.File]::WriteAllText($temporary,($request | ConvertTo-Json),$utf8)
-    [IO.File]::Move($temporary,$requestPath)
+    $request = @{
+        Id = [guid]::NewGuid().ToString()
+        Worker = $worker.Instance
+        Action = $Action
+        Modes = $Modes
+        Baseline = $Baseline
+        AutoLogonCount = $AutoLogonCount
+        PreparationStage = $PreparationStage
+        IsoSource = $IsoSource
+        IsoSha256 = $IsoSha256
+        IsoLanguage = $IsoLanguage
+    }
+    if ($Action -eq 'Guest') {
+        if (-not $ScriptPath -or [IO.Path]::GetExtension($ScriptPath) -ine '.ps1') {
+            throw 'Guest requires an existing PowerShell -ScriptPath.'
+        }
+        $source = (Get-Item -LiteralPath $ScriptPath).FullName
+        $request.Script = [Convert]::ToBase64String([IO.File]::ReadAllBytes($source))
+        $request.Arguments = [Management.Automation.PSSerializer]::Serialize($ScriptArguments)
+        $request.Source = $source
+    }
+    $temporary = Join-Path $StateDirectory ('request-' + $request.Id + '.tmp')
+    try {
+        [IO.File]::WriteAllText($temporary, ($request | ConvertTo-Json -Depth 8), $utf8)
+        [IO.File]::Move($temporary, $requestPath)
+    } finally { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } }
     "Queued $Action : $($request.Id)"
     return
 }
 
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Worker requires elevation.' }
-# The name is not enough. A different VM that reused the name is refused instead of receiving this deployment.
-if ([string](Get-VM -Name $vmName).Id -ne $identity.Id) { throw 'Unexpected VM identity.' }
-$credential = Import-Clixml (Join-Path $StateDirectory 'guest-credential.xml')
+$lock = [IO.File]::Open((Join-Path $StateDirectory 'worker.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+$context = @{
+    Repository = $Repository; StateDirectory = $StateDirectory
+    Instance = [guid]::NewGuid().ToString(); Session = $null; Jobs = @{}
+    IdleUntil = (Get-Date).AddMinutes($IdleTimeoutMinutes); IdleTimeoutMinutes = $IdleTimeoutMinutes
+    Stop = $false; AutoLogon = $false
+}
 $resultDirectory = Join-Path $StateDirectory 'operations'
-[void][IO.Directory]::CreateDirectory($resultDirectory)
-[IO.File]::WriteAllText($workerPath,(@{Pid=$PID;VM=$vmName;Expires=(Get-Date).AddHours(2)}|ConvertTo-Json),$utf8)
-$deadline = (Get-Date).AddHours(2)
-$session = $null
-$jobPid = $null
-
-function Connect-Guest {
-    if (-not $script:session -or $script:session.State -ne 'Opened') {
-        $script:session = New-PSSession -VMName $vmName -Credential $credential
-    }
-}
-
-function Copy-Logs {
-    Connect-Guest
-    $destination = Join-Path $StateDirectory 'guest-logs'
-    [void][IO.Directory]::CreateDirectory($destination)
-    $paths = Invoke-Command -Session $session -ScriptBlock {
-        Get-ChildItem C:\shell-test -File -ErrorAction SilentlyContinue |
-            Where-Object Extension -In @('.log','.out','.err','.json','.txt','.ps1') |
-            ForEach-Object FullName
-    }
-    foreach ($path in $paths) { Copy-Item -FromSession $session -LiteralPath $path -Destination $destination -Force }
-}
-
-function Copy-Cache {
-    param([ValidateSet('ToGuest','FromGuest')][string]$Direction)
-    Connect-Guest
-    $cache = Join-Path $StateDirectory 'cache/downloads'
-    [void][IO.Directory]::CreateDirectory($cache)
-    $remote = 'C:\shell-cache'
-    if ($Direction -eq 'ToGuest') {
-        foreach ($file in Get-ChildItem -LiteralPath $cache -Recurse -File) {
-            $relative = $file.FullName.Substring($cache.Length + 1)
-            $target = Join-Path $remote $relative
-            $needed = Invoke-Command -Session $session -ArgumentList $target,$file.Length -ScriptBlock {
-                param($Path,$Length)
-                if ([IO.File]::Exists($Path) -and (Get-Item -LiteralPath $Path).Length -eq $Length) { return $false }
-                [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))
-                $true
-            }
-            if ($needed) { Copy-Item -ToSession $session -LiteralPath $file.FullName -Destination $target -Force }
-        }
-    } else {
-        $files = Invoke-Command -Session $session -ScriptBlock {
-            Get-ChildItem C:\shell-cache -Recurse -File -ErrorAction SilentlyContinue |
-                Where-Object Name -NotLike '*.part' |
-                Where-Object {
-                    if ($_.Extension -ne '.wsl') { return $true }
-                    $stream = [IO.File]::OpenRead($_.FullName)
-                    try {
-                        $buffer = New-Object byte[] 256
-                        $count = $stream.Read($buffer,0,$buffer.Length)
-                        $prefix = [Text.Encoding]::UTF8.GetString($buffer,0,$count)
-                        $prefix -notmatch '(?is)^\s*(<!doctype\s+html|<html)'
-                    } finally { $stream.Dispose() }
-                } | Select-Object FullName,Length
-        }
-        foreach ($file in $files) {
-            $target = Join-Path $cache $file.FullName.Substring($remote.Length + 1)
-            if ([IO.File]::Exists($target) -and (Get-Item -LiteralPath $target).Length -eq $file.Length) { continue }
-            [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
-            Copy-Item -FromSession $session -LiteralPath $file.FullName -Destination $target -Force
-        }
-    }
-}
+$null = [IO.Directory]::CreateDirectory($resultDirectory)
 try {
-    while ((Get-Date) -lt $deadline) {
+    Write-WorkerRecord $context
+    while (-not $context.Stop -and ((Get-Date) -lt $context.IdleUntil -or $context.Jobs.Count)) {
+        $requestPath = Join-Path $StateDirectory 'request.json'
         if ([IO.File]::Exists($requestPath)) {
-            $request = [IO.File]::ReadAllText($requestPath) | ConvertFrom-Json
-            [IO.File]::Delete($requestPath)
-            $result = @{Id=$request.Id;Action=$request.Action;Success=$false}
+            $result = $null
             try {
-                if ($request.Id -notmatch '^[0-9a-f-]{36}$') { throw 'Invalid operation ID.' }
-                if ([string](Get-VM -Name $vmName).Id -ne $identity.Id) { throw 'VM identity changed.' }
-                switch ($request.Action) {
-                    'Stop' { $deadline=Get-Date }
-                    'Status' {
-                        Connect-Guest
-                        $health = Invoke-Command -Session $session -ScriptBlock {
-                            $verification = if ([IO.File]::Exists('C:\shell-test\verification-result.json')) {
-                                [IO.File]::ReadAllText('C:\shell-test\verification-result.json') | ConvertFrom-Json
-                            }
-                            $task = Get-ScheduledTask -TaskName 'Shell Config Verify Once' -ErrorAction SilentlyContinue
-                            @{
-                                Computer = $env:COMPUTERNAME
-                                Verification = $verification
-                                TaskState = [string]$task.State
-                                TaskResult = $(if ($task) { (Get-ScheduledTaskInfo $task).LastTaskResult })
-                                Processes = @(Get-Process -Name explorer,WindowsTerminal,consent,powershell -ErrorAction SilentlyContinue |
-                                    Select-Object Name,Id,SessionId)
-                            }
-                        }
-                        [IO.File]::WriteAllText((Join-Path $StateDirectory 'health.json'),($health|ConvertTo-Json -Depth 8),$utf8)
-                    }
-                    'Collect' { Copy-Logs; Copy-Cache -Direction FromGuest }
-                    'Sync' {
-                        Connect-Guest
-                        $target = Invoke-Command -Session $session -ScriptBlock {
-                            $path=Join-Path $env:USERPROFILE '.config/shell'
-                            [void][IO.Directory]::CreateDirectory($path)
-                            $path
-                        }
-                        $files = & git.exe -C $Repository ls-files --cached --others --exclude-standard
-                        if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate repository files.' }
-                        foreach ($relative in $files) {
-                            $source = Join-Path $Repository $relative
-                            $destination = Join-Path $target ($relative -replace '/', '\')
-                            # ArgumentList unwraps a byte array into separate arguments. A string does not.
-                            # Copy-Item -ToSession also leaves an existing guest file unchanged.
-                            $encoded = [Convert]::ToBase64String([IO.File]::ReadAllBytes($source))
-                            Invoke-Command -Session $session -ArgumentList $destination, $encoded -ScriptBlock {
-                                param($Path, $Encoded)
-                                $parent = Split-Path -Parent $Path
-                                if ($parent) { [void][IO.Directory]::CreateDirectory($parent) }
-                                [IO.File]::WriteAllBytes($Path, [Convert]::FromBase64String($Encoded))
-                            }
-                        }
-                        $updated = Invoke-Command -Session $session -ScriptBlock {
-                            Select-String -LiteralPath (Join-Path $env:USERPROFILE '.config\shell\install.ps1') `
-                                -Pattern 'start-sshd.sh' -SimpleMatch -Quiet
-                        }
-                        if (-not $updated) { throw 'Guest installer was not updated.' }
-                        Copy-Cache -Direction ToGuest
-                        Invoke-Command -Session $session -ArgumentList $target -ScriptBlock {
-                            param($Repository)
-                            Copy-Item -LiteralPath (Join-Path $Repository 'tests/hyperv_guest.ps1') -Destination C:\shell-test\run-deployment.ps1 -Force
-                        }
-                    }
-                    'Restore' {
-                        # Restoring discards every guest change made after that snapshot, including a deployment in progress.
-                        if ($request.Baseline -notin @('Clean-Windows','WSL-Ready')) { throw 'Invalid baseline.' }
-                        if ($jobPid) { throw 'Wait for the current deployment to finish.' }
-                        if ($session) { Remove-PSSession $session; $session=$null }
-                        Stop-VM -Name $vmName
-                        Restore-VMSnapshot -VMName $vmName -Name $request.Baseline -Confirm:$false
-                        Start-VM -Name $vmName
-                    }
-                    'Run' {
-                        if ($jobPid) { throw 'Deployment is already running.' }
-                        if (@($request.Modes | Where-Object { $_ -notin @('init','full','update') }).Count) { throw 'Invalid mode.' }
-                        Connect-Guest
-                        $jobPid = [int](Invoke-Command -Session $session -ArgumentList ($request.Modes -join ',') -ScriptBlock {
-                            param($Modes)
-                            $p = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @(
-                                '-NoProfile','-ExecutionPolicy','Bypass','-File','C:\shell-test\run-deployment.ps1','-Modes',$Modes
-                            ) -RedirectStandardOutput C:\shell-test\deploy-run.out -RedirectStandardError C:\shell-test\deploy-run.err
-                            $p.Id
-                        })
-                        $result.Pid=$jobPid
-                    }
-                    default { throw 'Unsupported operation.' }
+                $request = [IO.File]::ReadAllText($requestPath) | ConvertFrom-Json
+                [IO.File]::Delete($requestPath)
+                if ($request.Id -notmatch '^[0-9a-f-]{36}$' -or $request.Worker -ne $context.Instance) {
+                    throw 'The request does not belong to this worker.'
                 }
-                $result.Success=$true
-            } catch { $result.Error=$_.Exception.Message }
-            [IO.File]::WriteAllText((Join-Path $resultDirectory ($request.Id+'.json')),($result|ConvertTo-Json),$utf8)
+                $result = @{ Id = $request.Id; Action = $request.Action; Success = $false }
+                $context.IdleUntil = (Get-Date).AddMinutes($IdleTimeoutMinutes)
+                $result.Result = Invoke-HypervOperation $context $request
+                $result.Success = $true
+            } catch {
+                if ($result) { $result.Error = $_.Exception.Message; $result.Stack = $_.ScriptStackTrace }
+                else {
+                    [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),
+                        (@{ Error = $_.Exception.Message } | ConvertTo-Json), $utf8)
+                }
+            }
+            if ($result) {
+                [IO.File]::WriteAllText((Join-Path $resultDirectory ($request.Id + '.json')),
+                    ($result | ConvertTo-Json -Depth 12), $utf8)
+            }
+            Write-WorkerRecord $context
         }
-        if ($jobPid) {
-            try {
-                Connect-Guest
-                $progress=Invoke-Command -Session $session -ArgumentList $jobPid -ScriptBlock {
-                    param($Id)
-                    $log=Get-ChildItem C:\shell-test\deploy-*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                    @{Running=[bool](Get-Process -Id $Id -ErrorAction SilentlyContinue);Log=$log.Name;
-                      Tail=@(Get-Content -LiteralPath $log.FullName -Tail 12 | ForEach-Object { $_.ToString() })}
-                }
-                [IO.File]::WriteAllText((Join-Path $StateDirectory 'progress.json'),($progress|ConvertTo-Json -Depth 4),$utf8)
-                if (-not $progress.Running) {
-                    $jobPid=$null
-                    Copy-Logs
-                    Copy-Cache -Direction FromGuest
-                }
-            } catch { [IO.File]::WriteAllText((Join-Path $StateDirectory 'progress-error.txt'),$_.Exception.Message,$utf8) }
+        if ($context.Jobs.Count) {
+            try { $null = Invoke-HypervOperation $context ([pscustomobject]@{ Action = 'Poll' }) }
+            catch {
+                [IO.File]::WriteAllText((Join-Path $StateDirectory 'progress-error.txt'), $_.Exception.Message, $utf8)
+            }
         }
-        Start-Sleep -Seconds 3
+        Start-Sleep -Milliseconds 500
     }
+} catch {
+    [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),
+        (@{ Error = $_.Exception.Message; Stack = $_.ScriptStackTrace } | ConvertTo-Json), $utf8)
+    throw
 } finally {
-    if ($session) { Remove-PSSession $session }
+    try { $null = Invoke-HypervOperation $context ([pscustomobject]@{ Action = 'Disconnect' }) }
+    catch {
+        [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),
+            (@{ Error = $_.Exception.Message } | ConvertTo-Json), $utf8)
+    }
+    if ($context.Session) { Remove-PSSession $context.Session -ErrorAction SilentlyContinue }
     if ([IO.File]::Exists($workerPath)) { [IO.File]::Delete($workerPath) }
+    $lock.Dispose()
 }

@@ -84,9 +84,22 @@ if ($request.ManageWslDrive -and $wslDrive) {
     $wslTaskUnreadable = $false
     try {
         $task = Get-ScheduledTask -TaskPath '\' -TaskName $wslDrive.task -ErrorAction Stop
-    } catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {
+    } catch {
         $task = $null
-        $wslTaskUnreadable = $true
+        $taskException = $_.Exception
+        $accessDeniedCode = [Microsoft.Management.Infrastructure.NativeErrorCode]::AccessDenied
+        $accessDenied = $_.CategoryInfo.Category -eq 'PermissionDenied'
+        while ($taskException -and -not $accessDenied) {
+            $accessDenied = $taskException -is [UnauthorizedAccessException] -or (
+                $taskException -is [Microsoft.Management.Infrastructure.CimException] -and (
+                    $taskException.NativeErrorCode -eq $accessDeniedCode -or
+                    $taskException.StatusCode -eq [uint32]$accessDeniedCode
+                )
+            )
+            $taskException = $taskException.InnerException
+        }
+        if ($accessDenied) { $wslTaskUnreadable = $true }
+        elseif ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }
     }
     # A task with this name that runs a different program is left in place. Matching arguments can be updated.
     if ($task -and $task.Description -ne $description -and

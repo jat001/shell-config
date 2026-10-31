@@ -51,6 +51,7 @@ shell_aur_cache: ""
 
 shell_pacman_packages:
   - base-devel
+  - bash-completion
   - fish
   - git
   - jq

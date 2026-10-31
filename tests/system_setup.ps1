@@ -22,6 +22,8 @@ $request = @{
 }
 $global:ShellSystemTestDeveloperMode = 0
 $global:ShellSystemTestTask = $null
+$global:ShellSystemTestTaskErrorCategory = $null
+$global:ShellSystemTestTaskException = $null
 # These functions hide the real cmdlets for the child script. They are visible because the child runs in a child scope.
 function Get-ItemProperty {
     param([string]$LiteralPath, [string]$ErrorAction)
@@ -29,7 +31,18 @@ function Get-ItemProperty {
     [pscustomobject]@{ AllowDevelopmentWithoutDevLicense=$global:ShellSystemTestDeveloperMode }
 }
 function Get-ScheduledTask {
-    param([string]$TaskPath, [string]$TaskName, [string]$ErrorAction)
+    [CmdletBinding()]
+    param([string]$TaskPath, [string]$TaskName)
+    if ($null -ne $global:ShellSystemTestTaskErrorCategory) {
+        $taskException = if ($global:ShellSystemTestTaskException) {
+            $global:ShellSystemTestTaskException
+        } else { [Exception]::new('Scheduled task query fixture') }
+        $record = [Management.Automation.ErrorRecord]::new(
+            $taskException, 'ShellSystemTestTaskQuery',
+            [Management.Automation.ErrorCategory]$global:ShellSystemTestTaskErrorCategory, $TaskName
+        )
+        $PSCmdlet.ThrowTerminatingError($record)
+    }
     $global:ShellSystemTestTask
 }
 function Write-Request {
@@ -47,6 +60,38 @@ try {
     $plan = Invoke-Plan
     $expected = @('DeveloperMode', 'CreateDrive', 'AttachDrive', 'CreateDrive', 'RegisterTask')
     if (($plan.Pending -join ',') -cne ($expected -join ',')) { throw 'First deployment did not aggregate all system changes.' }
+    $global:ShellSystemTestTaskErrorCategory = 'ObjectNotFound'
+    if (((Invoke-Plan).Pending -join ',') -cne ($expected -join ',')) {
+        throw 'A missing scheduled task was mistaken for an unreadable task.'
+    }
+    $global:ShellSystemTestTaskErrorCategory = 'PermissionDenied'
+    if ((Invoke-Plan).Pending -contains 'RegisterTask') {
+        throw 'A denied task query was mistaken for a missing task.'
+    }
+    $taskErrorData = [Microsoft.Management.Infrastructure.CimInstance]::new('CIM_Error')
+    try {
+        $taskErrorData.CimInstanceProperties.Add([Microsoft.Management.Infrastructure.CimProperty]::Create(
+            'CIMStatusCode', [uint32]2, [Microsoft.Management.Infrastructure.CimFlags]::None
+        ))
+        $global:ShellSystemTestTaskException = [Exception]::new(
+            'Scheduled task query fixture', [Microsoft.Management.Infrastructure.CimException]::new($taskErrorData)
+        )
+        $global:ShellSystemTestTaskErrorCategory = 'ResourceUnavailable'
+        if ((Invoke-Plan).Pending -contains 'RegisterTask') {
+            throw 'A wrapped CIM AccessDenied was mistaken for a missing task.'
+        }
+    } finally {
+        $global:ShellSystemTestTaskException = $null
+        $taskErrorData.Dispose()
+    }
+    $global:ShellSystemTestTaskErrorCategory = 'InvalidOperation'
+    $rejected = $false
+    try { $null = Invoke-Plan } catch {
+        if ($_.Exception.Message -notlike '*Scheduled task query fixture*') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'An unexpected scheduled task query failure was hidden.' }
+    $global:ShellSystemTestTaskErrorCategory = $null
     $Ansible = @{ Changed=$false; Result=$null }
     $null = & $scriptPath -RequestPath $requestPath -Apply -WhatIf
     if ([IO.File]::Exists((Join-Path $homePath 'windows.vhdx')) -or
@@ -92,7 +137,10 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
     if (-not $rejected) { throw 'A VHDX outside the configured Windows home was accepted.' }
     "PowerShell $($PSVersionTable.PSVersion): batched system plan, idempotency, preview and conflict checks passed."
 } finally {
-    Remove-Variable ShellSystemTestDeveloperMode, ShellSystemTestTask -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name @(
+        'ShellSystemTestDeveloperMode', 'ShellSystemTestTask',
+        'ShellSystemTestTaskErrorCategory', 'ShellSystemTestTaskException'
+    ) -Scope Global -ErrorAction SilentlyContinue
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if ($resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase)) {

@@ -19,14 +19,18 @@ $env:CHERE_INVOKING = '1'
 $env:MSYSTEM = 'MSYS'
 
 function Invoke-Msys {
-    param([string]$Command, [int[]]$Allowed = @(0))
+    param([string]$Command, [int[]]$Allowed = @(0), [switch]$AllowCoreRestart)
 
     # gpgconf is stopped after pacman so the keyring is not left locked, and the saved status is pacman's, not gpgconf's.
     $script = $Command + '; status=$?; gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1; exit $status'
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
     $output = & $bash -lc $script 2>&1 | Out-String
-    if ($LASTEXITCODE -notin $Allowed) {
+    # A committed core upgrade closes this Bash. Only that specific exit may continue in a new process.
+    $coreRestart = $AllowCoreRestart -and $LASTEXITCODE -eq 1 -and $output.Contains(
+        'To complete this update all MSYS2 processes including this terminal will be closed.'
+    )
+    if ($LASTEXITCODE -notin $Allowed -and -not $coreRestart) {
         throw "MSYS2 command failed ($LASTEXITCODE): $Command`n$output"
     }
     @{ Code = $LASTEXITCODE; Output = $output.Trim() }
@@ -42,8 +46,8 @@ function Get-Pacman {
 function Update-System {
     $pacman = Get-Pacman
     $before = (Invoke-Msys 'pacman -Q').Output
-    $null = Invoke-Msys "$pacman -Syuu --noconfirm"
-    $null = Invoke-Msys "$pacman -Syuu --noconfirm"
+    $null = Invoke-Msys "LC_ALL=C $pacman -Syuu --noconfirm" -AllowCoreRestart
+    $null = Invoke-Msys "LC_ALL=C $pacman -Syuu --noconfirm"
     if ((Invoke-Msys 'pacman -Q').Output -ne $before) { $Ansible.Changed = $true }
 }
 

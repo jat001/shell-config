@@ -24,39 +24,6 @@ if ($RestartGuest -or $Queue) {
     return
 }
 
-function Clear-TestLogonSecret {
-    Add-Type -Namespace ShellTest -Name LogonSecret -MemberDefinition @'
-[StructLayout(LayoutKind.Sequential)]
-struct Attributes {
-    public int Length; public IntPtr Root; public IntPtr Name;
-    public uint Flags; public IntPtr Security; public IntPtr Quality;
-}
-[StructLayout(LayoutKind.Sequential)]
-struct UnicodeString { public ushort Length; public ushort MaximumLength; public IntPtr Buffer; }
-[DllImport("advapi32.dll")]
-static extern uint LsaOpenPolicy(IntPtr system, ref Attributes attributes, uint access, out IntPtr policy);
-[DllImport("advapi32.dll")]
-static extern uint LsaStorePrivateData(IntPtr policy, ref UnicodeString key, IntPtr value);
-[DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr policy);
-[DllImport("advapi32.dll")] static extern uint LsaNtStatusToWinError(uint status);
-public static void Clear() {
-    var attributes = new Attributes();
-    attributes.Length = Marshal.SizeOf(typeof(Attributes));
-    IntPtr policy;
-    uint status = LsaOpenPolicy(IntPtr.Zero, ref attributes, 0x20, out policy);
-    if (status != 0) { throw new System.ComponentModel.Win32Exception((int)LsaNtStatusToWinError(status)); }
-    IntPtr text = Marshal.StringToHGlobalUni("DefaultPassword");
-    try {
-        var key = new UnicodeString { Length=30, MaximumLength=32, Buffer=text };
-        status = LsaStorePrivateData(policy, ref key, IntPtr.Zero);
-        uint error = LsaNtStatusToWinError(status);
-        if (error != 0 && error != 2) { throw new System.ComponentModel.Win32Exception((int)error); }
-    } finally { Marshal.FreeHGlobal(text); LsaClose(policy); }
-}
-'@
-    [ShellTest.LogonSecret]::Clear()
-}
-
 function Test-Process {
     param([string]$Path, [string[]]$Arguments, [string]$Name)
     $stdout = "C:\shell-test\verify-$Name.out"
@@ -148,13 +115,8 @@ finally {
         $result.ConfiguredLoginUser = $login.DefaultUserName
         if ($computer.Model -eq 'Virtual Machine' -and $computer.Manufacturer -eq 'Microsoft Corporation' -and
             $env:COMPUTERNAME -eq 'SHELLCONFIGTEST') {
-            Set-ItemProperty -LiteralPath $key -Name AutoAdminLogon -Value '0'
-            Set-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value 0 -Type DWord
-            Remove-ItemProperty -LiteralPath $key -Name DefaultPassword -ErrorAction SilentlyContinue
-            Clear-TestLogonSecret
-            $result.StoredLogonSecretRemoved = $true
-            $result.AutoLoginDisabled = $true
-            $result.RegistryPasswordRemoved = -not [bool](Get-ItemProperty -LiteralPath $key).DefaultPassword
+            $cleanup = & (Join-Path $repository 'tests/hyperv_logon.ps1') -Action Clear
+            foreach ($name in $cleanup.Keys) { $result[$name] = $cleanup[$name] }
         }
     }
     [IO.File]::WriteAllText('C:\shell-test\verification-result.json', ($result|ConvertTo-Json -Depth 4),
