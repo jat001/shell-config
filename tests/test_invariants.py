@@ -43,6 +43,19 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("'--subnet', $networkSubnet", runner)
         self.assertIn("-c 'C:\\shell-test\\launch.cmd'", runner)
         self.assertIn('ErrorActionPreference = \'Continue\'', runner)
+    def test_profiles_preserve_release_steps_and_shared_cache_forwarding(self):
+        runner = (root / 'tests/run.ps1').read_text(encoding='utf-8')
+        hyperv = (root / 'tests/hyperv.ps1').read_text(encoding='utf-8')
+        for text in (runner, hyperv):
+            self.assertIn("[string]$Profile = 'full'", text)
+        self.assertIn("fast = @('init', 'prepare', 'full', 'verify')", runner)
+        self.assertIn("standard = @('init', 'prepare', 'full', 'idempotence', 'verify', 'unprivileged')", runner)
+        self.assertIn("full = @('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')", runner)
+        self.assertIn("fast = @('init', 'full')", hyperv)
+        self.assertIn("standard = @('init', 'full', 'full')", hyperv)
+        self.assertIn("full = @('init', 'full', 'full', 'update')", hyperv)
+        self.assertIn('-CacheDirectory $CacheDirectory', runner)
+        self.assertEqual(runner.count('CacheDirectory = $CacheDirectory'), 2)
 
 
 if __name__ == '__main__':

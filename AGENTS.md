@@ -47,6 +47,9 @@ pip 和 Galaxy 仍用构建缓存挂载。基础镜像留在 wslc 的本地镜�
 winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。`-1978335138` 先刷新一次 winget 客户端再继续。
 其余的，包括 `-2147012867`（连不上 Microsoft Store），第三次仍失败才停。有 winget 时，Store 应用不放进这份下载缓存。
 
+通用 `download.ps1` 在对应缓存的 `records` 下为每次事件写独立 JSON：缓存命中、缓存对象大小、成功正文网络字节、HEAD/正文尝试次数、耗时和成功正文平均速率。命中时 `networkBytes=0`，正文平均速率为空；失败尝试中无法确定的字节不估算。URL 不记查询参数，指标写入失败不改变下载结果。
+这些记录不覆盖 WSL 专用下载器、Docker、apt/pip/Galaxy 或其他包管理器，不能当成全局网络总量。
+
 ## 测试
 
 隔离回归用 `tests/run.ps1`。状态目录用临时目录，不要指向 `%LOCALAPPDATA%\shell-ansible`。
@@ -58,6 +61,15 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 ```
 
 `-Target` 要让 PowerShell 把逗号收成数组。`Start-Process -ArgumentList` 里重复写 `-Target` 绑不上，用 `-Command`。
+
+默认 `-Profile full` 保留完整发布回归。日常可以显式选：
+- `fast`：`init,prepare,full,verify`；Hyper-V 对应 `init,full`。
+- `standard`：去掉强制 `update`，保留幂等、verify 和无提权复跑；Hyper-V 对应 `init,full,full`。
+- `full`：现有全部步骤；Hyper-V 对应 `init,full,full,update`。
+`-Profile` 不能和对应的 `-Step` 或 `-Modes` 一起写。快速档不是发布门槛。
+
+不同状态目录可以用 `-CacheDirectory <临时缓存目录>` 串行复用控制镜像和下载。默认缓存仍在各状态目录里；不要指向现网缓存，也不要让多个测试进程并行写同一个缓存目录。
+失败后保留现场，用同一状态目录串行执行 `-Reuse -Keep`，并用 `-Step` 指定剩余步骤。`-Reuse` 不会自动保留现场，首轮及重试都要按需加 `-Keep`。
 
 `tests/run.ps1` 开头在控制容器里跑：
 
@@ -75,6 +87,7 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 - `tests/native_commands.ps1`：本机要有 `wslc.exe`。只解析命令，并检查一个不存在的镜像。
 - `tests/wsl_cache.ps1 -CacheDirectory <临时目录>`：下载并复用 WSL 缓存，不安装 WSL。
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
+- `tests/download_metrics.ps1`：用临时 `file://` 文件检查下载命中、指标记录和路径专用输出，不访问网络。
 
 不要在现网上跑：
 

@@ -139,7 +139,36 @@ if ($LASTEXITCODE -ne 7) { throw 'Expected failure did not occur.' }
 '@, $utf8)
     & $engine -NoProfile -ExecutionPolicy Bypass -File $runner -Directory $job *> $null
     if ($LASTEXITCODE -ne 0) { throw 'A handled native error failed the guest script.' }
-    "PowerShell $($PSVersionTable.PSVersion): worker reuse, handler reload/recovery, VM identity, file IO and guest jobs passed."
+    $cases = @(
+        @{ Parameters = @{}; Expected = 'init,full,full,update' }
+        @{ Parameters = @{ Profile = 'full' }; Expected = 'init,full,full,update' }
+        @{ Parameters = @{ Profile = 'fast' }; Expected = 'init,full' }
+        @{ Parameters = @{ Profile = 'standard' }; Expected = 'init,full,full' }
+        @{ Parameters = @{ Modes = @('full', 'update') }; Expected = 'full,update' }
+    )
+    $requestPath = Join-Path $temporary 'request.json'
+    foreach ($case in $cases) {
+        $parameters = @{ Action = 'Run'; StateDirectory = $temporary; Repository = $Repository }
+        foreach ($entry in $case.Parameters.GetEnumerator()) { $parameters[$entry.Key] = $entry.Value }
+        & $client @parameters | Out-Null
+        if (-not [IO.File]::Exists($requestPath)) { throw 'A Run request was not queued.' }
+        $request = [IO.File]::ReadAllText($requestPath) | ConvertFrom-Json
+        if (($request.Modes -join ',') -cne $case.Expected) { throw "Unexpected queued modes: $($request.Modes -join ',')" }
+        [IO.File]::Delete($requestPath)
+    }
+    $rejected = $false
+    try { & $client -Action Run -Profile full -Modes full,update -StateDirectory $temporary -Repository $Repository } catch {
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'Hyper-V accepted both Profile and Modes.' }
+    if ([IO.File]::Exists($requestPath)) { throw 'A conflicting Hyper-V request was queued.' }
+    $rejected = $false
+    try { & (Join-Path $Repository 'tests/run.ps1') -Profile fast -Step init -StateDirectory $temporary } catch {
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'The test runner accepted both Profile and Step.' }
+    if ($launches.Count -ne 1) { throw 'Profile tests requested another administrator process.' }
+    "PowerShell $($PSVersionTable.PSVersion): worker reuse, handler reload/recovery, VM identity, file IO, guest jobs and profiles passed."
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

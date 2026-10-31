@@ -3,13 +3,25 @@ param(
     [ValidateSet('arch', 'debian', 'sandbox')]
     [string[]]$Target = @('arch', 'debian', 'sandbox'),
     [ValidateSet('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')]
-    [string[]]$Step = @('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged'),
+    [string[]]$Step,
+    [ValidateSet('fast', 'standard', 'full')]
+    [string]$Profile = 'full',
     [string]$StateDirectory = (Join-Path $env:TEMP 'shell-ansible-test'),
+    [string]$CacheDirectory,
     [switch]$Reuse,
     [switch]$Keep
 )
 
 $ErrorActionPreference = 'Stop'
+$profiles = @{
+    fast = @('init', 'prepare', 'full', 'verify')
+    standard = @('init', 'prepare', 'full', 'idempotence', 'verify', 'unprivileged')
+    full = @('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')
+}
+if ($PSBoundParameters.ContainsKey('Profile') -and $PSBoundParameters.ContainsKey('Step')) {
+    throw 'Specify either -Profile or -Step, not both.'
+}
+if (-not $PSBoundParameters.ContainsKey('Step')) { $Step = $profiles[$Profile] }
 # Python, git and wslc report progress on stderr. On PowerShell 7 that must not fail the run.
 $PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path $PSScriptRoot
@@ -38,8 +50,10 @@ function Test-Wslc {
 }
 
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
+if (-not $CacheDirectory) { $CacheDirectory = Join-Path $StateDirectory 'cache' }
+$CacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
 $sandbox = Join-Path $StateDirectory 'sandbox'
-$cache = Join-Path $StateDirectory 'cache'
+$cache = $CacheDirectory
 $null = [IO.Directory]::CreateDirectory($sandbox)
 $null = [IO.Directory]::CreateDirectory((Join-Path $cache 'scoop'))
 $volumes = @{
@@ -48,7 +62,8 @@ $volumes = @{
 }
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
-$image = & $installer -PrepareOnly -StateDirectory $StateDirectory | Select-Object -Last 1
+$image = & $installer -PrepareOnly -StateDirectory $StateDirectory -CacheDirectory $CacheDirectory |
+    Select-Object -Last 1
 foreach ($test in @(
     'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
     'test_nushell_defaults.py', 'test_invariants.py'
@@ -339,6 +354,7 @@ $env:PROFILE_TASKS_TASK_OUTPUT_LIMIT = '15'
 $common = @{
     Inventory = $inventoryPath
     StateDirectory = $StateDirectory
+    CacheDirectory = $CacheDirectory
     Network = $network
 }
 
@@ -362,6 +378,7 @@ try {
                         Mode = 'full'
                         Inventory = $userInventory
                         StateDirectory = $StateDirectory
+                        CacheDirectory = $CacheDirectory
                         Network = $network
                         AnsibleArgument = @('--tags', 'config,dev_drive')
                     }

@@ -217,6 +217,7 @@ switch ($Request.Action) {
         $result.Jobs = @($Context.Jobs.Values)
         Connect-Guest
         $result.Guest = Invoke-Command -Session $Context.Session -ScriptBlock {
+            Import-Module ScheduledTasks
             $verificationPath = 'C:\shell-test\verification-result.json'
             $verification = if ([IO.File]::Exists($verificationPath)) {
                 @{ Modified = (Get-Item -LiteralPath $verificationPath).LastWriteTimeUtc.ToString('o')

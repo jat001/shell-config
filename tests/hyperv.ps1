@@ -5,7 +5,8 @@ param(
     [string]$Action = 'Start',
     [string]$StateDirectory = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'AppData/Local/shell-ansible-test/hyperv'),
     [string]$Repository,
-    [ValidateSet('init', 'full', 'update')][string[]]$Modes = @('init', 'full', 'full', 'update'),
+    [ValidateSet('init', 'full', 'update')][string[]]$Modes,
+    [ValidateSet('fast', 'standard', 'full')][string]$Profile = 'full',
     [ValidateSet('Clean-Windows', 'WSL-Ready')][string]$Baseline = 'WSL-Ready',
     [string]$ScriptPath,
     [hashtable]$ScriptArguments = @{},
@@ -18,6 +19,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$profiles = @{
+    fast = @('init', 'full')
+    standard = @('init', 'full', 'full')
+    full = @('init', 'full', 'full', 'update')
+}
+if ($PSBoundParameters.ContainsKey('Profile') -and $PSBoundParameters.ContainsKey('Modes')) {
+    throw 'Specify either -Profile or -Modes, not both.'
+}
+if (-not $PSBoundParameters.ContainsKey('Modes')) { $Modes = $profiles[$Profile] }
 if (-not $Repository) { $Repository = Split-Path $PSScriptRoot }
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
 $Repository = [IO.Path]::GetFullPath($Repository)
