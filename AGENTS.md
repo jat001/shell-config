@@ -47,8 +47,8 @@ pip 和 Galaxy 仍用构建缓存挂载。基础镜像留在 wslc 的本地镜�
 winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。`-1978335138` 先刷新一次 winget 客户端再继续。
 其余的，包括 `-2147012867`（连不上 Microsoft Store），第三次仍失败才停。有 winget 时，Store 应用不放进这份下载缓存。
 
-通用 `download.ps1` 在对应缓存的 `records` 下为每次事件写独立 JSON：缓存命中、缓存对象大小、成功正文网络字节、HEAD/正文尝试次数、耗时和成功正文平均速率。命中时 `networkBytes=0`，正文平均速率为空；失败尝试中无法确定的字节不估算。URL 不记查询参数，指标写入失败不改变下载结果。
-这些记录不覆盖 WSL 专用下载器、Docker、apt/pip/Galaxy 或其他包管理器，不能当成全局网络总量。
+每次调用通用 `download.ps1`，都会在缓存的 `records` 里留一份 JSON。能看出有没有命中缓存、文件多大、成功下载了多少字节、试了几次、花了多久。命中时 `networkBytes=0`，不算平均速度；失败那几次收了多少没法确定，就不填。URL 的查询参数不进日志，日志写不进去也不影响下载。
+这里只记 `download.ps1` 自己看到的流量。WSL 专用下载器、Docker、apt、pip、Galaxy 和别的包管理器都不算在内，别拿它当总下载量。
 
 ## 测试
 
@@ -62,14 +62,11 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 
 `-Target` 要让 PowerShell 把逗号收成数组。`Start-Process -ArgumentList` 里重复写 `-Target` 绑不上，用 `-Command`。
 
-默认 `-Profile full` 保留完整发布回归。日常可以显式选：
-- `fast`：`init,prepare,full,verify`；Hyper-V 对应 `init,full`。
-- `standard`：去掉强制 `update`，保留幂等、verify 和无提权复跑；Hyper-V 对应 `init,full,full`。
-- `full`：现有全部步骤；Hyper-V 对应 `init,full,full,update`。
-`-Profile` 不能和对应的 `-Step` 或 `-Modes` 一起写。快速档不是发布门槛。
+平时想少跑几步，可以加 `-Profile fast` 或 `-Profile standard`。`fast` 只跑 `init,prepare,full,verify`；`standard` 除了 `update` 其他照跑。Hyper-V 分别对应 `init,full` 和 `init,full,full`。
+不带 `-Profile` 还是 `full`，发布前照原来的完整流程跑。想自己挑步骤就用 `-Step` 或 `-Modes`，别和 `-Profile` 混用。
 
-不同状态目录可以用 `-CacheDirectory <临时缓存目录>` 串行复用控制镜像和下载。默认缓存仍在各状态目录里；不要指向现网缓存，也不要让多个测试进程并行写同一个缓存目录。
-失败后保留现场，用同一状态目录串行执行 `-Reuse -Keep`，并用 `-Step` 指定剩余步骤。`-Reuse` 不会自动保留现场，首轮及重试都要按需加 `-Keep`。
+换了状态目录还想复用已经下好的东西，可以加 `-CacheDirectory <临时缓存目录>`。默认缓存仍在各状态目录里。共享目录只能串行用，别指向现网缓存，也别让几个测试进程一起写。
+失败后想接着跑，首轮要加 `-Keep`，下次用同一个状态目录加 `-Reuse -Keep`，剩下的步骤用 `-Step` 列出来。它不会替你记哪些步骤已经过了。
 
 `tests/run.ps1` 开头在控制容器里跑：
 
@@ -87,7 +84,7 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 - `tests/native_commands.ps1`：本机要有 `wslc.exe`。只解析命令，并检查一个不存在的镜像。
 - `tests/wsl_cache.ps1 -CacheDirectory <临时目录>`：下载并复用 WSL 缓存，不安装 WSL。
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
-- `tests/download_metrics.ps1`：用临时 `file://` 文件检查下载命中、指标记录和路径专用输出，不访问网络。
+- `tests/download_metrics.ps1`：用临时 `file://` 文件检查缓存命中和下载记录，脚本只返回路径，不访问网络。
 
 不要在现网上跑：
 
