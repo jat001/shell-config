@@ -18,10 +18,34 @@ fi
 
 _shell_windows_home=
 _shell_mounts=
+_shell_lc_all=
 if [ "$_shell_environment" = wsl ]; then
     # cd -P resolves the symlink; two parents up is the Windows profile because the repo lives at <profile>/.config/shell.
     _shell_windows_home="$(cd -P "$HOME/.config/shell" && cd ../.. && pwd)"
     _shell_mounts="$(</proc/self/mounts)"
+    _shell_lc_all="${LC_ALL-}"
+    if [ -z "$_shell_lc_all" ]; then
+        for _shell_locale_file in /etc/locale.conf /etc/default/locale; do
+            [ -r "$_shell_locale_file" ] || continue
+            _shell_lc_all="$(. "$_shell_locale_file"; printf '%s' "${LC_ALL-}")"
+            [ -n "$_shell_lc_all" ] && break
+        done
+        unset _shell_locale_file
+    fi
+elif [ "$_shell_environment" = msys2 ]; then
+    _shell_windows_home="${USERPROFILE-}"
+    if [ -z "$_shell_windows_home" ]; then
+        # A directly started MSYS2 process can lack all Windows profile variables; ask Windows instead.
+        _shell_windows_home="$(
+            powershell.exe -NoProfile -NonInteractive -Command \
+                '[Environment]::GetFolderPath("UserProfile")' | tr -d '\r'
+        )"
+    fi
+    _shell_windows_home="$(cygpath -u "$_shell_windows_home")" || return
+    _shell_lc_all="${LC_ALL-}"
+    if [ -z "$_shell_lc_all" ]; then
+        _shell_lc_all="$(locale -uU)"
+    fi
 fi
 
 eval "$(
@@ -30,11 +54,12 @@ eval "$(
         --arg home "$HOME" \
         --arg windows_home "$_shell_windows_home" \
         --arg mounts "$_shell_mounts" \
+        --arg lc_all "$_shell_lc_all" \
         --arg mode sh \
         -f "$HOME/.config/shell/common.jq" \
         "$HOME/.config/shell/common.json"
 )"
-unset _shell_windows_home _shell_mounts
+unset _shell_windows_home _shell_mounts _shell_lc_all
 
 case "$_shell_environment" in
     msys2)

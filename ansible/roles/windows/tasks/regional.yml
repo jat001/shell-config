@@ -1,0 +1,36 @@
+- name: Set user regional format
+  ansible.windows.win_region:
+    format: "{{ shell_host_culture }}"
+  when: shell_current_home | bool
+
+- name: Resolve MSYS2 root for regional settings
+  ansible.builtin.set_fact:
+    shell_msys2_root_path: "{{ (shell_msys2_root | default(shell_configuration.environments.msys2.root))
+      | replace('${DEV_DRIVE}', shell_dev_drive_letter | default(ansible_facts.env.DEV_DRIVE | default('')))
+      | replace('/', shell_backslash) }}"
+  when: shell_msys2 | bool
+
+- name: Require MSYS2 root for regional settings
+  ansible.builtin.assert:
+    that: shell_msys2_root_path is regex('^[A-Za-z]:')
+    fail_msg: "MSYS2 root {{ shell_msys2_root_path }} is not an absolute Windows path."
+    quiet: true
+  when: shell_msys2 | bool
+
+- name: Remove superseded MSYS2 locale profile
+  ansible.windows.win_powershell:
+    script: |
+      param([string]$Path, [string]$Locale, [string]$LcAll)
+      $ErrorActionPreference = 'Stop'
+      $Ansible.Changed = [IO.File]::Exists($Path)
+      if ($Ansible.Changed) {
+          $content = [IO.File]::ReadAllText($Path).Replace("`r`n", "`n").TrimEnd()
+          $allowed = @("export LANG=$Locale`nexport LC_ALL=$LcAll", "export LC_ALL=$LcAll")
+          if ($content -notin $allowed) { throw "Unrecognized MSYS2 locale profile: $Path" }
+          if (-not $Ansible.CheckMode) { Remove-Item -LiteralPath $Path }
+      }
+    parameters:
+      Path: "{{ shell_msys2_root_path }}\\etc\\profile.d\\shell-ansible-locale.sh"
+      Locale: "{{ shell_host_locale }}"
+      LcAll: "{{ shell_host_lc_all }}"
+  when: shell_msys2 | bool

@@ -19,8 +19,11 @@ $request = @{
     Home=$homePath; Mode='full'; UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     LegacyKey='{00000000-0000-0000-0000-000000000000}'
     ManageDeveloperMode=$true; ManageWindowsDrive=$true; ManageWslDrive=$true; AllowDetach=$false
+    ManageTimeZone=$true; TimeZone='China Standard Time'
 }
 $global:ShellSystemTestDeveloperMode = 0
+$global:ShellSystemTestTimeZone = 'UTC'
+$global:ShellSystemTestTimeZoneSetCount = 0
 $global:ShellSystemTestTask = $null
 $global:ShellSystemTestTaskErrorCategory = $null
 $global:ShellSystemTestTaskException = $null
@@ -29,6 +32,18 @@ function Get-ItemProperty {
     param([string]$LiteralPath, [string]$ErrorAction)
     if ($LiteralPath -notlike 'HKLM:*AppModelUnlock') { throw 'Unexpected registry read.' }
     [pscustomobject]@{ AllowDevelopmentWithoutDevLicense=$global:ShellSystemTestDeveloperMode }
+}
+function Get-TimeZone {
+    param([switch]$ListAvailable)
+    if ($ListAvailable) {
+        return @([pscustomobject]@{ Id='China Standard Time' }, [pscustomobject]@{ Id='UTC' })
+    }
+    [pscustomobject]@{ Id=$global:ShellSystemTestTimeZone }
+}
+function Set-TimeZone {
+    param([string]$Id)
+    $global:ShellSystemTestTimeZoneSetCount++
+    $global:ShellSystemTestTimeZone = $Id
 }
 function Get-ScheduledTask {
     [CmdletBinding()]
@@ -58,7 +73,7 @@ function Invoke-Plan {
 
 try {
     $plan = Invoke-Plan
-    $expected = @('DeveloperMode', 'CreateDrive', 'AttachDrive', 'CreateDrive', 'RegisterTask')
+    $expected = @('DeveloperMode', 'TimeZone', 'CreateDrive', 'AttachDrive', 'CreateDrive', 'RegisterTask')
     if (($plan.Pending -join ',') -cne ($expected -join ',')) { throw 'First deployment did not aggregate all system changes.' }
     $global:ShellSystemTestTaskErrorCategory = 'ObjectNotFound'
     if (((Invoke-Plan).Pending -join ',') -cne ($expected -join ',')) {
@@ -96,6 +111,7 @@ try {
     $null = & $scriptPath -RequestPath $requestPath -Apply -WhatIf
     if ([IO.File]::Exists((Join-Path $homePath 'windows.vhdx')) -or
         [IO.File]::Exists((Join-Path $homePath 'linux.vhdx'))) { throw 'Preview created a disk.' }
+    if ($global:ShellSystemTestTimeZoneSetCount -ne 0) { throw 'Preview changed the time zone.' }
 
     [IO.File]::WriteAllText((Join-Path $temporary 'dev_drive.ps1'), @'
 param([string]$Path, [string]$LegacyKey)
@@ -104,6 +120,7 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
     [IO.File]::WriteAllText((Join-Path $homePath 'windows.vhdx'), 'fixture')
     [IO.File]::WriteAllText((Join-Path $homePath 'linux.vhdx'), 'fixture')
     $global:ShellSystemTestDeveloperMode = 1
+    $global:ShellSystemTestTimeZone = 'China Standard Time'
     $global:ShellSystemTestTask = [pscustomobject]@{
         Description='Shared shell configuration: attach the WSL development VHDX.'
         Actions=@([pscustomobject]@{ Execute=(Join-Path $env:SystemRoot 'System32\wsl.exe');
@@ -113,6 +130,10 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
             StopIfGoingOnBatteries=$false; MultipleInstances='IgnoreNew'; ExecutionTimeLimit='PT1M' }
     }
     if ((Invoke-Plan).Pending.Count) { throw 'An already configured machine requested another elevation.' }
+
+    $global:ShellSystemTestTimeZone = 'UTC'
+    if (((Invoke-Plan).Pending -join ',') -cne 'TimeZone') { throw 'A time zone mismatch was not planned independently.' }
+    $global:ShellSystemTestTimeZone = 'China Standard Time'
 
     $request.Mode = 'update'
     $global:ShellSystemTestDeveloperMode = 0
@@ -139,6 +160,7 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
 } finally {
     Remove-Variable -Name @(
         'ShellSystemTestDeveloperMode', 'ShellSystemTestTask',
+        'ShellSystemTestTimeZone', 'ShellSystemTestTimeZoneSetCount',
         'ShellSystemTestTaskErrorCategory', 'ShellSystemTestTaskException'
     ) -Scope Global -ErrorAction SilentlyContinue
     $resolved = [IO.Path]::GetFullPath($temporary)

@@ -196,6 +196,32 @@
         grep -qx 'options="metadata"' /etc/wsl.conf
       changed_when: false
 
+    - name: Check regional settings
+      ansible.builtin.shell: |
+        set -e
+        cmp -s /etc/localtime '/usr/share/zoneinfo/{{ shell_host_timezone_iana }}'
+        grep -qx 'LANG={{ shell_host_locale }}' /etc/locale.conf
+        grep -qx 'LC_ALL={{ shell_host_lc_all }}' /etc/locale.conf
+        test "$(grep -c '^{{ shell_host_locale }} UTF-8$' /etc/locale.gen)" -eq 1
+        if [ -f /etc/debian_version ]; then
+            grep -qx 'LANG={{ shell_host_locale }}' /etc/default/locale
+            grep -qx 'LC_ALL={{ shell_host_lc_all }}' /etc/default/locale
+        fi
+        test "$(locale charmap)" = UTF-8
+        env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            su - shell -c 'test "$LANG" = "{{ shell_host_locale }}" && test "$LC_ALL" = "{{ shell_host_lc_all }}" && test "$(locale charmap)" = UTF-8'
+      environment:
+        LC_ALL: "{{ shell_host_locale }}"
+      changed_when: false
+
+    - name: Check fallback English locale
+      ansible.builtin.shell: |
+        set -e
+        test "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1
+        LC_ALL=en_US.UTF-8 locale charmap | grep -qx UTF-8
+      when: shell_host_locale is not match('^en_')
+      changed_when: false
+
     - name: Inspect WSL user links
       ansible.builtin.stat:
         path: "/home/shell/{{ item }}"
@@ -223,15 +249,15 @@
       environment: "{{ shell_environment }}"
       loop:
         - name: bash
-          command: "cd && bash -ic 'alias code; printf %s \"$PNPM_HOME\"'"
+          command: "cd && bash -ic 'alias code && test \"$LC_ALL\" = \"{{ shell_host_lc_all }}\" && printf %s \"$PNPM_HOME\"'"
         - name: zsh
-          command: "cd && zsh -ic 'alias code; printf %s \"$PNPM_HOME\"'"
+          command: "cd && zsh -ic 'alias code && test \"$LC_ALL\" = \"{{ shell_host_lc_all }}\" && printf %s \"$PNPM_HOME\"'"
         - name: fish
-          command: "cd && fish -c 'functions code; printf %s \"$PNPM_HOME\"'"
+          command: "cd && fish -c 'functions code && test \"$LC_ALL\" = \"{{ shell_host_lc_all }}\" && printf %s \"$PNPM_HOME\"'"
         - name: pwsh
-          command: "cd && pwsh -NoLogo -Command '(Get-Alias code).Definition; [Console]::Write($env:PNPM_HOME)'"
+          command: "cd && pwsh -NoLogo -Command 'if ($env:LC_ALL -ne \"{{ shell_host_lc_all }}\") { throw \"LC_ALL is $env:LC_ALL\" }; (Get-Alias code).Definition; [Console]::Write($env:PNPM_HOME)'"
         - name: nu
-          command: "cd && nu --env-config /home/shell/.config/nushell/env.nu --config /home/shell/.config/nushell/config.nu -c 'print (scope aliases | where name == code | get expansion.0); print -n $env.PNPM_HOME'"
+          command: "cd && nu --env-config /home/shell/.config/nushell/env.nu --config /home/shell/.config/nushell/config.nu -c 'if $env.LC_ALL != \"{{ shell_host_lc_all }}\" { error make { msg: \"LC_ALL mismatch\" } }; print (scope aliases | where name == code | get expansion.0); print -n $env.PNPM_HOME'"
       loop_control:
         label: "{{ item.name }}"
       register: user_shells
@@ -344,6 +370,28 @@
       failed_when: user_home.output[0] != home
       tags: [user]
 
+    - name: Check user regional format
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $Ansible.Changed = $false
+          $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $culture = & $powershell -NoProfile -NonInteractive -Command '(Get-Culture).Name'
+          if ($LASTEXITCODE -ne 0) { throw "Culture probe failed ($LASTEXITCODE)." }
+          if ($culture -ine '{{ shell_host_culture }}') {
+              throw "Culture is $culture, expected {{ shell_host_culture }}."
+          }
+      tags: [user]
+
+    - name: Check Windows time zone
+      ansible.windows.win_powershell:
+        script: |
+          $Ansible.Changed = $false
+          if ((Get-TimeZone).Id -ine '{{ shell_host_timezone_windows }}') {
+              throw "Time zone is $((Get-TimeZone).Id), expected {{ shell_host_timezone_windows }}."
+          }
+      tags: [admin]
+
     - name: Check Windows software
       ansible.windows.win_powershell:
         script: |
@@ -379,11 +427,23 @@
         argv:
           - C:\msys64\usr\bin\zsh.exe
           - -lic
-          - whence -p oh-my-posh jq git fish
+          - >-
+            whence -p oh-my-posh jq git fish &&
+            test "$LANG" = '{{ shell_host_locale }}' &&
+            test "$LC_ALL" = '{{ shell_host_lc_all }}' &&
+            test "$(locale charmap)" = UTF-8 &&
+            date +%z
       environment:
         MSYSTEM: UCRT64
         CHERE_INVOKING: "1"
+      register: msys2_shells
       changed_when: false
+
+    - name: Check MSYS2 regional settings
+      ansible.builtin.assert:
+        that: msys2_shells.stdout_lines[-1] == (ansible_facts.date_time.tz_offset | replace(':', ''))
+        fail_msg: "MSYS2 output: {{ msys2_shells.stdout }}"
+        quiet: true
 
     - name: Check Store apps, Windows Terminal settings and font
       ansible.windows.win_powershell:

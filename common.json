@@ -51,6 +51,7 @@
       },
       "default_user": "root",
       "environment": {
+        "LC_ALL": "${SHELL_LC_ALL}",
         "XDG_CACHE_HOME": ["${DEV_DRIVE}${HOME}/.cache", "${HOME}/.cache"],
         "XDG_DATA_HOME": ["${DEV_DRIVE}${HOME}/.local/share", "${HOME}/.local/share"],
         "XDG_STATE_HOME": ["${DEV_DRIVE}${HOME}/.local/state", "${HOME}/.local/state"],
@@ -86,6 +87,10 @@
     },
     "msys2": {
       "root": "${DEV_DRIVE}/msys2",
+      "environment": {
+        "LC_ALL": "${SHELL_LC_ALL}",
+        "LOCALAPPDATA": "${WINDOWS_HOME}/AppData/Local"
+      },
       "path_prepend": [
         "${MSYSTEM_PREFIX}/bin",
         "/ucrt64/bin"

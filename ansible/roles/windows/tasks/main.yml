@@ -36,7 +36,7 @@
 
 - name: Prepare privileged Windows system settings
   ansible.builtin.import_tasks: system_setup.yml
-  tags: [developer_mode, dev_drive, windows_dev_drive, packages, config, msys2]
+  tags: [developer_mode, dev_drive, windows_dev_drive, packages, config, msys2, regional]
 
 - name: Attach Windows development drive
   ansible.builtin.import_tasks: windows_dev_drive.yml
@@ -48,7 +48,13 @@
 
 - name: Prepare repository
   ansible.builtin.import_tasks: repository.yml
+  when: not (shell_regional_only | default(false) | bool)
   tags: [always]
+
+- name: Configure Windows regional settings
+  ansible.builtin.import_tasks: regional.yml
+  when: shell_mode != 'init'
+  tags: [config, regional]
 
 # init installs software only. Entry files wait for full, after Developer Mode and the tools exist.
 - name: Deploy Windows configuration

@@ -28,6 +28,7 @@ if ($WslDevDriveOnly -and $SkipWsl) {
 }
 
 $repository = [IO.Path]::GetFullPath($PSScriptRoot)
+. (Join-Path $repository 'ansible/roles/windows/files/host_regional.ps1')
 $utf8 = [Text.UTF8Encoding]::new($false)
 $StateDirectory = [IO.Path]::GetFullPath($StateDirectory)
 if (-not $CacheDirectory) { $CacheDirectory = Join-Path $StateDirectory 'cache' }
@@ -409,7 +410,9 @@ try {
         [IO.File]::WriteAllText($Inventory, ($document | ConvertTo-Json -Depth 8), $utf8)
     }
 
+    $regional = Get-HostRegionalSetting -MappingPath (Join-Path $repository 'ansible/data/windows_timezones.json')
     $variables = @{ shell_mode = $Mode }
+    foreach ($entry in $regional.GetEnumerator()) { $variables[$entry.Key] = $entry.Value }
     if ($PSBoundParameters.ContainsKey('CacheDirectory') -and -not $Inventory) {
         $variables.shell_download_cache = $CacheDirectory
     }

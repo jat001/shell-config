@@ -17,7 +17,9 @@
     echo installed-python
   register: shell_python
   changed_when: "'installed-python' in shell_python.stdout"
-  when: shell_mode != 'update'
+  when:
+    - shell_mode != 'update'
+    - not (shell_regional_only | default(false) | bool)
   tags: [always]
 
 - name: Gather Linux facts
@@ -36,6 +38,11 @@
       become: "{{ shell_become }}"
       tags: [packages]
   tags: [packages]
+
+- name: Configure regional settings
+  ansible.builtin.import_tasks: regional.yml
+  become: "{{ shell_become }}"
+  tags: [packages, config, regional]
 
 - name: Create WSL user
   ansible.builtin.import_tasks: user.yml
@@ -84,7 +91,7 @@
 
 # Each account gets the same entries, links, user units and XDG directories.
 - name: Configure accounts
-  when: shell_jq.rc == 0 or not ansible_check_mode
+  when: (shell_jq.rc == 0 or not ansible_check_mode) and not (shell_regional_only | default(false) | bool)
   ansible.builtin.include_tasks:
     file: account.yml
     apply:

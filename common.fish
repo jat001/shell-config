@@ -8,9 +8,9 @@ set _shell_environment (
         --arg home $HOME \
         --arg mode platform \
         -f "$HOME/.config/shell/common.jq" \
-        "$HOME/.config/shell/common.json"
+        "$HOME/.config/shell/common.json" |
+        string collect | string trim
 )
-or return
 
 if test -z "$_shell_environment"
     set -e _shell_environment
@@ -19,9 +19,43 @@ end
 
 set _shell_windows_home
 set _shell_mounts
+set _shell_lc_all ''
 if test "$_shell_environment" = wsl
     set _shell_windows_home (path dirname (path dirname (path resolve $HOME/.config/shell)))
     set _shell_mounts (string collect < /proc/self/mounts)
+    if set -q LC_ALL
+        set _shell_lc_all "$LC_ALL"
+    end
+    if test -z "$_shell_lc_all"
+        for _shell_locale_file in /etc/locale.conf /etc/default/locale
+            if test -r "$_shell_locale_file"
+                set _shell_lc_all (
+                    sh -c '. "$1"; printf "%s" "${LC_ALL-}"' sh "$_shell_locale_file" |
+                        string collect | string trim
+                )
+            end
+            if test -n "$_shell_lc_all"
+                break
+            end
+        end
+        set -e _shell_locale_file
+    end
+else if test "$_shell_environment" = msys2
+    set _shell_windows_home "$USERPROFILE"
+    if test -z "$_shell_windows_home"
+        set _shell_windows_home (
+            powershell.exe -NoProfile -NonInteractive -Command \
+                '[Environment]::GetFolderPath("UserProfile")' | string collect | string trim
+        )
+    end
+    set _shell_windows_home (cygpath -u "$_shell_windows_home")
+    or return
+    if set -q LC_ALL
+        set _shell_lc_all "$LC_ALL"
+    end
+    if test -z "$_shell_lc_all"
+        set _shell_lc_all (locale -uU | string collect | string trim)
+    end
 end
 
 jq -r \
@@ -29,6 +63,7 @@ jq -r \
     --arg home $HOME \
     --arg windows_home "$_shell_windows_home" \
     --arg mounts "$_shell_mounts" \
+    --arg lc_all "$_shell_lc_all" \
     --arg mode fish \
     -f "$HOME/.config/shell/common.jq" \
     "$HOME/.config/shell/common.json" |
@@ -112,4 +147,4 @@ if status is-interactive
         source
 end
 
-set -e _shell_environment _shell_theme _shell_windows_home _shell_mounts
+set -e _shell_environment _shell_theme _shell_windows_home _shell_mounts _shell_lc_all

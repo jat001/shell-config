@@ -16,7 +16,7 @@ function Invoke-Jq {
     $start.UseShellExecute = $false
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    foreach ($name in @('MSYSTEM', 'WSL_DISTRO_NAME', 'WSL_INTEROP', 'XDG_RUNTIME_DIR')) {
+    foreach ($name in @('MSYSTEM', 'WSL_DISTRO_NAME', 'WSL_INTEROP', 'XDG_RUNTIME_DIR', 'USERPROFILE')) {
         $start.EnvironmentVariables[$name] = ''
     }
     foreach ($entry in $Environment.GetEnumerator()) {
@@ -33,7 +33,7 @@ function Invoke-Jq {
 function Get-Plan {
     param([string]$Mounts, [switch]$OmitMounts)
 
-    $arguments = "-r --arg platform wsl --arg home $planHome --arg windows_home $windowsHome"
+    $arguments = "-r --arg platform wsl --arg home $planHome --arg windows_home $windowsHome --arg lc_all zh_CN.UTF-8"
     if (-not $OmitMounts) { $arguments += " --arg mounts `"$Mounts`"" }
     $arguments += " --arg mode plan -f `"$filter`" `"$data`""
     Invoke-Jq $arguments @{ XDG_RUNTIME_DIR = '/run/user/1000' } | ConvertFrom-Json
@@ -48,6 +48,9 @@ if ($PSVersionTable.PSEdition -eq 'Desktop') {
 $omitted = Get-Plan -OmitMounts
 $empty = Get-Plan -Mounts ''
 foreach ($plan in @($omitted, $empty)) {
+    if ($plan.environment.LC_ALL -ne 'zh_CN.UTF-8') {
+        throw "WSL LC_ALL was not resolved: $($plan.environment.LC_ALL)"
+    }
     if ($plan.environment.XDG_DATA_HOME -ne "$planHome/.local/share") {
         throw "Unmounted data directory: $($plan.environment.XDG_DATA_HOME)"
     }
@@ -94,5 +97,26 @@ $msys = (Invoke-Jq "-r --arg platform MINGW64_NT --arg home $planHome --arg mode
     MSYSTEM = 'UCRT64'; WSL_DISTRO_NAME = ''; WSL_INTEROP = ''
 }).Trim()
 if ($msys -ne 'msys2') { throw "MSYS2 was not detected: '$msys'." }
+
+$msysPlan = (Invoke-Jq "-r --arg platform msys2 --arg home /home/Jat --arg windows_home /c/Users/Jat --arg lc_all zh_CN.UTF-8 --arg mode plan -f `"$filter`" `"$data`"" @{
+    MSYSTEM_PREFIX = '/ucrt64'
+}) | ConvertFrom-Json
+if ($msysPlan.aliases.code -ne '/c/Users/Jat/scoop/apps/vscode/current/bin/code') {
+    throw "MSYS2 did not use the resolved Windows home: $($msysPlan.aliases.code)"
+}
+if ($msysPlan.environment.LC_ALL -ne 'zh_CN.UTF-8' -or
+    $msysPlan.environment.LOCALAPPDATA -ne '/c/Users/Jat/AppData/Local') {
+    throw 'MSYS2 locale or LOCALAPPDATA was not resolved.'
+}
+$nativeMsysPlan = (Invoke-Jq "-r --arg platform msys2 --arg home /home/shell --arg lc_all zh_CN.UTF-8 --arg mode plan -f `"$filter`" `"$data`"" @{
+    USERPROFILE = 'C:\Users\shell'
+    MSYSTEM = 'UCRT64'
+}) | ConvertFrom-Json
+if ($nativeMsysPlan.aliases.code -ne '/c/Users/shell/scoop/apps/vscode/current/bin/code') {
+    throw "MSYS2 did not convert USERPROFILE: $($nativeMsysPlan.aliases.code)"
+}
+if ($nativeMsysPlan.environment.PATH -notcontains '/ucrt64/bin') {
+    throw 'MSYS2 did not derive MSYSTEM_PREFIX.'
+}
 
 "PowerShell $($PSVersionTable.PSVersion): empty arguments, unmounted drive, and platform detection passed."

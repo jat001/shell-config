@@ -62,11 +62,13 @@ $volumes = @{
 }
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
+& (Join-Path $PSScriptRoot 'regional.ps1')
+& (Join-Path $PSScriptRoot 'system_setup.ps1')
 $image = & $installer -PrepareOnly -StateDirectory $StateDirectory -CacheDirectory $CacheDirectory |
     Select-Object -Last 1
 foreach ($test in @(
     'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
-    'test_nushell_defaults.py', 'test_invariants.py'
+    'test_nushell_defaults.py', 'test_locale_gen.py', 'test_invariants.py'
 )) {
     Invoke-Native wslc.exe @(
         'run', '--rm', '-v', "${repository}:/work:ro", $image,

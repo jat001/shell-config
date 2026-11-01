@@ -51,6 +51,11 @@ function Get-PrincipalSid {
 if ($request.ManageDeveloperMode -and $request.Mode -ne 'update' -and $developerMode -ne 1) {
     $operations.Add(@{ Kind='DeveloperMode' })
 }
+if ($request.ManageTimeZone -and (Get-TimeZone).Id -ine $request.TimeZone) {
+    $available = Get-TimeZone -ListAvailable | Where-Object Id -eq $request.TimeZone
+    if (-not $available) { throw "Windows time zone '$($request.TimeZone)' is not available on this target." }
+    $operations.Add(@{ Kind='TimeZone'; Id=$request.TimeZone })
+}
 if ($request.ManageWindowsDrive -and $windowsDrive) {
     $windowsPath = Get-DrivePath $windowsDrive.vhd
     if (-not [IO.File]::Exists($windowsPath)) {
@@ -133,6 +138,9 @@ if ($Apply -and $operations.Count) {
                 $null = New-Item -Path $developerKey -Force
                 Set-ItemProperty -LiteralPath $developerKey -Name AllowDevelopmentWithoutDevLicense -Value 1 -Type DWord
             }
+            TimeZone {
+                Set-TimeZone -Id $operation.Id
+            }
             CreateDrive {
                 & (Join-Path $PSScriptRoot 'create_drive.ps1') -Path $operation.Path `
                     -SizeGiB $operation.SizeGiB -FileSystem $operation.FileSystem | Out-Null
@@ -157,6 +165,7 @@ if ($Apply -and $operations.Count) {
 $result = @{
     Pending = @($operations | ForEach-Object { $_.Kind })
     DeveloperMode = (Get-ItemProperty -LiteralPath $developerKey -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
+    TimeZone = (Get-TimeZone).Id
 }
 $ansibleContext = Get-Variable -Name Ansible -ValueOnly -ErrorAction SilentlyContinue
 if ($ansibleContext) {

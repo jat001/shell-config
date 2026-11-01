@@ -37,8 +37,23 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 `-WindowsHome` 把配置部署到另一个 Windows 用户目录。目标就是当前账户时，才设置这个账户的 `HOME`。
 `-CacheDirectory` 指定 WSL 和 Windows 的下载缓存，默认 `%LOCALAPPDATA%\shell-ansible\cache`。下完的文件下次直接用。下载中断会再试。
 
-安装 WSL、打开开发人员模式、创建或附加开发盘、注册开发盘任务时，会申请一次管理员权限。
+已安装好依赖后，只同步语言和时区：
+
+```powershell
+& "$HOME/.config/shell/install.ps1" -Mode full -AnsibleArgument @('--tags', 'regional', '-e', 'shell_regional_only=true')
+```
+
+安装 WSL、打开开发人员模式、创建或附加开发盘、注册开发盘任务、调整不同的系统时区时，会申请一次管理员权限。
 Scoop、MSYS2 和用户配置在普通权限下进行。安装器不重启电脑。
+
+部署读取运行安装器的 Windows 宿主机时区和当前用户区域格式。Windows 目标同步这两项；Arch、Debian 和 WSL 使用对应的 IANA 时区，生成并启用对应的 UTF-8 `LANG`。MSYS2 沿用 Windows 设置。
+非英语环境还会在 `/etc/locale.gen` 启用并生成 `en_US.UTF-8`，但默认 `LANG` 仍是宿主机 locale。
+Debian 的 locales postinst 可能把缺失的官方 locale 以注释补到文件末尾；部署固定启用第一处匹配，不会误启用这些末尾注释，重复启用项只保留一条。
+MSYS2 的时区和 `LANG` 由现有 profile 自动继承 Windows；`LC_ALL` 也通过同一套 `locale -uU` 结果自动设置，不维护单独的 locale profile。宿主机进程已显式设置 `LC_ALL` 时优先沿用，否则使用 Windows Culture 对应的 UTF-8 locale。
+WSL 除写入系统 locale 文件外，还在 common shell 中显式导出 `LC_ALL`，确保直接运行 `wsl.exe`、登录 shell、fish、PowerShell 和 Nushell 都能取得它。
+这里不同步 Windows 显示语言、输入法列表或非 Unicode 程序的系统区域，也不删除目标上已有的其他 locale。为其他 `-WindowsHome` 部署时不修改当前账户的区域格式。
+Windows 时区名通过仓库内的 CLDR 映射转换；未收录的时区或不能明确转换的 Culture 会在部署前报错。
+Arch 官方容器若排除了目标 locale 的源文件，部署会添加对应的 pacman 提取例外并重装 `glibc` 恢复它；源文件已存在时不重装。
 
 安装前先检查一整组入口和链接。
 相同的留下。内容和入口不同的普通文件，或非空目录，这一组停下，原文件不动。

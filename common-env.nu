@@ -21,6 +21,14 @@ let windows_home = if $platform == 'wsl' {
     ''
 }
 let mounts = if $platform == 'wsl' { open --raw /proc/self/mounts } else { '' }
+let inherited_lc_all = $env.LC_ALL? | default ''
+let lc_all = if $platform == 'wsl' and ($inherited_lc_all | is-empty) {
+    ^sh -c 'for file in /etc/locale.conf /etc/default/locale; do [ -r "$file" ] || continue; value=$(. "$file"; printf %s "${LC_ALL-}"); [ -n "$value" ] && { printf %s "$value"; break; }; done' | str trim
+} else if $platform == 'msys2' and ($inherited_lc_all | is-empty) {
+    ^locale -uU | str trim
+} else {
+    $inherited_lc_all
+}
 
 let shared = (
     ^jq
@@ -28,6 +36,7 @@ let shared = (
         --arg home $env.HOME
         --arg windows_home $windows_home
         --arg mounts $mounts
+        --arg lc_all $lc_all
         --arg mode plan
         -f ($shared_directory | path join 'common.jq')
         ($shared_directory | path join 'common.json')
@@ -42,6 +51,7 @@ load-env $shared.environment
         --arg home $env.HOME
         --arg windows_home $windows_home
         --arg mounts $mounts
+        --arg lc_all $lc_all
         --arg mode nu-aliases
         -f ($shared_directory | path join 'common.jq')
         ($shared_directory | path join 'common.json')

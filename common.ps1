@@ -26,11 +26,24 @@ $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding =
 # Windows PowerShell drops empty native arguments, so WSL-only values are passed only on WSL.
 $_shared_arguments = @()
 if ($_shared_platform -eq 'wsl') {
+    $_shared_lc_all = $env:LC_ALL
+    if (-not $_shared_lc_all) {
+        foreach ($path in '/etc/locale.conf', '/etc/default/locale') {
+            if (-not [IO.File]::Exists($path)) { continue }
+            $assignment = [IO.File]::ReadAllLines($path) |
+                Where-Object { $_ -match '^LC_ALL=' } | Select-Object -Last 1
+            if ($assignment) {
+                $_shared_lc_all = $assignment.Substring(7).Trim().Trim('"').Trim("'")
+                if ($_shared_lc_all) { break }
+            }
+        }
+    }
     # The repository is always <Windows home>/.config/shell, whether this path is the link or its target.
     $_shared_arguments = @(
         '--arg', 'windows_home',
         (Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)),
-        '--arg', 'mounts', [IO.File]::ReadAllText('/proc/self/mounts')
+        '--arg', 'mounts', [IO.File]::ReadAllText('/proc/self/mounts'),
+        '--arg', 'lc_all', $_shared_lc_all
     )
 }
 
@@ -43,7 +56,7 @@ jq -r `
     "$PSScriptRoot/common.json" |
     Invoke-Expression
 
-Remove-Variable '_shared_arguments'
+Remove-Variable '_shared_arguments', '_shared_lc_all' -ErrorAction SilentlyContinue
 
 if ($_shared_platform -eq 'windows') {
     Set-PSReadLineOption -EditMode Emacs

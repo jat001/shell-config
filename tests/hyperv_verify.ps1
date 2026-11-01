@@ -72,6 +72,7 @@ function Test-Process {
 $checksPassed = $false
 $failure = $null
 try {
+    $regional = [IO.File]::ReadAllText((Join-Path $env:LOCALAPPDATA 'shell-ansible/variables.json')) | ConvertFrom-Json
     $env:HOME = [Environment]::GetEnvironmentVariable('HOME','User')
     $env:PATH = (Join-Path $env:USERPROFILE 'scoop/shims') + ';' + $env:PATH
     $drive = [Environment]::GetEnvironmentVariable('DEV_DRIVE','User')
@@ -95,6 +96,11 @@ try {
     $null = Get-ScheduledTask -TaskName 'WSL Attach Dev VHDX' -ErrorAction Stop
     $developer = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
     if ($developer.AllowDevelopmentWithoutDevLicense -ne 1) { throw 'Developer Mode is disabled.' }
+    if ((Get-TimeZone).Id -ine $regional.shell_host_timezone_windows) { throw 'Windows time zone differs from the host settings.' }
+    $culturePowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $culture = & $culturePowerShell -NoProfile -NonInteractive -Command '(Get-Culture).Name'
+    if ($LASTEXITCODE -ne 0) { throw "Culture probe failed ($LASTEXITCODE)." }
+    if ($culture -ine $regional.shell_host_culture) { throw 'Windows Culture differs from the host settings.' }
     $result.Checks += 'Windows boot settings'
     Test-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
         @('-NoLogo','-NonInteractive','-Command','exit 0') 'windows-powershell'
@@ -109,11 +115,16 @@ try {
     $result.Checks += 'Clink interactive injection'
 
     $msysRoot = $configuration.environments.msys2.root.Replace('${DEV_DRIVE}', $drive)
+    $windowsOffset = (Get-Date -Format 'zzz').Replace(':', '')
     $msysProbe = @"
 set -e
 bash -ic 'alias code && command -v oh-my-posh'
 zsh -ic 'alias code && command -v oh-my-posh'
 fish -ic 'functions code && command -s oh-my-posh'
+test "`$LANG" = "$($regional.shell_host_locale)"
+test "`$LC_ALL" = "$($regional.shell_host_lc_all)"
+locale charmap | grep -qx UTF-8
+test "`$(date +%z)" = "$windowsOffset"
 "@
     [IO.File]::WriteAllText('C:\shell-test\verify-msys2.sh', $msysProbe.Replace("`r",'')+"`n", [Text.UTF8Encoding]::new($false))
     $savedHome = $env:HOME
@@ -126,17 +137,18 @@ fish -ic 'functions code && command -s oh-my-posh'
     $probe = @'
 #!/bin/sh
 set -eu
+lc_all=$1
 if [ -f /etc/debian_version ]; then
     grep -q '/sid' /etc/debian_version
     grep -q '^Suites: testing testing-updates$' /etc/apt/sources.list.d/debian.sources
     grep -q '^Suites: testing-security$' /etc/apt/sources.list.d/debian.sources
 fi
 for command in jq oh-my-posh git wsl2-ssh-agent zsh fish nu pwsh; do command -v "$command"; done
-bash -ic 'alias code && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
-zsh -ic 'alias code && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
-fish -ic 'functions code && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
-pwsh -NoLogo -NonInteractive -Command '$ErrorActionPreference="Stop"; Import-Module PSCompletions; exit 0'
-nu --env-config "$HOME/.config/nushell/env.nu" --config "$HOME/.config/nushell/config.nu" -c 'exit 0'
+EXPECTED_LC_ALL=$lc_all bash -ic 'alias code && test "$LC_ALL" = "$EXPECTED_LC_ALL" && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
+EXPECTED_LC_ALL=$lc_all zsh -ic 'alias code && test "$LC_ALL" = "$EXPECTED_LC_ALL" && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
+EXPECTED_LC_ALL=$lc_all fish -ic 'functions code && test "$LC_ALL" = "$EXPECTED_LC_ALL" && test "$OMP_CACHE_DIR" = "$HOME/.cache" && test "$PNPM_HOME" = "/mnt/wsl/dev$HOME/.local/share/pnpm"'
+EXPECTED_LC_ALL=$lc_all pwsh -NoLogo -NonInteractive -Command '$ErrorActionPreference="Stop"; if ($env:LC_ALL -ne $env:EXPECTED_LC_ALL) { throw "LC_ALL mismatch" }; Import-Module PSCompletions; exit 0'
+EXPECTED_LC_ALL=$lc_all nu --env-config "$HOME/.config/nushell/env.nu" --config "$HOME/.config/nushell/config.nu" -c 'if $env.LC_ALL != $env.EXPECTED_LC_ALL { error make { msg: "LC_ALL mismatch" } }; exit 0'
 '@
     [IO.File]::WriteAllText('C:\shell-test\verify-shells.sh', $probe.Replace("`r",'')+"`n", [Text.UTF8Encoding]::new($false))
     $systemProbe = @'
@@ -151,6 +163,24 @@ grep -qx 'default=root' /etc/wsl.conf
 grep -qx 'systemd=true' /etc/wsl.conf
 grep -qx 'appendWindowsPath=false' /etc/wsl.conf
 grep -qx 'options="metadata"' /etc/wsl.conf
+zone=$2
+locale_name=$3
+lc_all=$4
+cmp -s /etc/localtime "/usr/share/zoneinfo/$zone"
+grep -qx "LANG=$locale_name" /etc/locale.conf
+grep -qx "LC_ALL=$lc_all" /etc/locale.conf
+[ "$(grep -c "^$locale_name UTF-8$" /etc/locale.gen)" -eq 1 ]
+if [ -f /etc/debian_version ]; then
+    grep -qx "LANG=$locale_name" /etc/default/locale
+    grep -qx "LC_ALL=$lc_all" /etc/default/locale
+fi
+LC_ALL=$locale_name locale charmap | grep -qx UTF-8
+if [ "${locale_name#en_}" = "$locale_name" ]; then
+    [ "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1 ]
+    LC_ALL=en_US.UTF-8 locale charmap | grep -qx UTF-8
+fi
+env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    su - "$user" -c "test \"\$LANG\" = \"$locale_name\" && test \"\$LC_ALL\" = \"$lc_all\" && test \"\$(locale charmap)\" = UTF-8"
 '@
     [IO.File]::WriteAllText('C:\shell-test\verify-wsl-system.sh', $systemProbe.Replace("`r",'')+"`n",
         [Text.UTF8Encoding]::new($false))
@@ -174,10 +204,11 @@ grep -qx 'options="metadata"' /etc/wsl.conf
             $name = "$distribution-$user"
             Wait-WslProfile $distribution $user
             Test-Process $wsl @('-d',$distribution,'-u',$user,'--cd','~','--exec','sh',
-                '/mnt/c/shell-test/verify-shells.sh') $name
+                '/mnt/c/shell-test/verify-shells.sh',$regional.shell_host_lc_all) $name
         }
         Test-Process $wsl @('-d',$distribution,'-u','root','--exec','sh',
-            '/mnt/c/shell-test/verify-wsl-system.sh',$env:USERNAME.ToLowerInvariant()) "$distribution-system"
+            '/mnt/c/shell-test/verify-wsl-system.sh',$env:USERNAME.ToLowerInvariant(),
+            $regional.shell_host_timezone_iana,$regional.shell_host_locale,$regional.shell_host_lc_all) "$distribution-system"
         Test-Process $wsl @('-d',$distribution,'-u','root','--exec','findmnt','-rn','-M',
             $configuration.environments.wsl.dev_drive.mountpoint,'-t','btrfs') "$distribution-btrfs"
     }

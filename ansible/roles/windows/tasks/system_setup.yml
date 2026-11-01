@@ -3,6 +3,8 @@
     shell_system_windows_drive: "{{ shell_configuration.environments.windows.dev_drive | default({}) }}"
     shell_system_wsl_drive: "{{ shell_configuration.environments.wsl.dev_drive | default({}) }}"
     shell_system_manage_developer: "{{ 'all' in ansible_run_tags or 'developer_mode' in ansible_run_tags }}"
+    shell_system_manage_timezone: "{{ 'all' in ansible_run_tags or
+      ansible_run_tags | intersect(['packages', 'config', 'regional']) | length > 0 }}"
     shell_system_manage_windows: "{{ 'all' in ansible_run_tags or
       ansible_run_tags | intersect(['windows_dev_drive', 'packages', 'config', 'msys2']) | length > 0 }}"
     shell_system_manage_wsl: "{{ ('all' in ansible_run_tags or 'dev_drive' in ansible_run_tags) and
@@ -43,6 +45,8 @@
       LegacyKey: "{{ '{' ~ ((('shell-dev-drive:' ~ shell_home ~ shell_backslash
         ~ (shell_system_windows_drive.vhd | default('') | replace('/', shell_backslash))) | lower) | to_uuid) ~ '}' }}"
       ManageDeveloperMode: "{{ shell_system_manage_developer | bool }}"
+      ManageTimeZone: "{{ shell_system_manage_timezone | bool }}"
+      TimeZone: "{{ shell_host_timezone_windows }}"
       ManageWindowsDrive: "{{ shell_system_manage_windows | bool }}"
       ManageWslDrive: "{{ shell_system_manage_wsl | bool }}"
       AllowDetach: "{{ shell_windows_dev_drive_allow_detach | default(false) | bool }}"

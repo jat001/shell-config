@@ -10,6 +10,14 @@
         quiet: true
       tags: [always]
 
+    - name: Require supported regional conversion
+      ansible.builtin.assert:
+        that: shell_host_regional_errors | default([]) | length == 0
+        fail_msg: "{{ shell_host_regional_errors | default(['Host regional conversion failed.']) | join('; ') }}"
+        quiet: true
+      when: not (ansible_run_tags | length == 1 and 'dev_drive' in ansible_run_tags)
+      tags: [always]
+
 - name: Configure Windows, MSYS2 and Linux hosts
   hosts: windows:linux:wsl
   gather_facts: false

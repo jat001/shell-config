@@ -90,12 +90,16 @@ else
         if $platform == "wsl" then
             $ARGS.named.windows_home // ""
         elif $platform == "msys2" then
-            env.USERPROFILE // ""
-            | if test("^[A-Za-z]:") then
-                "/" + (.[0:1] | ascii_downcase) + (.[2:] | gsub("\\\\"; "/"))
-              else
-                ""
-              end
+            if (($ARGS.named.windows_home // "") | length) > 0 then
+                $ARGS.named.windows_home
+            else
+                env.USERPROFILE // ""
+                | if test("^[A-Za-z]:") then
+                    "/" + (.[0:1] | ascii_downcase) + (.[2:] | gsub("\\\\"; "/"))
+                  else
+                    ""
+                  end
+            end
         else
             env.USERPROFILE // ""
         end
@@ -122,6 +126,22 @@ else
         env
         | .PATH = (.PATH // .Path // "")
         | . + {HOME: $home}
+        | if $platform == "msys2" or $platform == "wsl" then
+            .SHELL_LC_ALL = ($ARGS.named.lc_all // "")
+          else
+            .
+          end
+        | if $platform == "msys2" and ((.MSYSTEM_PREFIX // "") | length) == 0 then
+            .MSYSTEM_PREFIX = (
+                if (env.MSYSTEM // "") == "MSYS" then
+                    "/usr"
+                else
+                    "/" + ((env.MSYSTEM // "") | ascii_downcase)
+                end
+            )
+          else
+            .
+          end
         | if ($windows_home | length) > 0 then .WINDOWS_HOME = $windows_home else del(.WINDOWS_HOME) end
         | if $platform != "wsl" then
             .

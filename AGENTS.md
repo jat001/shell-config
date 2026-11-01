@@ -50,6 +50,12 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 每次调用通用 `download.ps1`，都会在缓存的 `records` 里留一份 JSON。能看出有没有命中缓存、文件多大、成功下载了多少字节、试了几次、花了多久。命中时 `networkBytes=0`，不算平均速度；失败那几次收了多少没法确定，就不填。URL 的查询参数不进日志，日志写不进去也不影响下载。
 这里只记 `download.ps1` 自己看到的流量。WSL 专用下载器、Docker、apt、pip、Galaxy 和别的包管理器都不算在内，别拿它当总下载量。
 
+部署从运行安装器的宿主机读取 Windows 时区和当前用户 Culture。Windows 时区走 `system_setup.ps1` 的计划/提权流程，Culture 只改当前账户。Linux/WSL 用仓库里的 CLDR 默认映射转换时区，生成对应 UTF-8 locale，并设置系统 `LANG` 和 `LC_ALL`；不改显示语言、输入法或非 Unicode 系统区域。非英语环境额外启用并生成 `en_US.UTF-8`，默认 `LANG` 不变。`locale.gen` 固定启用第一处匹配，重复启用项去掉，Debian postinst 在末尾补的注释不误启用，其他 locale 不动。MSYS2 的时区和 `LANG` 自动继承 Windows，`LC_ALL` 也在 common shell 里通过 `locale -uU` 自动设置，不维护单独的 locale profile。宿主机进程显式设置 `LC_ALL` 时优先沿用，否则使用 Culture 对应的 UTF-8 locale。未知时区、非具体语言-地区 Culture 要失败，不能猜测。
+MSYS2 进程若没有 `USERPROFILE`，common shell 用 Windows API 查询用户目录，再经 `cygpath` 转成 `WINDOWS_HOME` 展开值；不能展开成空路径。`LOCALAPPDATA` 从 `WINDOWS_HOME` 展开，供 antidote 使用。
+WSL 不只写系统 locale 文件。common shell 要从 `/etc/locale.conf` 或 `/etc/default/locale` 读取并显式导出 `LC_ALL`，覆盖直接 `wsl.exe`、Bash、zsh、fish、PowerShell 和 Nushell；`su -` 的 PAM 检查不能代替这些入口。
+只跑区域设置用 `--tags regional -e shell_regional_only=true`；这个开关同时跳过 `always` 的软件引导、仓库准备和账户入口任务。正常部署不要传它。
+Arch 官方容器的 `NoExtract` 排除了非英文 locale 源文件。缺目标源文件时，在 options 的提取规则末尾加目标例外并重装 `glibc`；不能只跑 `locale-gen`，它可能返回 0 但没有生成 locale。
+
 ## 测试
 
 隔离回归用 `tests/run.ps1`。状态目录用临时目录，不要指向 `%LOCALAPPDATA%\shell-ansible`。
@@ -69,17 +75,19 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 自定义库存时，客户机的 `shell_download_cache` 由库存决定，安装器不会再把宿主缓存路径覆盖进去。Sandbox 固定用映射进去的 `C:\shell-cache`。
 失败后想接着跑，首轮要加 `-Keep`，下次用同一个状态目录加 `-Reuse -Keep`，剩下的步骤用 `-Step` 列出来。它不会替你记哪些步骤已经过了。
 
-`tests/run.ps1` 开头在控制容器里跑：
+`tests/run.ps1` 开头直接在 Windows 跑 `tests/regional.ps1` 和 `tests/system_setup.ps1`，再在控制容器里跑：
 
 - `tests/test_terminal_settings.py`
 - `tests/test_release_update.py`（用了 Unix 的 `fcntl`，不能在 Windows 的 CPython 里导入）
 - `tests/test_shell_paths.py`
 - `tests/test_nushell_defaults.py`
+- `tests/test_locale_gen.py`
 - `tests/test_invariants.py`
 
 可以单独跑、也不碰现网的：
 
-- `tests/system_setup.ps1`：临时目录里的系统步骤计划。PowerShell 5.1 和 7 都能跑。
+- `tests/regional.ps1`：只测试 CLDR 时区映射、Culture 转换和宿主机采集，不调用设置命令。
+- `tests/system_setup.ps1`：临时目录里的系统步骤计划，包含时区匹配、变更和 WhatIf 替身。PowerShell 5.1 和 7 都能跑。
 - `tests/msys2_update.ps1`：临时命令替身测试核心升级重启和普通错误，不运行 MSYS2。
 - `tests/hyperv_worker_test.ps1`：模拟启动、热加载与错误恢复，测试并发文件读写和客户机脚本参数，不申请管理员权限。
 - `tests/native_commands.ps1`：本机要有 `wslc.exe`。只解析命令，并检查一个不存在的镜像。
@@ -101,7 +109,7 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
 容器和沙盒（`-Target arch,debian,sandbox`，沙盒用完已停）：Arch、Debian、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
-无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
+无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME、Culture 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
 Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
 虚拟机用状态目录里已有的 `ShellConfig-Test`。从 `WSL-Ready` 恢复，同步仓库，再跑 `init,full,full,update`。不要另建同名虚拟机，测完也不要删。
