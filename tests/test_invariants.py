@@ -55,7 +55,21 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("standard = @('init', 'full', 'full')", hyperv)
         self.assertIn("full = @('init', 'full', 'full', 'update')", hyperv)
         self.assertIn('-CacheDirectory $CacheDirectory', runner)
-        self.assertEqual(runner.count('CacheDirectory = $CacheDirectory'), 2)
+        self.assertEqual(runner.count('CacheDirectory = $CacheDirectory'), 3)
+    def test_debian_testing_is_test_only_and_sandbox_cache_stays_in_guest(self):
+        installer = (root / 'install.ps1').read_text(encoding='utf-8')
+        bootstrap = (root / 'ansible/bootstrap/wsl.sh').read_text(encoding='utf-8')
+        guest = (root / 'tests/hyperv_guest.ps1').read_text(encoding='utf-8')
+        runner = (root / 'tests/run.ps1').read_text(encoding='utf-8')
+        self.assertIn('[switch]$TestDebianTesting', installer)
+        self.assertIn("@('env', 'SHELL_DEBIAN_TESTING=1')", installer)
+        self.assertIn("ContainsKey('CacheDirectory') -and -not $Inventory", installer)
+        self.assertIn('SHELL_DEBIAN_TESTING:-0', bootstrap)
+        self.assertIn('apt-get full-upgrade -y', bootstrap)
+        self.assertIn('*/shell-*) continue', bootstrap)
+        self.assertIn('debian-testing-complete', bootstrap)
+        self.assertIn('-TestDebianTesting', guest)
+        self.assertIn("shell_download_cache = 'C:\\shell-cache'", runner)
 
 
 if __name__ == '__main__':

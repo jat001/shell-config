@@ -7,6 +7,7 @@ param(
     [string[]]$WslDistribution,
     [switch]$SkipMsys2,
     [switch]$SkipWsl,
+    [switch]$TestDebianTesting,
     [switch]$WslDevDriveOnly,
     [string]$Inventory,
     [string]$StateDirectory = (Join-Path $env:LOCALAPPDATA 'shell-ansible'),
@@ -360,6 +361,7 @@ try {
                     ) -ne $null -join ';')
                 )
             }
+            if ($TestDebianTesting) { $bootstrap = @('env', 'SHELL_DEBIAN_TESTING=1') + $bootstrap }
             $sshd = ((Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1).Trim()
             if ($sshd -notmatch '^/[\w./+-]+$') { throw "Unexpected sshd path: $sshd" }
             # wsl.exe splits a multi-word --exec command, so the launcher is a file with no arguments.
@@ -408,7 +410,9 @@ try {
     }
 
     $variables = @{ shell_mode = $Mode }
-    if ($PSBoundParameters.ContainsKey('CacheDirectory')) { $variables.shell_download_cache = $CacheDirectory }
+    if ($PSBoundParameters.ContainsKey('CacheDirectory') -and -not $Inventory) {
+        $variables.shell_download_cache = $CacheDirectory
+    }
     if ($WindowsHome) { $variables.shell_windows_home = [IO.Path]::GetFullPath($WindowsHome) }
     if ($Msys2Root) { $variables.shell_msys2_root = $Msys2Root }
     if ($SkipMsys2) { $variables.shell_msys2 = $false }

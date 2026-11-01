@@ -23,6 +23,40 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+if [ "${SHELL_DEBIAN_TESTING:-0}" = 1 ] && command -v apt-get >/dev/null 2>&1 && [ -f /etc/debian_version ]; then
+    source=/etc/apt/sources.list.d/debian.sources
+    marker=$directory/debian-testing-complete
+    if [ ! -f "$marker" ] || ! grep -q '^Suites: testing testing-updates$' "$source" 2>/dev/null; then
+        mkdir -p -m 700 "$directory" /etc/apt/sources.list.d
+        for file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$file" ] || continue
+            case "$file" in */shell-*) continue ;; esac
+            if [ "$file" != "$source" ] && {
+                [ "$file" = /etc/apt/sources.list ] || grep -Eq 'deb\.debian\.org|security\.debian\.org' "$file";
+            }; then
+                : > "$file"
+            fi
+        done
+        cat > "$source.tmp" <<'EOF'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: testing testing-updates
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
+
+Types: deb
+URIs: http://deb.debian.org/debian-security
+Suites: testing-security
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
+EOF
+        mv "$source.tmp" "$source"
+        retry apt-get update >&2
+        DEBIAN_FRONTEND=noninteractive retry apt-get full-upgrade -y >&2
+        touch "$marker"
+    fi
+fi
+
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.
 # A clean Debian image has no CA bundle. Ansible then downloads signing keys over HTTPS.
 if ! command -v mkfs.btrfs >/dev/null 2>&1 ||

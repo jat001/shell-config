@@ -168,6 +168,96 @@ if ($LASTEXITCODE -ne 7) { throw 'Expected failure did not occur.' }
     }
     if (-not $rejected) { throw 'The test runner accepted both Profile and Step.' }
     if ($launches.Count -ne 1) { throw 'Profile tests requested another administrator process.' }
+
+    $runner = Join-Path $Repository 'tests/run.ps1'
+    . ([scriptblock]::Create((Get-TestFunction $runner 'Assert-Unchanged').Extent.Text))
+    $clean = @(
+        'arch : ok=1 changed=0 unreachable=0 failed=0',
+        'debian : ok=1 changed=0 unreachable=0 failed=0'
+    )
+    Assert-Unchanged $clean 'clean fixture' -ExpectedHost @('arch', 'debian')
+    foreach ($sample in @('', $clean[0], ($clean -join "`n").Replace('changed=0', 'changed=1'))) {
+        $rejected = $false
+        try { Assert-Unchanged @($sample) 'invalid fixture' -ExpectedHost @('arch', 'debian') } catch { $rejected = $true }
+        if (-not $rejected) { throw "An invalid recap was accepted: $sample" }
+    }
+
+    . ([scriptblock]::Create((Get-TestFunction $actions 'Update-Jobs').Extent.Text))
+    function Connect-Guest {}
+    function Copy-Logs {}
+    $StateDirectory = $temporary
+    [void][IO.Directory]::CreateDirectory((Join-Path $temporary 'operations'))
+    $job = @{ Id = 'missing-result'; Type = 'Guest'; ResultPath = 'missing.json' }
+    $Context = @{ Jobs = @{ 'missing-result' = $job }; IdleTimeoutMinutes = 120 }
+    function Invoke-Command {
+        param($Session, $ArgumentList, $ScriptBlock)
+        [pscustomobject]@{
+            OperationId = $ArgumentList.Id; Type = $ArgumentList.Type; Running = $false
+            Result = $null; ResultMissing = $true; Verification = $null
+            Success = $null; Error = $null; Phase = $null
+        }
+    }
+    Update-Jobs
+    $progress = [IO.File]::ReadAllText((Join-Path $temporary 'operations/missing-result.progress.json')) | ConvertFrom-Json
+    if ($progress.Success -ne $false -or $progress.Error -notlike '*Result file is missing*') {
+        throw 'A missing guest result was not an explicit failure.'
+    }
+
+    $id = 'verification-gate'
+    $job = @{ Id = $id; Type = 'Run'; ResultPath = 'result.json'; Verify = $true; ColdBoot = $false; VerificationSince = $null }
+    $Context = @{ Jobs = @{ $id = $job }; IdleTimeoutMinutes = 120 }
+    $script:verification = $null
+    function Invoke-Command {
+        param($Session, $ArgumentList, $ScriptBlock)
+        [pscustomobject]@{
+            OperationId = $ArgumentList.Id; Type = 'Run'; Running = $false
+            Result = [pscustomobject]@{ Success = $true }; ResultMissing = $false
+            Verification = $script:verification; Success = $null; Error = $null; Phase = $null
+        }
+    }
+    Update-Jobs
+    $progressPath = Join-Path $temporary "operations/$id.progress.json"
+    $progress = [IO.File]::ReadAllText($progressPath) | ConvertFrom-Json
+    if (-not $progress.Running -or -not $Context.Jobs.Count) { throw 'Deployment completed before verification.' }
+    $script:verification = [pscustomobject]@{ OperationId = 'old-operation'; Running = $false; Success = $true }
+    Update-Jobs
+    $progress = [IO.File]::ReadAllText($progressPath) | ConvertFrom-Json
+    if (-not $progress.Running -or -not $Context.Jobs.Count) { throw 'A stale verification result was accepted.' }
+    $script:verification = [pscustomobject]@{ OperationId = $id; Running = $false; Success = $true }
+    Update-Jobs
+    $progress = [IO.File]::ReadAllText($progressPath) | ConvertFrom-Json
+    if (-not $progress.Success -or $Context.Jobs.Count) { throw 'A fresh verification result did not complete the job.' }
+
+    $id = 'corrupt-verification'
+    $job = @{ Id = $id; Type = 'Run'; ResultPath = 'result.json'; Verify = $true; ColdBoot = $false; VerificationSince = $null }
+    $Context = @{ Jobs = @{ $id = $job }; IdleTimeoutMinutes = 120 }
+    function Invoke-Command {
+        param($Session, $ArgumentList, $ScriptBlock)
+        [pscustomobject]@{
+            OperationId = $ArgumentList.Id; Type = 'Run'; Running = $false
+            Result = [pscustomobject]@{ Success = $true }; ResultMissing = $false; ResultError = $null
+            Verification = $null; VerificationError = 'Invalid JSON'; Success = $null; Error = $null; Phase = $null
+        }
+    }
+    Update-Jobs
+    $progress = [IO.File]::ReadAllText((Join-Path $temporary "operations/$id.progress.json")) | ConvertFrom-Json
+    if ($progress.Success -ne $false -or $progress.Error -notlike '*Could not read the verification result*') {
+        throw 'A corrupt verification result was not an explicit failure.'
+    }
+
+    $verifyScript = Join-Path $Repository 'tests/hyperv_verify.ps1'
+    . ([scriptblock]::Create((Get-TestFunction $verifyScript 'Write-VerificationResult').Extent.Text))
+    $script:resultPath = Join-Path $temporary 'atomic-verification.json'
+    $script:utf8 = [Text.UTF8Encoding]::new($false)
+    $script:result = @{ OperationId = 'atomic'; Success = $true; Running = $false }
+    foreach ($iteration in 1..20) {
+        $script:result.Iteration = $iteration
+        Write-VerificationResult
+        $record = [IO.File]::ReadAllText($script:resultPath) | ConvertFrom-Json
+        if ($record.OperationId -ne 'atomic' -or $record.Iteration -ne $iteration) {
+            throw 'Atomic verification publication produced an invalid result.'
+        }
+    }
     "PowerShell $($PSVersionTable.PSVersion): worker reuse, handler reload/recovery, VM identity, file IO, guest jobs and profiles passed."
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)

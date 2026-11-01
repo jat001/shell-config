@@ -66,6 +66,7 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 不带 `-Profile` 还是 `full`，发布前照原来的完整流程跑。想自己挑步骤就用 `-Step` 或 `-Modes`，别和 `-Profile` 混用。
 
 换了状态目录还想复用已经下好的东西，可以加 `-CacheDirectory <临时缓存目录>`。默认缓存仍在各状态目录里。共享目录只能串行用，别指向现网缓存，也别让几个测试进程一起写。
+自定义库存时，客户机的 `shell_download_cache` 由库存决定，安装器不会再把宿主缓存路径覆盖进去。Sandbox 固定用映射进去的 `C:\shell-cache`。
 失败后想接着跑，首轮要加 `-Keep`，下次用同一个状态目录加 `-Reuse -Keep`，剩下的步骤用 `-Step` 列出来。它不会替你记哪些步骤已经过了。
 
 `tests/run.ps1` 开头在控制容器里跑：
@@ -100,12 +101,13 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
 容器和沙盒（`-Target arch,debian,sandbox`，沙盒用完已停）：Arch、Debian、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
-无提权账户的第二次 `full` 也是 `changed=0`。
+无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
 Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
 虚拟机用状态目录里已有的 `ShellConfig-Test`。从 `WSL-Ready` 恢复，同步仓库，再跑 `init,full,full,update`。不要另建同名虚拟机，测完也不要删。
+VM 里的 Debian 必须和容器一样跑 testing。`hyperv_guest.ps1` 给安装器加 `-TestDebianTesting`，bootstrap 只替换 Debian 官方源并做 `full-upgrade`，`shell-*` 第三方源不动。普通安装不传这个开关，仍用 stable。
 `init`、连续两次 `full`、`update` 已回归，三台都是 failed=0，重复 `full` 的三台都是 `changed=0`。
-断电冷启动后，开发盘、各 shell、Clink 和 Terminal GUI 启动的 13 项检查通过，临时自动登录及凭据已清理。
+断电冷启动后的 16 项检查包括开发盘、启动设置、各 shell、Clink、WSL 用户和 Terminal GUI。临时自动登录及凭据必须清理，无提权 Windows 账户矩阵留在 Sandbox，不在 VM 里重复。
 更新构建曾遇 Docker Hub 和 Galaxy TLS EOF，重试后通过；别关闭 TLS 校验或把失败当成成功。
 MSYS2 核心升级会主动关闭当前 Bash。只有退出 1 且出现明确核心重启提示时，第一轮升级才能接续；第二轮用新进程执行，仍检查退出码。
 测试脚本只停提权 worker。
@@ -128,12 +130,13 @@ Hyper-V 测试只用一个宿主管理员执行器。先 `tests/hyperv.ps1 -Acti
 `Guest` 在已核对身份的 VM 中执行独立脚本，不执行任意宿主脚本。源文件和结构化参数直接传入，无需再起一个诊断 worker。
 客户机临时执行副本带 UTF-8 BOM，以兼容 Windows PowerShell 5.1；仓库源码仍保持 UTF-8 无 BOM / LF。
 要调用客户机仓库里的现有测试，可在独立脚本中使用 `$env:USERPROFILE/.config/shell/tests/...`，别假定临时脚本的 `$PSScriptRoot` 是仓库目录。
-`Run` 和 `Guest` 是后台任务，`operations/<id>.json` 只表示成功启动；看对应 `<id>.progress.json` 的 Running 和 Success 判断完成结果。
+`Run` 和 `Guest` 是后台任务，`operations/<id>.json` 只表示成功启动；看对应 `<id>.progress.json` 的 Running 和 Success 判断完成结果。`Run` 会等同一 OperationId 的验证结束；更新档还会在 worker 里完成临时自动登录和断电冷启动，部署进程退出不等于测试已经成功。
+验证结果先写临时文件并落盘再替换，断电前还会再 flush。JSON 损坏要直接失败，别把它当成“还在跑”。
 客户机输出在 `guest-logs/operations/<id>/`，参数文件不在日志收集范围内。
 
 `Sync`、恢复、断电和准备 VM 之前先等后台任务结束，避免覆盖运行中的源码。日常诊断与日志收集可在任务运行时进行。
 `Collect` 最后再做一次，将下载缓存取回宿主；日志允许共享读取，写入中的日志也能采集。
-临时自动登录只在显式 `EnableLogon` 时设置，`ClearLogon`、验证结束及正常 `Stop` 会清理注册表密码和 LSA 凭据。
+临时自动登录可由显式 `EnableLogon` 或更新部署的冷启动阶段设置，`ClearLogon`、验证结束及正常 `Stop` 会清理注册表密码和 LSA 凭据。
 完成后 `Stop` 退出管理员执行器，保留测试 VM 和快照，不注册常驻宿主服务或关闭 UAC。
 NAT 只转发默认发行版的 `127.0.0.1`，每个 sshd 都听在这个地址上。启动 sshd 之前按 `common.json` 写好 `.wslconfig`，里面要有镜像网络和 `hostAddressLoopback`。文件有变化就 `wsl --shutdown`。连接建立之后不能再 shutdown。
 同步进客户机的文件要整文件覆盖。`Copy-Item -ToSession -Force` 换不掉已有文件。

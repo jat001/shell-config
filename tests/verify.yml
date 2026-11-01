@@ -167,6 +167,15 @@
         database: "{{ item }}"
       loop: [passwd, group]
 
+    - name: Check Debian testing sources
+      ansible.builtin.shell: |
+        set -e
+        grep -q '/sid' /etc/debian_version
+        grep -q '^Suites: testing testing-updates$' /etc/apt/sources.list.d/debian.sources
+        grep -q '^Suites: testing-security$' /etc/apt/sources.list.d/debian.sources
+      when: ansible_facts.distribution == 'Debian'
+      changed_when: false
+
     - name: Check WSL user identity and build user removal
       ansible.builtin.assert:
         that:
@@ -208,20 +217,36 @@
       loop_control:
         label: "{{ item.item }}"
 
-    - name: Load shared environment as the WSL user
+    - name: Load shared environment in each shell as the WSL user
       ansible.builtin.command:
-        argv: [su, shell, -c, "bash -ic 'alias code; printf %s \"$PNPM_HOME\"'"]
+        argv: [su, shell, -c, "{{ item.command }}"]
       environment: "{{ shell_environment }}"
-      register: user_shell
+      loop:
+        - name: bash
+          command: "cd && bash -ic 'alias code; printf %s \"$PNPM_HOME\"'"
+        - name: zsh
+          command: "cd && zsh -ic 'alias code; printf %s \"$PNPM_HOME\"'"
+        - name: fish
+          command: "cd && fish -c 'functions code; printf %s \"$PNPM_HOME\"'"
+        - name: pwsh
+          command: "cd && pwsh -NoLogo -Command '(Get-Alias code).Definition; [Console]::Write($env:PNPM_HOME)'"
+        - name: nu
+          command: "cd && nu --env-config /home/shell/.config/nushell/env.nu --config /home/shell/.config/nushell/config.nu -c 'print (scope aliases | where name == code | get expansion.0); print -n $env.PNPM_HOME'"
+      loop_control:
+        label: "{{ item.name }}"
+      register: user_shells
       changed_when: false
 
-    - name: Check shared environment of the WSL user
+    - name: Check shared environment in each shell of the WSL user
       ansible.builtin.assert:
         that:
-          - (user_shell.stdout_lines | last | default('')) == '/home/shell/.local/share/pnpm'
-          - (windows_home ~ '/scoop/apps/vscode/current/bin/code') in user_shell.stdout
-        fail_msg: "{{ user_shell.stdout }} / {{ user_shell.stderr }}"
+          - (item.stdout_lines | last | default('')) == '/home/shell/.local/share/pnpm'
+          - (windows_home ~ '/scoop/apps/vscode/current/bin/code') in item.stdout
+        fail_msg: "{{ item.item.name }} printed {{ item.stdout }} / {{ item.stderr }}"
         quiet: true
+      loop: "{{ user_shells.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
     - name: Load PowerShell modules for root and the WSL user
       ansible.builtin.command:
@@ -266,6 +291,7 @@
       loop_control:
         label: "{{ item.path }}"
       register: entries
+      tags: [user]
 
     - name: Check Windows entries
       ansible.builtin.assert:
@@ -275,6 +301,7 @@
       loop: "{{ entries.results }}"
       loop_control:
         label: "{{ item.item.path }}"
+      tags: [user]
 
     - name: Inspect Windows and MSYS2 links
       ansible.windows.win_stat:
@@ -295,6 +322,7 @@
       loop_control:
         label: "{{ item.path }}"
       register: windows_links
+      tags: [user]
 
     - name: Check Windows and MSYS2 links
       ansible.builtin.assert:
@@ -306,6 +334,7 @@
       loop: "{{ windows_links.results }}"
       loop_control:
         label: "{{ item.item.path }}"
+      tags: [user]
 
     - name: Check user HOME
       ansible.windows.win_powershell:
@@ -313,6 +342,7 @@
       register: user_home
       changed_when: false
       failed_when: user_home.output[0] != home
+      tags: [user]
 
     - name: Check Windows software
       ansible.windows.win_powershell:
@@ -322,7 +352,9 @@
           foreach ($command in 'git', 'jq', 'oh-my-posh', 'clink', 'nu', 'pwsh') {
               $null = Get-Command $command
           }
-          $output = & pwsh -NoLogo -Command '[Console]::Write($env:HOME); Get-Module PSCompletions -ListAvailable | Out-Null' 2>&1
+          $command = '$ErrorActionPreference=''Stop''; [Console]::Write($env:HOME); if (-not (Get-Module PSCompletions -ListAvailable)) { throw ''PSCompletions is missing.'' }'
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+          $output = & pwsh -NoLogo -EncodedCommand $encoded 2>&1
           if ($LASTEXITCODE -ne 0) { throw "pwsh profile failed: $output" }
           $output
       register: windows_software
@@ -380,6 +412,7 @@
           foreach ($line in 'networkingMode=Mirrored', 'telemetry=false', 'autoMemoryReclaim=Gradual', 'hostAddressLoopback=true') {
               if ($lines -notcontains $line) { throw "Missing $line in .wslconfig" }
           }
+      tags: [user]
 
     - name: Check Windows development drive
       ansible.windows.win_powershell:
@@ -399,6 +432,7 @@
               Select-Object -First 1 -ExpandProperty DeviceID
           $expected = [Environment]::GetEnvironmentVariable('DEV_DRIVE', 'User')
           if ($letter -ne $expected) { throw "DEV_DRIVE is '$expected' but the drive is '$letter'" }
+      tags: [admin]
 
     - name: Inspect WSL development drive task
       community.windows.win_scheduled_task_stat:
@@ -406,6 +440,7 @@
         name: WSL Attach Dev VHDX
       register: dev_drive_task
       failed_when: not dev_drive_task.task_exists
+      tags: [admin]
 
     - name: Inspect Developer Mode
       ansible.windows.win_reg_stat:
@@ -413,3 +448,4 @@
         name: AllowDevelopmentWithoutDevLicense
       register: developer_mode
       failed_when: developer_mode.value | default(0) != 1
+      tags: [admin]

@@ -314,6 +314,7 @@ if ($Target -contains 'sandbox') {
             ansible_psrp_certificate_key_pem = "/state/winrm-$user.key"
             ansible_psrp_ca_cert = '/state/winrm-server.pem'
             shell_dev_drive_task = $true
+            shell_download_cache = 'C:\shell-cache'
             shell_msys2_root = 'C:/msys64'
             shell_msys2_installer = 'file:///C:/shell-cache/msys2-base-x86_64-latest.sfx.exe'
             shell_msys2_cache = 'C:\shell-cache\msys2'
@@ -338,11 +339,16 @@ $userInventory = Join-Path $StateDirectory 'inventory-user.json'
 
 # Ansible colors the recap. The escape sequences are removed before changed= is read, or a clean run looks dirty.
 function Assert-Unchanged {
-    param([object[]]$Output, [string]$Label)
+    param([object[]]$Output, [string]$Label, [string[]]$ExpectedHost)
 
     $recap = ($Output -join [char]10) -replace '\x1b\[[0-9;]*m', ''
-    $changed = [regex]::Matches($recap, '(?m)^(\S+)\s*:\s*ok=\d+\s+changed=(\d+)') |
-        Where-Object { $_.Groups[2].Value -ne '0' }
+    $recaps = [regex]::Matches($recap, '(?m)^(\S+)\s*:\s*ok=\d+\s+changed=(\d+)')
+    if (-not $recaps.Count) { throw "$Label has no Ansible recap." }
+    $hosts = @($recaps | ForEach-Object { $_.Groups[1].Value })
+    foreach ($expected in $ExpectedHost) {
+        if ($hosts -notcontains $expected) { throw "$Label has no recap for $expected." }
+    }
+    $changed = $recaps | Where-Object { $_.Groups[2].Value -ne '0' }
     if ($changed) {
         throw "$Label changed hosts: $(($changed | ForEach-Object { $_.Groups[1].Value }) -join ', ')"
     }
@@ -368,7 +374,7 @@ try {
             'full' { & $installer -Mode full @common }
             'idempotence' {
                 & $installer -Mode full @common 2>&1 | Tee-Object -Variable output | Out-Host
-                Assert-Unchanged $output 'Second full run'
+                Assert-Unchanged $output 'Second full run' -ExpectedHost (@($windows.Keys) + @($wsl.Keys))
             }
             'update' { & $installer -Mode update @common }
             'verify' { & $installer -Playbook ../tests/verify.yml @common }
@@ -384,7 +390,16 @@ try {
                     }
                     & $installer @user
                     & $installer @user 2>&1 | Tee-Object -Variable output | Out-Host
-                    Assert-Unchanged $output 'Second unprivileged run'
+                    Assert-Unchanged $output 'Second unprivileged run' -ExpectedHost @($unprivileged.Keys)
+                    $userVerify = @{
+                        Playbook = '../tests/verify.yml'
+                        Inventory = $userInventory
+                        StateDirectory = $StateDirectory
+                        CacheDirectory = $CacheDirectory
+                        Network = $network
+                        AnsibleArgument = @('--tags', 'user')
+                    }
+                    & $installer @userVerify
                 }
             }
         }

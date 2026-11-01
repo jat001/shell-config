@@ -1,4 +1,4 @@
-param([string]$Modes = 'init,full,full,update')
+param([string]$Modes = 'init,full,full,update', [string]$OperationId = [guid]::NewGuid().ToString())
 
 $ErrorActionPreference = 'Stop'
 $repository = Join-Path $env:USERPROFILE '.config/shell'
@@ -73,7 +73,7 @@ if ([IO.File]::Exists($vhd)) {
     Remove-Variable Ansible
 }
 $timings = @()
-$result = @{ Success = $false }
+$result = @{ Success = $false; OperationId = $OperationId }
 try {
     Import-ControllerCache
     foreach ($mode in ($Modes -split ',')) {
@@ -81,9 +81,15 @@ try {
         $index = $timings.Count
         $log = "C:\shell-test\deploy-$index-$mode.log"
         $clock = [Diagnostics.Stopwatch]::StartNew()
-        & (Join-Path $repository 'install.ps1') -Mode $mode -StateDirectory $state -CacheDirectory $cache `
-            -AnsibleArgument @('-e','@/state/cache.json') *> $log
-        if ($LASTEXITCODE -ne 0) { throw "Deployment mode $mode failed ($LASTEXITCODE)." }
+        $preference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $global:LASTEXITCODE = 0
+            & (Join-Path $repository 'install.ps1') -Mode $mode -StateDirectory $state -CacheDirectory $cache `
+                -TestDebianTesting -AnsibleArgument @('-e','@/state/cache.json') *> $log
+            $code = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $preference }
+        if ($code -ne 0) { throw "Deployment mode $mode failed ($code)." }
         $timings += @{ Mode=$mode; Seconds=[int]$clock.Elapsed.TotalSeconds; Log=$log }
         [IO.File]::WriteAllText('C:\shell-test\timings.json', ($timings | ConvertTo-Json), $utf8)
         # The second full run is the idempotence check. Any changed= on a recap line fails the guest deployment.
@@ -95,19 +101,23 @@ try {
             }
         }
     }
+    if (($Modes -split ',')[-1] -eq 'update') {
+        & (Join-Path $repository 'tests/hyperv_verify.ps1') -Prepare -OperationId $OperationId
+    } elseif (($Modes -split ',')[-1] -eq 'full') {
+        & (Join-Path $repository 'tests/hyperv_verify.ps1') -Queue -OperationId $OperationId
+    }
     $result.Success = $true
 } catch {
     $result.Error = $_.Exception.Message
+    if (-not $result.Error) { $result.Error = $_.ToString() }
     throw
 } finally {
     try { Export-ControllerCache } catch { $result.CacheError = $_.Exception.Message }
-    [IO.File]::WriteAllText('C:\shell-test\result.json', ($result | ConvertTo-Json), $utf8)
-}
-
-if ($result.Success -and (($Modes -split ',')[-1] -eq 'update')) {
-    & (Join-Path $repository 'tests/hyperv_verify.ps1') -RestartGuest
-}
-
-if ($result.Success -and (($Modes -split ',')[-1] -eq 'full')) {
-    & (Join-Path $repository 'tests/hyperv_verify.ps1') -Queue
+    $json = $result | ConvertTo-Json
+    $bytes = $utf8.GetBytes($json)
+    $stream = [IO.File]::Open('C:\shell-test\result.json', 'Create', 'Write', 'Read')
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    } finally { $stream.Dispose() }
 }
