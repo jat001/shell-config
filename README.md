@@ -90,7 +90,7 @@ pwsh -NoProfile -File scripts/setup-dev.ps1
 
 脚本用 Scoop 安装 uv、lefthook、shellcheck、shfmt、ruff 和 jq，再用 uv 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer，然后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
 
-- PowerShell：PSScriptAnalyzer，规则见 `.psscriptanalyzer.psd1`
+- PowerShell：PSScriptAnalyzer 自动格式化并重新暂存，再做静态检查，规则见 `.psscriptanalyzer.psd1`
 - Python：Ruff 自动格式化并重新暂存，再做静态检查
 - Shell：shfmt 自动格式化并重新暂存，shellcheck 只检查
 - YAML：yamllint

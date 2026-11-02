@@ -14,3 +14,6 @@ rules:
   octal-values:
     forbid-implicit-octal: true
     forbid-explicit-octal: true
+  # GitHub Actions uses "on" as a key; YAML 1.1 parses it as a boolean.
+  truthy:
+    check-keys: false
