@@ -18,8 +18,6 @@ shell_scoop_apps:
     bucket: main
   - name: nu
     bucket: main
-  - name: uv
-    bucket: main
   - name: pscompletions
     bucket: main
   - name: Maple-Mono-NF-CN
