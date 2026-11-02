@@ -1,3 +1,4 @@
+# shellcheck disable=SC2154
 # ble.sh sources this file again with "ble" and must return before the interactive bash setup below.
 if [ "${1-}" = ble ]; then
     # One millisecond is enough for a lone Esc to leave incremental search without delaying Meta prefixes.

@@ -1,3 +1,5 @@
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',
+    Justification = 'StateDirectory is read by the dot-sourced Assert-TestVm helper.')]
 param([string]$Repository)
 
 $ErrorActionPreference = 'Stop'

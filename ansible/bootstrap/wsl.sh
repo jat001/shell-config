@@ -114,6 +114,8 @@ if [ -n "$powershell" ]; then
         printf '#!/bin/sh\n'
         printf 'cd %s || exit 1\n' "'$workdir'"
         printf 'PSModulePath=%s\n' "'$modules'"
+        # The generated wrapper keeps the expansion for the target shell.
+        # shellcheck disable=SC2016
         printf 'WSLENV=${WSLENV:+$WSLENV:}PSModulePath\n'
         printf 'export PSModulePath WSLENV\n'
         printf 'exec %s "$@"\n' "'$powershell'"

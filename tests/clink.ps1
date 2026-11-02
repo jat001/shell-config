@@ -1,7 +1,6 @@
 param([string]$Root, [string]$Installer)
 
 $ErrorActionPreference = 'Stop'
-$key = 'HKCU:\Software\Microsoft\Command Processor'
 $registry = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Command Processor', $true)
 if (-not $registry) { throw 'Clink AutoRun registry key is missing.' }
 $original = $registry.GetValue('AutoRun', $null, 'DoNotExpandEnvironmentNames')

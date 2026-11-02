@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 set -eu
 
 # Usage: xdg-migrate.sh check|apply SOURCE SHARED [EXCLUDE...]

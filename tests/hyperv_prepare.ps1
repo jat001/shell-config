@@ -153,7 +153,7 @@ function Wait-Guest {
                 (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State').ImageState -eq 'IMAGE_STATE_COMPLETE'
             }
             if ($ready) { return $connection }
-        } catch { } finally {
+        } catch { Write-Verbose 'Connection probe failed; retrying.' } finally {
             if ($connection -and -not $ready) { Remove-PSSession $connection }
         }
         Start-Sleep -Seconds 5

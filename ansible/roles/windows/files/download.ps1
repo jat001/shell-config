@@ -97,5 +97,6 @@ try {
             [Text.UTF8Encoding]::new($false))
     } catch {
         # Metrics are diagnostic and must not change the download result.
+        Write-Verbose 'Skipped download metrics.'
     }
 }

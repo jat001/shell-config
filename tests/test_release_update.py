@@ -1,14 +1,13 @@
 import hashlib
 import importlib.util
 import io
-from pathlib import Path
 import platform
 import stat
 import tarfile
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
-
 
 source = Path(__file__).resolve().parents[1] / "ansible/roles/linux/files/release-update.py"
 spec = importlib.util.spec_from_file_location("release_update", source)

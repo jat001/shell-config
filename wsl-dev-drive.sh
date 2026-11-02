@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repository=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repository=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 configuration=$repository/common.json
 drive=$(jq -c '.environments.wsl.dev_drive // null' "$configuration")
 [ "$drive" != null ] || exit 0

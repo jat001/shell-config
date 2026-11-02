@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 set -eu
 
 # Usage: ids.sh check|apply USER UID GID [NAME=ID ...]

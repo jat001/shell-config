@@ -146,7 +146,7 @@ $linuxSetup = {
     # Bootstrap logs package installation on stderr. In a job, Stop would fail the job on that progress.
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
-    $sshd = & wslc.exe exec $container sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
+    $null = & wslc.exe exec $container sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
         Select-Object -Last 1
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed in $container; see $Log" }
     $alive = 'pid=$(cat /etc/shell-ansible/sshd.pid 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid"'

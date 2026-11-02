@@ -1,8 +1,7 @@
 import importlib.util
 import json
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 path = Path(__file__).resolve().parents[1] / "ansible/filter_plugins/shell.py"
 spec = importlib.util.spec_from_file_location("shell_filters", path)

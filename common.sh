@@ -91,6 +91,8 @@ _shell_find_path() {
         for _relative in "$@"; do
             _candidate="$_root/$_relative"
 
+            # The predicate is passed in so one directory list serves both file and directory lookups.
+            # shellcheck disable=SC1009,SC1072,SC1073
             if [ "$_test" "$_candidate" ] && [ -r "$_candidate" ]; then
                 printf '%s\n' "$_candidate"
                 return

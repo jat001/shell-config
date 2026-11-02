@@ -8,7 +8,6 @@ $ErrorActionPreference = 'Stop'
 if (-not $Repository) { $Repository = Split-Path $PSScriptRoot }
 $repository = [IO.Path]::GetFullPath($Repository)
 $CacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
-$windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 $bootstrap = Join-Path $repository 'ansible/bootstrap/wsl.ps1'
 $tokens = $null
 $errors = $null

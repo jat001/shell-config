@@ -1,10 +1,9 @@
-from pathlib import Path
 import os
 import stat
 import subprocess
 import tempfile
 import unittest
-
+from pathlib import Path
 
 script = Path(__file__).resolve().parents[1] / "ansible/roles/linux/files/nushell-defaults.sh"
 

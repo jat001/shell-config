@@ -5,12 +5,11 @@ import fcntl
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
 import platform
-import stat
 import pwd
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -20,6 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from pathlib import Path, PurePosixPath
 
 
 def request(url, method="GET"):
@@ -364,9 +364,9 @@ def main():
                 try:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
-                except BlockingIOError:
+                except BlockingIOError as error:
                     if time.monotonic() >= deadline:
-                        raise RuntimeError("Another release update is still in progress")
+                        raise RuntimeError("Another release update is still in progress") from error
                     time.sleep(0.5)
         for item in manifest["packages"]:
             try:

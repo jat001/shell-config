@@ -408,10 +408,10 @@ try {
                 $bootstrap += @(
                     (Invoke-Wsl $distribution @('wslpath', '-a', '-u', $windowsPowerShell))
                     (Invoke-Wsl $distribution @('wslpath', '-a', '-u', [Environment]::GetFolderPath('UserProfile')))
-                    (@(
+                    ((@(
                         [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
                         [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
-                    ) -ne $null -join ';')
+                    ) | Where-Object { $null -ne $_ }) -join ';')
                 )
             }
             if ($TestDebianTesting) { $bootstrap = @('env', 'SHELL_DEBIAN_TESTING=1') + $bootstrap }
