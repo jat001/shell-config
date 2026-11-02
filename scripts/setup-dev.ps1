@@ -11,7 +11,7 @@ try {
         throw 'Scoop is required. Install it from https://scoop.sh first.'
     }
 
-    $packages = @('lefthook', 'shellcheck', 'shfmt', 'ruff', 'jq')
+    $packages = @('uv', 'lefthook', 'shellcheck', 'shfmt', 'ruff', 'jq')
     foreach ($command in $packages) {
         if (Get-Command $command -ErrorAction SilentlyContinue) {
             continue
@@ -21,15 +21,7 @@ try {
     }
 
     if (-not (Get-Command yamllint -ErrorAction SilentlyContinue)) {
-        if (Get-Command uv -ErrorAction SilentlyContinue) {
-            uv tool install yamllint
-        }
-        elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
-            pipx install yamllint
-        }
-        else {
-            throw 'Install uv or pipx first, then run this script again.'
-        }
+        uv tool install yamllint
         if (-not (Get-Command yamllint -ErrorAction SilentlyContinue)) {
             throw "yamllint was installed but is not on PATH. Add $(uv tool dir --bin) to PATH."
         }
