@@ -160,6 +160,8 @@ Windows PowerShell 在 `ErrorActionPreference = Stop` 时，输出被重定向�
 
 `Out-String` 不会折断已经是字符串的 docker inspect 输出。不要为这个去改解析。
 
+`ansible.cfg` 的 ssh 连接关掉了 `usetty`。`su` 提权本来不提问，而 systemd 262 的 `pam_systemd` 会给带伪终端的会话写 OSC 3008 标记；Ansible 一旦加 `-tt`，`end=` 就落在模块 JSON 后面，每个任务都报一次“junk after the JSON data”。没有 tty 时它什么都不写。
+
 Nushell 的 scaffold 用目标上的 `nu -c 'config reset -w'` 现生成。配置目录要先建好。
 
 链接和发布包更新先检查，失败要能恢复。不要改成递归删除或覆盖用户文件。
