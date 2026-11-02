@@ -37,6 +37,60 @@ source "$_shell_antidote" || return
 _shell_cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
 mkdir -p "$_shell_cache_dir"
 
+# Docker Desktop links its completion files from a mount that is gone while it is stopped. compinit reports every
+# dangling link it reads, so a directory that holds one is replaced with a cache copy of the files that remain.
+_shell_sanitize_fpath() {
+    local _cache="$1"
+    local _directory _entry _mirror _dangling
+    local -a _directories _entries
+
+    for _directory in $fpath; do
+        # A mirror entry remembers the directory it stands in for, so a restored link brings the original back.
+        if [[ "${_directory:h}" == "$_cache/completions" && -r "$_directory/.directory" ]]; then
+            _directory="$(<"$_directory/.directory")"
+        fi
+
+        if [[ -z "$_directory" || "$_directory" == . ]]; then
+            _directories+=("$_directory")
+            continue
+        fi
+
+        _entries=()
+        _dangling=0
+
+        for _entry in "$_directory"/_*(N); do
+            if [[ -e "$_entry" ]]; then
+                _entries+=("$_entry")
+            else
+                _dangling=1
+            fi
+        done
+
+        if (( ! _dangling )); then
+            _directories+=("$_directory")
+            continue
+        fi
+
+        _mirror="$_cache/completions/${_directory//\//%}"
+        mkdir -p -- "$_mirror" || return 1
+
+        if [[ ! -r "$_mirror/.sources" || "${(F)_entries}" != "$(<"$_mirror/.sources")" ]]; then
+            for _entry in "$_mirror"/_*(N); do
+                rm -f -- "$_entry"
+            done
+            for _entry in "${_entries[@]}"; do
+                ln -sf -- "$_entry" "$_mirror/${_entry:t}" || return 1
+            done
+            print -r -- "${(F)_entries}" >| "$_mirror/.sources"
+            print -r -- "$_directory" >| "$_mirror/.directory"
+        fi
+
+        _directories+=("$_mirror")
+    done
+
+    fpath=("${_directories[@]}")
+}
+
 _shell_init_completion() {
     local _cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh${WSL_DISTRO_NAME:+/$WSL_DISTRO_NAME}"
     local _share _context
@@ -46,6 +100,7 @@ _shell_init_completion() {
     done
     typeset -gU fpath
     mkdir -p "$_cache"
+    _shell_sanitize_fpath "$_cache" || return
     # Regular files only: a dangling Docker completion link drops out, and its return changes this context.
     _completion_files=(${^fpath}/_*(N-.))
     _context="${(F)fpath}

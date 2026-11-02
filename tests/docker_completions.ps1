@@ -73,11 +73,12 @@ TRAPEXIT() {
 XDG_CACHE_HOME="$probe_tmp/cache"
 fpath=("$probe_tmp" $fpath)
 ln -s "$probe_tmp/target" "$probe_tmp/_shell_completion_fixture"
-_shell_init_completion || exit 1
-[[ -z ${_comps[shell-fixture]-} ]]
+# The dangling fixture is dropped instead of read. A completion that appears after the first compinit invalidates it.
+_shell_init_completion 2>"$probe_tmp/completion.err" || exit 1
+[[ ! -s "$probe_tmp/completion.err" && -z ${_comps[shell-fixture]-} ]]
 printf '%s\n' '#compdef shell-fixture' > "$probe_tmp/target"
-_shell_init_completion || exit 1
-[[ ${_comps[shell-fixture]-} == _shell_completion_fixture ]]
+_shell_init_completion 2>"$probe_tmp/completion.err" || exit 1
+[[ ! -s "$probe_tmp/completion.err" && ${_comps[shell-fixture]-} == _shell_completion_fixture ]]
 print -r -- DOCKER_COMPLETION_OK
 '@
 $fish = @'

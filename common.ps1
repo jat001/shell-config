@@ -77,7 +77,24 @@ if ($_shared_platform -ne 'windows' -and $env:XDG_DATA_HOME) {
 
 Import-Module PSCompletions
 
-if (Get-Command docker -ErrorAction SilentlyContinue) {
+# Docker Desktop unmounts its CLI tools when it is not running. WSL keeps the links, so Get-Command still finds
+# one, but PowerShell refuses to run the missing target; only running it tells an installed CLI apart.
+$_shared_docker = Get-Command docker -ErrorAction SilentlyContinue
+if ($_shared_docker -and $IsLinux) {
+    $_shared_error_action = $ErrorActionPreference
+    $ErrorActionPreference = 'Stop'
+    try {
+        docker --version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { $_shared_docker = $null }
+    } catch {
+        $_shared_docker = $null
+    } finally {
+        $ErrorActionPreference = $_shared_error_action
+    }
+}
+Remove-Variable '_shared_error_action' -ErrorAction SilentlyContinue
+
+if ($_shared_docker) {
     # The replacement is a no-op unless it matches the Docker CLI script exactly, which keeps the caller's error policy.
     $_shared_completion = docker completion powershell | Out-String
     $_shared_completion.Replace(
@@ -89,6 +106,8 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     ) | Invoke-Expression
     Remove-Variable '_shared_completion'
 }
+
+Remove-Variable '_shared_docker'
 
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 
