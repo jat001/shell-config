@@ -54,10 +54,10 @@ function Get-AppBucket {
 
 if ($Ansible.CheckMode) {
     $missing = @($Apps | Where-Object {
-        $version = Get-AppVersion $_.name
-        if ($version) { return $_.bucket -and (Get-AppBucket $_.name) -ne $_.bucket }
-        -not ($_.command -and (Get-Command $_.command -ErrorAction SilentlyContinue))
-    })
+            $version = Get-AppVersion $_.name
+            if ($version) { return $_.bucket -and (Get-AppBucket $_.name) -ne $_.bucket }
+            -not ($_.command -and (Get-Command $_.command -ErrorAction SilentlyContinue))
+        })
     $Ansible.Changed = $Mode -ne 'update' -and (
         -not [IO.File]::Exists($scoop) -or
         -not (Get-Command git.exe -ErrorAction SilentlyContinue) -or
@@ -74,7 +74,8 @@ if (-not [IO.File]::Exists($scoop)) {
     $installer = if ($Cache) {
         $null = [IO.Directory]::CreateDirectory($Cache)
         Join-Path $Cache 'scoop-install.ps1'
-    } else { Join-Path $env:TEMP 'scoop-install.ps1' }
+    }
+    else { Join-Path $env:TEMP 'scoop-install.ps1' }
     if (-not [IO.File]::Exists($installer)) {
         $partial = $installer + '.part'
         for ($attempt = 1; $attempt -le 3; $attempt++) {
@@ -82,7 +83,8 @@ if (-not [IO.File]::Exists($scoop)) {
                 Invoke-WebRequest -UseBasicParsing -Uri 'https://get.scoop.sh' -OutFile $partial
                 Move-Item -LiteralPath $partial -Destination $installer
                 break
-            } catch {
+            }
+            catch {
                 if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
                 if ($attempt -eq 3) { throw }
                 Start-Sleep -Seconds (5 * $attempt)
@@ -91,7 +93,8 @@ if (-not [IO.File]::Exists($scoop)) {
     }
     try {
         $null = Invoke-PowerShell $installer -RunAsAdmin -ScoopDir $Root
-    } finally {
+    }
+    finally {
         if (-not $Cache) { Remove-Item -LiteralPath $installer -Force }
     }
     if (-not [IO.File]::Exists($scoop)) { throw 'Scoop installation failed.' }

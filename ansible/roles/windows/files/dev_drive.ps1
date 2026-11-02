@@ -79,7 +79,7 @@ public static string GetDriveLetter(int disk) {
 
 $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
 $registered = [bool](Get-ChildItem -LiteralPath $key -ErrorAction SilentlyContinue |
-    Where-Object { $_.GetValue('Path') -eq $Path })
+        Where-Object { $_.GetValue('Path') -eq $Path })
 
 $disk = [Shell.DevDrive]::GetDiskNumber($Path)
 $letter = if ($disk -ge 0) { [Shell.DevDrive]::GetDriveLetter($disk) } else { '' }
@@ -90,8 +90,8 @@ for ($elapsed = 0; $disk -ge 0 -and -not $letter -and $elapsed -lt $Wait; $elaps
 
 $Ansible.Result = @{
     legacy_registration = [bool](Get-ChildItem -LiteralPath $key -ErrorAction SilentlyContinue |
-        Where-Object { $_.GetValue('Path') -eq $Path -and $_.PSChildName -eq $LegacyKey })
-    registered = $registered
-    attached = $disk -ge 0
-    letter = [string]"$letter"
+            Where-Object { $_.GetValue('Path') -eq $Path -and $_.PSChildName -eq $LegacyKey })
+    registered          = $registered
+    attached            = $disk -ge 0
+    letter              = [string]"$letter"
 }

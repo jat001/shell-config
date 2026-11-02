@@ -61,7 +61,7 @@ function Copy-Logs {
 }
 
 function Copy-Cache {
-    param([ValidateSet('ToGuest','FromGuest')][string]$Direction)
+    param([ValidateSet('ToGuest', 'FromGuest')][string]$Direction)
     Connect-Guest
     $cache = Join-Path $StateDirectory 'cache/downloads'
     [void][IO.Directory]::CreateDirectory($cache)
@@ -70,8 +70,8 @@ function Copy-Cache {
         foreach ($file in Get-ChildItem -LiteralPath $cache -Recurse -File) {
             $relative = $file.FullName.Substring($cache.Length + 1)
             $target = Join-Path $remote $relative
-            $needed = Invoke-Command -Session $Context.Session -ArgumentList $target,$file.Length -ScriptBlock {
-                param($Path,$Length)
+            $needed = Invoke-Command -Session $Context.Session -ArgumentList $target, $file.Length -ScriptBlock {
+                param($Path, $Length)
                 if ([IO.File]::Exists($Path) -and (Get-Item -LiteralPath $Path).Length -eq $Length) { return $false }
                 [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($Path))
                 $true
@@ -85,7 +85,8 @@ function Copy-Cache {
                 }
             }
         }
-    } else {
+    }
+    else {
         $files = Invoke-Command -Session $Context.Session -ScriptBlock {
             Get-ChildItem C:\shell-cache -Recurse -File -ErrorAction SilentlyContinue |
                 Where-Object Name -NotLike '*.part' |
@@ -94,11 +95,12 @@ function Copy-Cache {
                     $stream = [IO.File]::OpenRead($_.FullName)
                     try {
                         $buffer = New-Object byte[] 256
-                        $count = $stream.Read($buffer,0,$buffer.Length)
-                        $prefix = [Text.Encoding]::UTF8.GetString($buffer,0,$count)
+                        $count = $stream.Read($buffer, 0, $buffer.Length)
+                        $prefix = [Text.Encoding]::UTF8.GetString($buffer, 0, $count)
                         $prefix -notmatch '(?is)^\s*(<!doctype\s+html|<html)'
-                    } finally { $stream.Dispose() }
-                } | Select-Object FullName,Length
+                    }
+                    finally { $stream.Dispose() }
+                } | Select-Object FullName, Length
         }
         foreach ($file in $files) {
             $target = Join-Path $cache $file.FullName.Substring($remote.Length + 1)
@@ -117,13 +119,15 @@ function Set-GuestLogon {
         $credential = Import-Clixml (Join-Path $StateDirectory 'guest-credential.xml')
         $count = if ($Request.PSObject.Properties.Name -contains 'AutoLogonCount' -and $Request.AutoLogonCount) {
             $Request.AutoLogonCount
-        } else { 2 }
+        }
+        else { 2 }
         $parameters = @{
             Action = 'Enable'; UserName = $credential.UserName
             Password = $credential.GetNetworkCredential().Password; Count = $count
         }
         $Context.AutoLogon = $true
-    } else { $parameters = @{ Action = 'Clear' } }
+    }
+    else { $parameters = @{ Action = 'Clear' } }
     $result = Invoke-Command -Session $Context.Session -ArgumentList $definition, $parameters -ScriptBlock {
         param($Definition, $Parameters)
         & ([scriptblock]::Create($Definition)) @Parameters
@@ -183,7 +187,8 @@ function Update-Jobs {
                 if ([IO.File]::Exists($Job.ResultPath)) {
                     try { $state.Result = [IO.File]::ReadAllText($Job.ResultPath) | ConvertFrom-Json }
                     catch { $state.ResultError = $_.Exception.Message }
-                } else { $state.ResultMissing = $true }
+                }
+                else { $state.ResultMissing = $true }
                 if ($Job.Verify) {
                     $path = 'C:\shell-test\verification-result.json'
                     if ([IO.File]::Exists($path)) {
@@ -201,19 +206,24 @@ function Update-Jobs {
             if ($progress.ResultMissing) {
                 $progress.Success = $false
                 $progress.Error = "Result file is missing: $($job.ResultPath)"
-            } elseif ($progress.ResultError) {
+            }
+            elseif ($progress.ResultError) {
                 $progress.Success = $false
                 $progress.Error = "Could not read the deployment result: $($progress.ResultError)"
-            } elseif ($progress.Result.Success -ne $true) {
+            }
+            elseif ($progress.Result.Success -ne $true) {
                 $progress.Success = $false
                 $progress.Error = $progress.Result.Error
-            } elseif ($progress.VerificationError) {
+            }
+            elseif ($progress.VerificationError) {
                 $progress.Success = $false
                 $progress.Error = "Could not read the verification result: $($progress.VerificationError)"
-            } elseif ($progress.VerificationTaskMissing) {
+            }
+            elseif ($progress.VerificationTaskMissing) {
                 $progress.Success = $false
                 $progress.Error = 'The verification task is missing after the cold boot.'
-            } elseif ($job.Verify) {
+            }
+            elseif ($job.Verify) {
                 if (-not $job.VerificationSince) { $job.VerificationSince = [DateTime]::UtcNow }
                 if ($job.ColdBoot -and -not $job.ColdBootDone) {
                     try {
@@ -244,7 +254,8 @@ public static extern int RegFlushKey(System.IntPtr hKey);
                             try {
                                 $code = [ShellTest.RegistryFlush]::RegFlushKey($key.Handle.DangerousGetHandle())
                                 if ($code -ne 0) { throw [ComponentModel.Win32Exception]::new($code) }
-                            } finally { $key.Dispose() }
+                            }
+                            finally { $key.Dispose() }
                             $path = 'C:\Windows\System32\Tasks\Shell Config Verify Once'
                             if ([IO.File]::Exists($path)) {
                                 $stream = [IO.File]::Open($path, 'Open', 'Write', 'Read')
@@ -259,24 +270,29 @@ public static extern int RegFlushKey(System.IntPtr hKey);
                         $job.ColdBootDone = $true
                         $progress.Running = $true
                         $progress.Phase = 'Cold boot verification'
-                    } catch {
+                    }
+                    catch {
                         $progress.Success = $false
                         $progress.Error = $_.Exception.Message
                     }
-                } else {
+                }
+                else {
                     $verification = $progress.Verification
                     if ($verification -and $verification.OperationId -eq $job.Id -and -not $verification.Running) {
                         $progress.Success = $verification.Success -eq $true
                         if (-not $progress.Success) { $progress.Error = $verification.Error }
-                    } elseif (([DateTime]::UtcNow - $job.VerificationSince).TotalMinutes -ge 30) {
+                    }
+                    elseif (([DateTime]::UtcNow - $job.VerificationSince).TotalMinutes -ge 30) {
                         $progress.Success = $false
                         $progress.Error = 'Verification did not complete within 30 minutes.'
-                    } else {
+                    }
+                    else {
                         $progress.Running = $true
                         $progress.Phase = 'Verification'
                     }
                 }
-            } else { $progress.Success = $true }
+            }
+            else { $progress.Success = $true }
         }
         $path = Join-Path $StateDirectory ('operations/' + $id + '.progress.json')
         [IO.File]::WriteAllText($path, ($progress | ConvertTo-Json -Depth 10), $utf8)
@@ -323,10 +339,13 @@ switch ($Request.Action) {
             $verification = if ([IO.File]::Exists($verificationPath)) {
                 try {
                     @{ Modified = (Get-Item -LiteralPath $verificationPath).LastWriteTimeUtc.ToString('o')
-                        Result = [IO.File]::ReadAllText($verificationPath) | ConvertFrom-Json }
-                } catch {
+                        Result  = [IO.File]::ReadAllText($verificationPath) | ConvertFrom-Json
+                    }
+                }
+                catch {
                     @{ Modified = (Get-Item -LiteralPath $verificationPath).LastWriteTimeUtc.ToString('o')
-                        Length = (Get-Item -LiteralPath $verificationPath).Length; Error = $_.Exception.Message }
+                        Length = (Get-Item -LiteralPath $verificationPath).Length; Error = $_.Exception.Message
+                    }
                 }
             }
             $taskState = $null
@@ -335,7 +354,8 @@ switch ($Request.Action) {
                 $task = Get-ScheduledTask -TaskName 'Shell Config Verify Once' -ErrorAction Stop
                 $taskState = [string]$task.State
                 $taskResult = (Get-ScheduledTaskInfo -TaskName $task.TaskName -ErrorAction Stop).LastTaskResult
-            } catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {
+            }
+            catch [Microsoft.PowerShell.Cmdletization.Cim.CimJobException] {
                 if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }
                 # A one-shot verification can unregister itself between the query and the info read.
             }
@@ -344,7 +364,8 @@ switch ($Request.Action) {
                 Verification = $verification; AutoLogonEnabled = $login.AutoAdminLogon -eq '1'
                 RegistryPasswordPresent = [bool]$login.DefaultPassword; TaskState = $taskState; TaskResult = $taskResult
                 Processes = @(Get-Process explorer, WindowsTerminal, consent, powershell -ErrorAction SilentlyContinue |
-                    Select-Object Name, Id, SessionId) }
+                        Select-Object Name, Id, SessionId)
+            }
         }
         [IO.File]::WriteAllText((Join-Path $StateDirectory 'health.json'), ($result | ConvertTo-Json -Depth 10), $utf8)
     }
@@ -386,7 +407,7 @@ switch ($Request.Action) {
         $result.Job = Start-GuestCommand $Request.Script $Request.Arguments
     }
     'Run' {
-        if (@($Context.Jobs.Values | Where-Object Type -eq 'Run').Count) { throw 'Deployment is already running.' }
+        if (@($Context.Jobs.Values | Where-Object Type -EQ 'Run').Count) { throw 'Deployment is already running.' }
         if (-not $Request.Modes.Count -or @($Request.Modes | Where-Object { $_ -notin @('init', 'full', 'update') }).Count) {
             throw 'Invalid deployment modes.'
         }
@@ -403,7 +424,8 @@ switch ($Request.Action) {
         }
         $job = @{ Id = $Request.Id; Type = 'Run'; Pid = $process.Pid; Started = $process.Started
             ResultPath = 'C:\shell-test\result.json'; Verify = ($Request.Modes[-1] -in @('full', 'update'))
-            ColdBoot = ($Request.Modes[-1] -eq 'update'); ColdBootDone = $false; VerificationSince = $null }
+            ColdBoot = ($Request.Modes[-1] -eq 'update'); ColdBootDone = $false; VerificationSince = $null
+        }
         $Context.Jobs[$Request.Id] = $job
         $result.Job = $job
         [IO.File]::WriteAllText((Join-Path $StateDirectory 'progress.json'),

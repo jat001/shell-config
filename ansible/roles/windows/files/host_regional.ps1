@@ -5,7 +5,7 @@ function ConvertFrom-WindowsTimeZone {
     )
 
     $mapping = [IO.File]::ReadAllText($MappingPath) | ConvertFrom-Json
-    $zone = $mapping.zones.PSObject.Properties | Where-Object Name -eq $Id | Select-Object -First 1
+    $zone = $mapping.zones.PSObject.Properties | Where-Object Name -EQ $Id | Select-Object -First 1
     if (-not $zone) {
         throw "Windows time zone '$Id' is not in the CLDR mapping. Update ansible/data/windows_timezones.json."
     }
@@ -42,22 +42,25 @@ function Get-HostRegionalSetting {
     $errors = [Collections.Generic.List[string]]::new()
     try {
         $iana = ConvertFrom-WindowsTimeZone -Id $windowsTimeZone -MappingPath $MappingPath
-    } catch { $errors.Add($_.Exception.Message) }
+    }
+    catch { $errors.Add($_.Exception.Message) }
     try {
         $locale = ConvertTo-PosixLocale -Culture $culture
-    } catch { $errors.Add($_.Exception.Message) }
+    }
+    catch { $errors.Add($_.Exception.Message) }
     if ([string]::IsNullOrWhiteSpace($lcAll)) {
         $lcAll = $locale
-    } elseif ($lcAll -notmatch '^(?:C|C\.UTF-8|POSIX|[A-Za-z]{2,3}_[A-Za-z]{2}\.UTF-8)$') {
+    }
+    elseif ($lcAll -notmatch '^(?:C|C\.UTF-8|POSIX|[A-Za-z]{2,3}_[A-Za-z]{2}\.UTF-8)$') {
         $errors.Add("LC_ALL '$lcAll' is not a supported POSIX locale name.")
         $lcAll = $null
     }
     [ordered]@{
         shell_host_timezone_windows = $windowsTimeZone
-        shell_host_timezone_iana = $iana
-        shell_host_culture = $culture
-        shell_host_locale = $locale
-        shell_host_lc_all = $lcAll
-        shell_host_regional_errors = @($errors)
+        shell_host_timezone_iana    = $iana
+        shell_host_culture          = $culture
+        shell_host_locale           = $locale
+        shell_host_lc_all           = $lcAll
+        shell_host_regional_errors  = @($errors)
     }
 }

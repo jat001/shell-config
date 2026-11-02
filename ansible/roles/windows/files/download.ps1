@@ -20,14 +20,16 @@ try {
     if ($uri.IsFile) {
         $source = Get-Item -LiteralPath $uri.LocalPath
         $validator = "$($source.Length):$($source.LastWriteTimeUtc.Ticks)"
-    } else {
+    }
+    else {
         $head = $null
         for ($attempt = 1; $attempt -le 3; $attempt++) {
             $headAttempts++
             try {
                 $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $uri
                 break
-            } catch {
+            }
+            catch {
                 if ($attempt -eq 3) { throw }
                 Start-Sleep -Seconds (5 * $attempt)
             }
@@ -36,12 +38,13 @@ try {
     }
     $hash = [Security.Cryptography.SHA256]::Create()
     try {
-        $key = [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes("$Url`n$validator"))).Replace('-','')
-    } finally { $hash.Dispose() }
+        $key = [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes("$Url`n$validator"))).Replace('-', '')
+    }
+    finally { $hash.Dispose() }
     $name = [IO.Path]::GetFileName($uri.AbsolutePath) -replace '[^A-Za-z0-9._-]', '_'
-    if (-not $name) { $name='download' }
+    if (-not $name) { $name = 'download' }
     [void][IO.Directory]::CreateDirectory($Cache)
-    $path = Join-Path $Cache ($key.Substring(0,16) + '-' + $name)
+    $path = Join-Path $Cache ($key.Substring(0, 16) + '-' + $name)
     # The cache name includes the validator. A changed ETag or file length is a different object, not an overwrite of a partial download.
     $cacheHit = [IO.File]::Exists($path)
     if (-not $cacheHit) {
@@ -57,14 +60,16 @@ try {
                         finally { $transferClock.Stop() }
                     }
                     break
-                } catch {
+                }
+                catch {
                     if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
                     if ($attempt -eq 3) { throw }
                     Start-Sleep -Seconds (5 * $attempt)
                 }
             }
             [IO.File]::Move($partial, $path)
-        } finally { if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) } }
+        }
+        finally { if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) } }
     }
     $cacheBytes = (Get-Item -LiteralPath $path).Length
     $networkBytes = if ($cacheHit -or $uri.IsFile) { 0 } else { $cacheBytes }
@@ -73,29 +78,31 @@ try {
     }
     $success = $true
     $path
-} finally {
+}
+finally {
     $totalClock.Stop()
     try {
         $record = [ordered]@{
-            timestamp = [DateTime]::UtcNow.ToString('o')
-            tool = 'download.ps1'
-            url = $uri.GetLeftPart([UriPartial]::Path)
-            success = $success
-            cacheHit = $cacheHit
-            cacheBytes = $cacheBytes
-            networkBytes = $networkBytes
-            elapsedSeconds = [math]::Round($totalClock.Elapsed.TotalSeconds, 6)
-            headAttempts = $headAttempts
-            downloadAttempts = $downloadAttempts
+            timestamp             = [DateTime]::UtcNow.ToString('o')
+            tool                  = 'download.ps1'
+            url                   = $uri.GetLeftPart([UriPartial]::Path)
+            success               = $success
+            cacheHit              = $cacheHit
+            cacheBytes            = $cacheBytes
+            networkBytes          = $networkBytes
+            elapsedSeconds        = [math]::Round($totalClock.Elapsed.TotalSeconds, 6)
+            headAttempts          = $headAttempts
+            downloadAttempts      = $downloadAttempts
             averageBytesPerSecond = $averageBytesPerSecond
         }
         $directory = Join-Path $Cache 'records'
         [void][IO.Directory]::CreateDirectory($directory)
         $name = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ') + '-' +
-            [guid]::NewGuid().ToString('N') + '.json'
+        [guid]::NewGuid().ToString('N') + '.json'
         [IO.File]::WriteAllText((Join-Path $directory $name), ($record | ConvertTo-Json -Compress),
             [Text.UTF8Encoding]::new($false))
-    } catch {
+    }
+    catch {
         # Metrics are diagnostic and must not change the download result.
         Write-Verbose 'Skipped download metrics.'
     }

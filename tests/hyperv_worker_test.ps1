@@ -15,9 +15,9 @@ function Get-TestFunction {
     $ast = [Management.Automation.Language.Parser]::ParseFile($Path, [ref]$tokens, [ref]$parseErrors)
     if ($parseErrors) { throw ($parseErrors -join "`n") }
     $definition = $ast.Find({
-        param($node)
-        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
-    }, $true)
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $Name
+        }, $true)
     if (-not $definition) { throw "Missing test function: $Name" }
     $definition
 }
@@ -55,10 +55,10 @@ try {
     # The actual guest log reader must coexist with an open writer.
     $definition = Get-TestFunction $actions 'Copy-Logs'
     $reader = $definition.Find({
-        param($node)
-        $node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and
+            param($node)
+            $node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and
             $node.Extent.Text.Contains('$stream.CopyTo($memory)')
-    }, $true).ScriptBlock.GetScriptBlock()
+        }, $true).ScriptBlock.GetScriptBlock()
     $log = Join-Path $temporary 'active.log'
     $writer = [IO.File]::Open($log, 'Create', 'Write', 'ReadWrite')
     try {
@@ -67,14 +67,15 @@ try {
         $writer.Flush()
         $encoded = & $reader $log
         if ($encoded -cne [Convert]::ToBase64String($bytes)) { throw 'The active log was not read correctly.' }
-    } finally { $writer.Dispose() }
+    }
+    finally { $writer.Dispose() }
 
     $definition = Get-TestFunction $actions 'Write-GuestFile'
     $write = $definition.Find({
-        param($node)
-        $node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and
+            param($node)
+            $node -is [Management.Automation.Language.ScriptBlockExpressionAst] -and
             $node.Extent.Text.Contains('[IO.File]::WriteAllBytes')
-    }, $true).ScriptBlock.GetScriptBlock()
+        }, $true).ScriptBlock.GetScriptBlock()
     $readLock = [IO.File]::Open($log, 'Open', 'Read', 'Read')
     try { & $write $log $encoded } finally { $readLock.Dispose() }
     $replacement = [Convert]::ToBase64String($utf8.GetBytes('new content'))
@@ -86,7 +87,7 @@ try {
     $Context = @{}
     $vmId = [guid]::NewGuid().ToString()
     [IO.File]::WriteAllText((Join-Path $temporary 'vm-created.json'),
-        (@{ Name = 'fixture'; Id = $vmId; Image = (-join [char[]]@(0x4F01, 0x4E1A, 0x8BC4, 0x4F30, 0x7248)) } | ConvertTo-Json), $utf8)
+        (@{ Name = 'fixture'; Id = $vmId; Image = ( -join [char[]]@(0x4F01, 0x4E1A, 0x8BC4, 0x4F30, 0x7248)) } | ConvertTo-Json), $utf8)
     function Get-VM { param([string]$Name) [pscustomobject]@{ Name = $Name; Id = $vmId } }
     $null = Assert-TestVm
     if ($Context.VmId -ne $vmId) { throw 'The UTF-8 VM identity was not read.' }
@@ -106,8 +107,8 @@ try {
         param($FilePath, $WindowStyle, [switch]$PassThru, $ArgumentList, $Verb)
         $launches.Add($ArgumentList)
         [IO.File]::WriteAllText((Join-Path $temporary 'worker.json'), (@{
-            Pid = $PID; Instance = 'fixture-worker'; Started = $fake.StartTime.ToUniversalTime().ToString('o')
-        } | ConvertTo-Json), $utf8)
+                    Pid = $PID; Instance = 'fixture-worker'; Started = $fake.StartTime.ToUniversalTime().ToString('o')
+                } | ConvertTo-Json), $utf8)
         $fake
     }
     $null = & $client -Action Start -StateDirectory $temporary -Repository $Repository
@@ -159,7 +160,7 @@ if ($LASTEXITCODE -ne 7) { throw 'Expected failure did not occur.' }
         [IO.File]::Delete($requestPath)
     }
     $rejected = $false
-    try { & $client -Action Run -Profile full -Modes full,update -StateDirectory $temporary -Repository $Repository } catch {
+    try { & $client -Action Run -Profile full -Modes full, update -StateDirectory $temporary -Repository $Repository } catch {
         $rejected = $true
     }
     if (-not $rejected) { throw 'Hyper-V accepted both Profile and Modes.' }
@@ -261,7 +262,8 @@ if ($LASTEXITCODE -ne 7) { throw 'Expected failure did not occur.' }
         }
     }
     "PowerShell $($PSVersionTable.PSVersion): worker reuse, handler reload/recovery, VM identity, file IO, guest jobs and profiles passed."
-} finally {
+}
+finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if ($resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase)) {

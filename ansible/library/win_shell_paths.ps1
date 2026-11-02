@@ -3,18 +3,18 @@
 #AnsibleRequires -CSharpUtil Ansible.Basic
 
 $spec = @{
-    options = @{
+    options             = @{
         items = @{
-            type = 'list'
+            type     = 'list'
             elements = 'dict'
             required = $true
-            options = @{
-                path = @{ type = 'str'; required = $true }
-                state = @{ type = 'str'; required = $true; choices = 'file', 'directory', 'link' }
-                src = @{ type = 'str' }
-                content = @{ type = 'str' }
+            options  = @{
+                path     = @{ type = 'str'; required = $true }
+                state    = @{ type = 'str'; required = $true; choices = 'file', 'directory', 'link' }
+                src      = @{ type = 'str' }
+                content  = @{ type = 'str' }
                 defaults = @{ type = 'list'; elements = 'str'; default = @() }
-                type = @{ type = 'str'; default = 'directory'; choices = 'file', 'directory', 'external' }
+                type     = @{ type = 'str'; default = 'directory'; choices = 'file', 'directory', 'external' }
             }
         }
     }
@@ -46,7 +46,8 @@ function Get-PathState {
 
     try {
         $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    } catch [Management.Automation.ItemNotFoundException] {
+    }
+    catch [Management.Automation.ItemNotFoundException] {
         return @{ Type = 'Missing' }
     }
 
@@ -56,8 +57,8 @@ function Get-PathState {
             $target = Join-Path (Split-Path $Path) $target
         }
         return @{
-            Type = 'Link'
-            Target = [IO.Path]::GetFullPath($target)
+            Type      = 'Link'
+            Target    = [IO.Path]::GetFullPath($target)
             Directory = $item.PSIsContainer
         }
     }
@@ -99,7 +100,8 @@ function Test-Item {
 
         try {
             $same = (Read-Content $Item.path) -ceq $Item.content
-        } catch {
+        }
+        catch {
             $same = $false
         }
         if (-not $same) {
@@ -152,22 +154,26 @@ function Install-Item {
     if ($state) {
         if ($state.Type -eq 'Directory' -or $state.Directory) {
             [IO.Directory]::Delete($Item.path)
-        } else {
+        }
+        else {
             [IO.File]::Delete($Item.path)
         }
     }
 
     $directory = $Item.type -eq 'directory' -or
-        ($Item.type -eq 'external' -and [IO.Directory]::Exists($Item.src))
+    ($Item.type -eq 'external' -and [IO.Directory]::Exists($Item.src))
     try {
         New-SymbolicLink $Item.path $Item.src $directory
-    } catch {
+    }
+    catch {
         # The previous object was already removed, so put that exact object back before reporting the failure.
         if ($state.Type -eq 'File') {
             [IO.File]::WriteAllText($Item.path, $Item.content + [char]10, $utf8)
-        } elseif ($state.Type -eq 'Link') {
+        }
+        elseif ($state.Type -eq 'Link') {
             New-SymbolicLink $Item.path $state.Target ([bool]$state.Directory)
-        } elseif ($state.Type -eq 'Directory') {
+        }
+        elseif ($state.Type -eq 'Directory') {
             $null = [IO.Directory]::CreateDirectory($Item.path)
         }
         throw
@@ -188,7 +194,8 @@ foreach ($item in $module.Params.items) {
     $result = Test-Item $item
     if ($result.Conflict) {
         $conflicts.Add("$($result.Conflict): $($item.path)")
-    } elseif ($result.Action) {
+    }
+    elseif ($result.Action) {
         $planned.Add(@{ Item = $item; Result = $result })
     }
 }
@@ -201,10 +208,10 @@ if ($conflicts.Count) {
 $module.Result.changes = @(
     foreach ($entry in $planned) {
         @{
-            path = $entry.Item.path
+            path   = $entry.Item.path
             action = $entry.Result.Action
-            state = $entry.Item.state
-            src = $entry.Item.src
+            state  = $entry.Item.state
+            src    = $entry.Item.src
         }
     }
 )

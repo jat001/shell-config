@@ -69,7 +69,8 @@ function Invoke-ControllerBuild {
         try {
             Invoke-Wslc @Arguments
             return
-        } catch {
+        }
+        catch {
             if ($attempt -eq 3) { throw }
             Start-Sleep -Seconds 10
         }
@@ -100,9 +101,11 @@ function Get-FreePort {
         try {
             $listener.Start()
             return $port
-        } catch {
+        }
+        catch {
             $port = 22000 + (($port - 22000 + 1) % 1000)
-        } finally {
+        }
+        finally {
             $listener.Stop()
         }
     }
@@ -129,9 +132,11 @@ function Wait-Port {
         try {
             $client.Connect([Net.IPAddress]::Loopback, $Port)
             return
-        } catch {
+        }
+        catch {
             Start-Sleep -Milliseconds 500
-        } finally {
+        }
+        finally {
             $client.Dispose()
         }
     } while ((Get-Date) -lt $deadline)
@@ -163,8 +168,9 @@ function Get-CachedDistribution {
     if (-not $distribution) { return }
     $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
         $env:PROCESSOR_ARCHITEW6432
-    } else { $env:PROCESSOR_ARCHITECTURE }
-    $field = @{ AMD64='Amd64Url'; ARM64='Arm64Url' }[$nativeArchitecture]
+    }
+    else { $env:PROCESSOR_ARCHITECTURE }
+    $field = @{ AMD64 = 'Amd64Url'; ARM64 = 'Arm64Url' }[$nativeArchitecture]
     if (-not $field -or -not $distribution.$field) { return }
     $asset = $distribution.$field
     $expected = $asset.Sha256 -replace '^0x', ''
@@ -184,7 +190,8 @@ function Get-CachedDistribution {
                 throw "The downloaded $Name image does not match the Microsoft distribution index; no package was cached."
             }
             [IO.File]::Move($partial, $path)
-        } finally {
+        }
+        finally {
             if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
         }
     }
@@ -288,7 +295,8 @@ if ($LASTEXITCODE -ne 0 -and -not (Import-ControllerImage)) {
         'build', '-t', $image, '-f', (Join-Path $context 'Containerfile'), $context
     )
     Export-ControllerImage
-} elseif ($Mode -eq 'update' -and -not $PrepareOnly) {
+}
+elseif ($Mode -eq 'update' -and -not $PrepareOnly) {
     $previous = @((Invoke-Wslc -AllowFailure image inspect $image | Out-String | ConvertFrom-Json))[0].Id
     Invoke-ControllerBuild @(
         'build', '--pull', '--no-cache', '-t', $image, '-f', (Join-Path $context 'Containerfile'), $context
@@ -315,7 +323,7 @@ try {
         if (-not [IO.File]::Exists($wsl)) { throw 'wsl.exe was not found.' }
         $env:WSL_UTF8 = '1'
         $registered = @(& $wsl --list --quiet | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
-            Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
+                Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
         if (-not $SkipWsl -and -not $WslDistribution) {
             foreach ($name in $distributions) {
                 if ($registered -contains $name) { continue }
@@ -323,13 +331,15 @@ try {
                 $global:LASTEXITCODE = 0
                 $package = Get-CachedDistribution $name
                 $installArguments = if ($package) {
-                    @('--install','--from-file',$package,'--name',$name,'--no-launch')
-                } else { @('--install','--distribution',$name,'--no-launch') }
+                    @('--install', '--from-file', $package, '--name', $name, '--no-launch')
+                }
+                else { @('--install', '--distribution', $name, '--no-launch') }
                 $preference = $ErrorActionPreference
                 try {
                     $ErrorActionPreference = 'Continue'
                     & $wsl @installArguments 2>&1 | ForEach-Object { $_.ToString() }
-                } finally { $ErrorActionPreference = $preference }
+                }
+                finally { $ErrorActionPreference = $preference }
                 if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $name failed ($LASTEXITCODE)." }
                 # The playbook prepares accounts and packages, so the distribution's first-run setup is skipped.
                 Get-WslRegistration | Where-Object { $_.DistributionName -eq $name } |
@@ -357,7 +367,7 @@ try {
             }
         }
         $WslDistribution = @($WslDistribution | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
-            Where-Object { $_ })
+                Where-Object { $_ })
         if (-not $WslDistribution) {
             throw 'A WSL distribution is required; it also carries the Windows connection.'
         }
@@ -366,7 +376,7 @@ try {
         if (-not $SkipWsl) {
             $registrations = Get-WslRegistration
             foreach ($name in $WslDistribution) {
-                $registration = $registrations | Where-Object DistributionName -eq $name | Select-Object -First 1
+                $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
                 if (-not $registration) { continue }
                 if ($PSCmdlet.ShouldProcess($name, 'Create Start Menu shortcut')) {
                     try { Set-WslStartMenuShortcut -Name $name -Registration $registration }
@@ -409,9 +419,9 @@ try {
                     (Invoke-Wsl $distribution @('wslpath', '-a', '-u', $windowsPowerShell))
                     (Invoke-Wsl $distribution @('wslpath', '-a', '-u', [Environment]::GetFolderPath('UserProfile')))
                     ((@(
-                        [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
-                        [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
-                    ) | Where-Object { $null -ne $_ }) -join ';')
+                            [Environment]::GetEnvironmentVariable('PSModulePath', 'User')
+                            [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')
+                        ) | Where-Object { $null -ne $_ }) -join ';')
                 )
             }
             if ($TestDebianTesting) { $bootstrap = @('env', 'SHELL_DEBIAN_TESTING=1') + $bootstrap }
@@ -420,10 +430,10 @@ try {
             # wsl.exe splits a multi-word --exec command, so the launcher is a file with no arguments.
             $serverLog = Join-Path $StateDirectory ('sshd-' + ($distribution -replace '[^A-Za-z0-9_-]', '-') + '.log')
             $start = @{
-                FilePath = $wsl
-                PassThru = $true
+                FilePath              = $wsl
+                PassThru              = $true
                 RedirectStandardError = $serverLog
-                ArgumentList = @('-d', $distribution, '-u', 'root', '--exec', '/etc/shell-ansible/start-sshd.sh')
+                ArgumentList          = @('-d', $distribution, '-u', 'root', '--exec', '/etc/shell-ansible/start-sshd.sh')
             }
             if ((Get-Command Start-Process).Parameters.ContainsKey('WhatIf')) { $start.WhatIf = $false }
             $process = Start-Process @start
@@ -431,9 +441,9 @@ try {
             Wait-Port $port -Process $process -Distribution $distribution -Log $serverLog
 
             $connection = [ordered]@{
-                ansible_host = 'host.wslc.internal'
-                ansible_port = $port
-                ansible_user = 'root'
+                ansible_host                 = 'host.wslc.internal'
+                ansible_port                 = $port
+                ansible_user                 = 'root'
                 ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
             }
             if ($transport) {
@@ -454,7 +464,7 @@ try {
             all = @{
                 children = [ordered]@{
                     windows = @{ hosts = $windowsHosts }
-                    wsl = @{ hosts = $wslHosts }
+                    wsl     = @{ hosts = $wslHosts }
                 }
             }
         }
@@ -501,14 +511,16 @@ try {
 
     Invoke-Wslc @arguments
     $code = $LASTEXITCODE
-} finally {
+}
+finally {
     foreach ($server in $servers) {
         try {
             $sshdPid = Invoke-Wsl $server.Distribution @('cat', '/etc/shell-ansible/sshd.pid') -Root
             if ($sshdPid -match '^[0-9]+$') {
                 $null = Invoke-Wsl $server.Distribution @('sh', '-c', 'kill $1', 'stop-sshd', $sshdPid) -Root
             }
-        } catch { Write-Verbose $_.Exception.Message }
+        }
+        catch { Write-Verbose $_.Exception.Message }
         # wsl.exe usually exits by itself once sshd is gone, possibly between the check and the stop.
         if (-not $server.Process.HasExited) {
             Stop-Process -Id $server.Process.Id -Force -WhatIf:$false -ErrorAction SilentlyContinue

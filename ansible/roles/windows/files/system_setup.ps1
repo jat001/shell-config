@@ -35,7 +35,7 @@ function Read-Drive {
 
     # An external script cannot see this local variable. Dot-source it so the disk probe
     # cannot replace the caller's Ansible result with the disk status.
-    $Ansible = @{ Changed=$false; Result=$null }
+    $Ansible = @{ Changed = $false; Result = $null }
     . (Join-Path $PSScriptRoot 'dev_drive.ps1') -Path $Path -LegacyKey $request.LegacyKey
     $Ansible.Result
 }
@@ -49,29 +49,30 @@ function Get-PrincipalSid {
 
 # update never turns Developer Mode on. It is a one-time init step, not something an upgrade should repeat.
 if ($request.ManageDeveloperMode -and $request.Mode -ne 'update' -and $developerMode -ne 1) {
-    $operations.Add(@{ Kind='DeveloperMode' })
+    $operations.Add(@{ Kind = 'DeveloperMode' })
 }
 if ($request.ManageTimeZone -and (Get-TimeZone).Id -ine $request.TimeZone) {
-    $available = Get-TimeZone -ListAvailable | Where-Object Id -eq $request.TimeZone
+    $available = Get-TimeZone -ListAvailable | Where-Object Id -EQ $request.TimeZone
     if (-not $available) { throw "Windows time zone '$($request.TimeZone)' is not available on this target." }
-    $operations.Add(@{ Kind='TimeZone'; Id=$request.TimeZone })
+    $operations.Add(@{ Kind = 'TimeZone'; Id = $request.TimeZone })
 }
 if ($request.ManageWindowsDrive -and $windowsDrive) {
     $windowsPath = Get-DrivePath $windowsDrive.vhd
     if (-not [IO.File]::Exists($windowsPath)) {
-        $operations.Add(@{ Kind='CreateDrive'; Path=$windowsPath; SizeGiB=$windowsDrive.size_gib; FileSystem='ReFS' })
-        $operations.Add(@{ Kind='AttachDrive'; Path=$windowsPath })
-    } else {
+        $operations.Add(@{ Kind = 'CreateDrive'; Path = $windowsPath; SizeGiB = $windowsDrive.size_gib; FileSystem = 'ReFS' })
+        $operations.Add(@{ Kind = 'AttachDrive'; Path = $windowsPath })
+    }
+    else {
         $disk = Read-Drive $windowsPath
         if (-not $disk.registered -or -not $disk.attached -or $disk.legacy_registration) {
-            $operations.Add(@{ Kind='AttachDrive'; Path=$windowsPath })
+            $operations.Add(@{ Kind = 'AttachDrive'; Path = $windowsPath })
         }
     }
 }
 if ($request.ManageWslDrive -and $wslDrive) {
     $wslPath = Get-DrivePath $wslDrive.vhd
     if (-not [IO.File]::Exists($wslPath)) {
-        $operations.Add(@{ Kind='CreateDrive'; Path=$wslPath; SizeGiB=$wslDrive.size_gib; FileSystem=$wslDrive.filesystem })
+        $operations.Add(@{ Kind = 'CreateDrive'; Path = $wslPath; SizeGiB = $wslDrive.size_gib; FileSystem = $wslDrive.filesystem })
     }
     if ($wslDrive.task -notmatch '^[A-Za-z0-9][A-Za-z0-9 ._-]*$' -or
         $wslDrive.mountpoint -notmatch '^/\S+/[A-Za-z0-9][A-Za-z0-9._-]*$' -or
@@ -81,7 +82,7 @@ if ($request.ManageWslDrive -and $wslDrive) {
     }
     $executable = Join-Path $env:SystemRoot 'System32\wsl.exe'
     $arguments = '--mount --vhd "' + $wslPath + '" --type ' + $wslDrive.filesystem +
-        ' --name ' + ($wslDrive.mountpoint -split '/')[-1]
+    ' --name ' + ($wslDrive.mountpoint -split '/')[-1]
     if ($wslDrive.options) { $arguments += ' --options "' + $wslDrive.options + '"' }
     $description = 'Shared shell configuration: attach the WSL development VHDX.'
     # A standard user cannot open the task service. That is not a missing task, and this
@@ -89,7 +90,8 @@ if ($request.ManageWslDrive -and $wslDrive) {
     $wslTaskUnreadable = $false
     try {
         $task = Get-ScheduledTask -TaskPath '\' -TaskName $wslDrive.task -ErrorAction Stop
-    } catch {
+    }
+    catch {
         $task = $null
         $taskException = $_.Exception
         $accessDeniedCode = [Microsoft.Management.Infrastructure.NativeErrorCode]::AccessDenied
@@ -109,19 +111,20 @@ if ($request.ManageWslDrive -and $wslDrive) {
     # A task with this name that runs a different program is left in place. Matching arguments can be updated.
     if ($task -and $task.Description -ne $description -and
         ($task.Actions.Count -ne 1 -or $task.Actions[0].Execute -ine $executable -or
-         $task.Actions[0].Arguments -cne $arguments)) {
+        $task.Actions[0].Arguments -cne $arguments)) {
         throw "An unrelated scheduled task already uses this name: $($wslDrive.task)"
     }
     $matches = $task -and $task.Description -eq $description -and $task.Actions.Count -eq 1 -and
-        $task.Actions[0].Execute -ieq $executable -and $task.Actions[0].Arguments -ceq $arguments -and
-        (Get-PrincipalSid $task.Principal.UserId) -eq $request.UserSid -and
-        [string]$task.Principal.RunLevel -eq 'Highest' -and [string]$task.Principal.LogonType -eq 'Interactive' -and
-        $task.Settings.Enabled -and $task.Settings.AllowDemandStart -and
-        -not $task.Settings.DisallowStartIfOnBatteries -and -not $task.Settings.StopIfGoingOnBatteries -and
-        [string]$task.Settings.MultipleInstances -eq 'IgnoreNew' -and $task.Settings.ExecutionTimeLimit -eq 'PT1M'
+    $task.Actions[0].Execute -ieq $executable -and $task.Actions[0].Arguments -ceq $arguments -and
+    (Get-PrincipalSid $task.Principal.UserId) -eq $request.UserSid -and
+    [string]$task.Principal.RunLevel -eq 'Highest' -and [string]$task.Principal.LogonType -eq 'Interactive' -and
+    $task.Settings.Enabled -and $task.Settings.AllowDemandStart -and
+    -not $task.Settings.DisallowStartIfOnBatteries -and -not $task.Settings.StopIfGoingOnBatteries -and
+    [string]$task.Settings.MultipleInstances -eq 'IgnoreNew' -and $task.Settings.ExecutionTimeLimit -eq 'PT1M'
     if (-not $wslTaskUnreadable -and -not $matches) {
         $operations.Add(@{ Kind='RegisterTask'; Name=$wslDrive.task; Executable=$executable;
-            Arguments=$arguments; Description=$description })
+                Arguments=$arguments; Description=$description
+            })
     }
 }
 
@@ -163,9 +166,9 @@ if ($Apply -and $operations.Count) {
 }
 
 $result = @{
-    Pending = @($operations | ForEach-Object { $_.Kind })
+    Pending       = @($operations | ForEach-Object { $_.Kind })
     DeveloperMode = (Get-ItemProperty -LiteralPath $developerKey -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
-    TimeZone = (Get-TimeZone).Id
+    TimeZone      = (Get-TimeZone).Id
 }
 $ansibleContext = Get-Variable -Name Ansible -ValueOnly -ErrorAction SilentlyContinue
 if ($ansibleContext) {

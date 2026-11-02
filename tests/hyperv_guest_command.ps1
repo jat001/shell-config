@@ -14,10 +14,12 @@ try {
     & $command @arguments
     if (-not $?) { throw 'Guest script reported failure.' }
     $result.Success = $true
-} catch {
+}
+catch {
     $result.Error = $_.Exception.Message
     $result.Stack = $_.ScriptStackTrace
-} finally {
+}
+finally {
     $result.Finished = [DateTime]::UtcNow.ToString('o')
     [IO.File]::WriteAllText((Join-Path $Directory 'result.json'), ($result | ConvertTo-Json), $utf8)
 }

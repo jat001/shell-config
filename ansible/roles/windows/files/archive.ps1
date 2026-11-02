@@ -29,7 +29,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     try {
         $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
         break
-    } catch {
+    }
+    catch {
         if ($attempt -eq 3) { throw }
         Start-Sleep -Seconds (5 * $attempt)
     }
@@ -64,6 +65,7 @@ try {
     Move-Item -LiteralPath $source.DirectoryName -Destination $Destination
     [IO.File]::WriteAllText($marker, $release + [char]10, [Text.UTF8Encoding]::new($false))
     $Ansible.Changed = $true
-} finally {
+}
+finally {
     if ([IO.Directory]::Exists($work)) { Remove-Item -LiteralPath $work -Recurse -Force }
 }

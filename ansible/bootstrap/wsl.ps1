@@ -46,7 +46,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         $response = $request.GetResponse()
         try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
         break
-    } catch {
+    }
+    catch {
         if ($attempt -eq 3) { throw }
         Start-Sleep -Seconds (5 * $attempt)
     }
@@ -57,8 +58,9 @@ if ($tag -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw 'Unexpected WSL release ta
 $version = if (($tag -split '\.').Count -eq 3) { "$tag.0" } else { $tag }
 $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
     $env:PROCESSOR_ARCHITEW6432
-} else { $env:PROCESSOR_ARCHITECTURE }
-$architecture = @{ AMD64='x64'; ARM64='arm64' }[$nativeArchitecture]
+}
+else { $env:PROCESSOR_ARCHITECTURE }
+$architecture = @{ AMD64 = 'x64'; ARM64 = 'arm64' }[$nativeArchitecture]
 if (-not $architecture) { throw "Unsupported WSL architecture: $nativeArchitecture" }
 $directory = Join-Path $Cache "wsl/runtime/$version"
 $null = [IO.Directory]::CreateDirectory($directory)
@@ -72,7 +74,8 @@ if (-not [IO.File]::Exists($path)) {
                 Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/microsoft/WSL/releases/download/$tag/$name" `
                     -OutFile $partial
                 break
-            } catch {
+            }
+            catch {
                 if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
                 if ($attempt -eq 3) { throw }
                 Start-Sleep -Seconds (5 * $attempt)
@@ -80,7 +83,8 @@ if (-not [IO.File]::Exists($path)) {
         }
         Assert-MicrosoftSignature $partial
         [IO.File]::Move($partial, $path)
-    } finally {
+    }
+    finally {
         if ([IO.File]::Exists($partial)) { [IO.File]::Delete($partial) }
     }
 }
@@ -95,16 +99,17 @@ $arguments = @(
     '-Package', ('"' + $path + '"'), '-Log', ('"' + $logPath + '"')
 )
 $start = @{
-    FilePath = $windowsPowerShell
+    FilePath     = $windowsPowerShell
     ArgumentList = $arguments
-    Wait = $true
-    PassThru = $true
+    Wait         = $true
+    PassThru     = $true
 }
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $start.Verb = 'RunAs'
     $start.WindowStyle = 'Hidden'
-} else { $start.NoNewWindow = $true }
+}
+else { $start.NoNewWindow = $true }
 $process = Start-Process @start
 if ($process.ExitCode -eq 3010) {
     throw 'WSL is installed, but Windows needs a restart. Restart Windows, then run the installer again.'

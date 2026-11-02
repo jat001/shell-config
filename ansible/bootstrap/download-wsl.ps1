@@ -5,9 +5,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$null = [Windows.Web.Http.HttpClient, Windows.Web.Http, ContentType=WindowsRuntime]
-$null = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType=WindowsRuntime]
-$null = [Windows.Web.Http.HttpProgress, Windows.Web.Http, ContentType=WindowsRuntime]
+$null = [Windows.Web.Http.HttpClient, Windows.Web.Http, ContentType = WindowsRuntime]
+$null = [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+$null = [Windows.Web.Http.HttpProgress, Windows.Web.Http, ContentType = WindowsRuntime]
 
 $filter = [Windows.Web.Http.Filters.HttpBaseProtocolFilter]::new()
 # The Windows HTTP stack is what WSL itself uses. A cached or proxied body must not be reused before the hash check.
@@ -34,7 +34,8 @@ try {
     $inputStream = $asStream.Invoke($null, @($response))
     $outputStream = [IO.File]::Create($Path)
     $inputStream.CopyTo($outputStream)
-} finally {
+}
+finally {
     if ($outputStream) { $outputStream.Dispose() }
     if ($inputStream) { $inputStream.Dispose() }
     $client.Dispose()

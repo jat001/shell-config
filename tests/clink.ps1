@@ -50,11 +50,12 @@ try {
         $process.Refresh()
         if ($process.HasExited) { throw 'The interactive CMD exited before Clink loaded.' }
         $module = @((Get-Process -Id $process.Id).Modules |
-            Where-Object ModuleName -Like 'clink_dll_*.dll')
+                Where-Object ModuleName -Like 'clink_dll_*.dll')
     }
     if (-not $module) { throw 'The interactive CMD did not load Clink automatically.' }
     'Clink preview, AutoRun preservation, idempotence, custom options and interactive injection passed.'
-} finally {
+}
+finally {
     if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }

@@ -20,7 +20,7 @@ if ($Ansible.CheckMode) { return }
 $architecture = @{
     AMD64 = 'x64'
     ARM64 = 'arm64'
-    x86 = 'x86'
+    x86   = 'x86'
 }[$env:PROCESSOR_ARCHITECTURE]
 if (-not $architecture) { throw "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE" }
 

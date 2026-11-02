@@ -87,7 +87,8 @@ command -v mkfs.btrfs >/dev/null
         $null = $partition | Format-Volume -DevDrive -NewFileSystemLabel Dev -Confirm:$false
         Dismount-DiskImage -ImagePath $temporary
         $attached = $false
-    } else {
+    }
+    else {
         & $wsl --mount --vhd $temporary --bare
         if ($LASTEXITCODE -ne 0) { throw 'Could not attach the new VHDX to WSL.' }
         $attached = $true
@@ -114,7 +115,8 @@ blkid -s UUID -o value "$device"
         $attached = $false
     }
     [IO.File]::Move($temporary, $Path)
-} finally {
+}
+finally {
     if ($attached) {
         if ($FileSystem -eq 'btrfs') { & $wsl --unmount $temporary }
         else { Dismount-DiskImage -ImagePath $temporary -ErrorAction Continue }

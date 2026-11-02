@@ -13,10 +13,10 @@ $Directory = [IO.Path]::GetFullPath($Directory)
 if (Test-Path -LiteralPath $Directory) { throw 'Choose a new test directory.' }
 $creator = Join-Path $PSScriptRoot '../ansible/roles/windows/files/create_drive.ps1'
 $wsl = Join-Path $env:SystemRoot 'System32/wsl.exe'
-$mountName = 'shell-test-' + [guid]::NewGuid().ToString('N').Substring(0,12)
-$linux = if ($Distribution) { @('-d',$Distribution) } else { @() }
+$mountName = 'shell-test-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+$linux = if ($Distribution) { @('-d', $Distribution) } else { @() }
 
-foreach ($filesystem in 'ReFS','btrfs') {
+foreach ($filesystem in 'ReFS', 'btrfs') {
     $path = Join-Path $Directory "$filesystem.vhdx"
     $directoryExisted = Test-Path -LiteralPath $Directory
     # WhatIf has to be first. A later success must not hide a preview that already created the disk.
@@ -34,8 +34,10 @@ foreach ($filesystem in 'ReFS','btrfs') {
             if ($volume.FileSystemType -ne 'ReFS') { throw 'Expected ReFS.' }
             & fsutil.exe devdrv query ($volume.DriveLetter + ':')
             if ($LASTEXITCODE -ne 0) { throw 'The volume is not a Dev Drive.' }
-        } finally { Dismount-DiskImage -ImagePath $path | Out-Null }
-    } else {
+        }
+        finally { Dismount-DiskImage -ImagePath $path | Out-Null }
+    }
+    else {
         & $wsl --mount --vhd $path --type btrfs --name $mountName --options compress=zstd:1
         if ($LASTEXITCODE -ne 0) { throw 'Btrfs mount failed.' }
         try {
@@ -43,7 +45,8 @@ foreach ($filesystem in 'ReFS','btrfs') {
             if ($LASTEXITCODE -ne 0) { throw 'Btrfs is not writable.' }
             & $wsl @linux -u root --exec rm "/mnt/wsl/$mountName/.write-test"
             if ($LASTEXITCODE -ne 0) { throw 'Btrfs test-file cleanup failed.' }
-        } finally { & $wsl --unmount $path }
+        }
+        finally { & $wsl --unmount $path }
     }
 
     $hash = (Get-FileHash -LiteralPath $path).Hash

@@ -26,7 +26,8 @@ function Invoke-StoreDownload {
             Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $partial
             Move-Item -LiteralPath $partial -Destination $Destination
             return
-        } catch {
+        }
+        catch {
             if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
             if ($attempt -eq 3) { throw }
             Start-Sleep -Seconds (5 * $attempt)
@@ -44,7 +45,8 @@ function Update-WinGetClient {
             $response = $request.GetResponse()
             try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
             break
-        } catch {
+        }
+        catch {
             if ($attempt -eq 3) { throw }
             Start-Sleep -Seconds (5 * $attempt)
         }
@@ -52,7 +54,7 @@ function Update-WinGetClient {
     if ($tag -notmatch '^v[0-9.]+$') { throw 'Unexpected WinGet release tag.' }
     $directory = Join-Path $Cache "winget/$tag"
     [void][IO.Directory]::CreateDirectory($directory)
-    $assets = @('Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle','DesktopAppInstaller_Dependencies.zip')
+    $assets = @('Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle', 'DesktopAppInstaller_Dependencies.zip')
     foreach ($asset in $assets) {
         $path = Join-Path $directory $asset
         Invoke-StoreDownload -Uri "$release/download/$tag/$asset" -Destination $path
@@ -60,16 +62,17 @@ function Update-WinGetClient {
     $work = Join-Path $directory ([guid]::NewGuid().ToString('N'))
     try {
         Expand-Archive -LiteralPath (Join-Path $directory $assets[1]) -DestinationPath $work
-        $architecture = @{AMD64='x64';ARM64='arm64';x86='x86'}[$env:PROCESSOR_ARCHITECTURE]
+        $architecture = @{AMD64 = 'x64'; ARM64 = 'arm64'; x86 = 'x86' }[$env:PROCESSOR_ARCHITECTURE]
         if (-not $architecture) { throw 'Unsupported WinGet architecture.' }
         $dependencies = @(Get-ChildItem -LiteralPath $work -Recurse -File |
-            Where-Object { $_.Extension -in @('.appx','.msix') -and $_.FullName -match "[\\/]$architecture[\\/]" } |
-            ForEach-Object FullName)
+                Where-Object { $_.Extension -in @('.appx', '.msix') -and $_.FullName -match "[\\/]$architecture[\\/]" } |
+                ForEach-Object FullName)
         Add-AppxPackage -Path (Join-Path $directory $assets[0]) -DependencyPath $dependencies -ForceApplicationShutdown
         $Ansible.Changed = $true
-    } finally {
+    }
+    finally {
         $resolved = [IO.Path]::GetFullPath($work)
-        if ($resolved.StartsWith([IO.Path]::GetFullPath($directory)+'\',[StringComparison]::OrdinalIgnoreCase) -and
+        if ($resolved.StartsWith([IO.Path]::GetFullPath($directory) + '\', [StringComparison]::OrdinalIgnoreCase) -and
             [IO.Directory]::Exists($resolved)) {
             Remove-Item -LiteralPath $resolved -Recurse -Force
         }
@@ -126,7 +129,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         $response = $request.GetResponse()
         try { $tag = ($response.Headers['Location'] -split '/')[-1] } finally { $response.Close() }
         break
-    } catch {
+    }
+    catch {
         if ($attempt -eq 3) { throw }
         Start-Sleep -Seconds (5 * $attempt)
     }
@@ -162,13 +166,15 @@ try {
     if (-not $bundle) { throw "$file contains no msixbundle." }
     $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
         $env:PROCESSOR_ARCHITEW6432
-    } else { $env:PROCESSOR_ARCHITECTURE }
-    $architecture = @{ AMD64='x64'; ARM64='arm64'; x86='x86' }[$nativeArchitecture]
+    }
+    else { $env:PROCESSOR_ARCHITECTURE }
+    $architecture = @{ AMD64 = 'x64'; ARM64 = 'arm64'; x86 = 'x86' }[$nativeArchitecture]
     if (-not $architecture) { throw "Unsupported Store application architecture: $nativeArchitecture" }
     $dependencies = @(Get-ChildItem -LiteralPath $expanded -Recurse -Include '*.appx', '*.msix' |
-        Where-Object { $_.Name -match "_($architecture|neutral)_" } | Select-Object -ExpandProperty FullName)
+            Where-Object { $_.Name -match "_($architecture|neutral)_" } | Select-Object -ExpandProperty FullName)
     Add-AppxPackage -Path $bundle.FullName -DependencyPath $dependencies -ForceApplicationShutdown
-} finally {
+}
+finally {
     if ([IO.Directory]::Exists($expanded)) {
         Remove-Item -Recurse -Force -LiteralPath $expanded
     }

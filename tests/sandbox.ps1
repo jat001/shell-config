@@ -64,14 +64,15 @@ foreach ($user in @($settings.User, $settings.AdminUser)) {
         $bootstrap = @{
             ClientCertificate = Join-Path $root "winrm-$user.pem"
             ServerCertificate = Join-Path $root 'winrm-server.pem'
-            User = $user
-            Name = $settings.Address
-            Address = '*'
-            CredentialFile = $credentialFile
-            FullToken = $user -eq $settings.AdminUser
+            User              = $user
+            Name              = $settings.Address
+            Address           = '*'
+            CredentialFile    = $credentialFile
+            FullToken         = $user -eq $settings.AdminUser
         }
         & (Join-Path $root 'winrm.ps1') @bootstrap
-    } finally {
+    }
+    finally {
         Remove-Item -LiteralPath $credentialFile -Force -ErrorAction SilentlyContinue
     }
 }

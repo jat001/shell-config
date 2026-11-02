@@ -20,9 +20,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $profiles = @{
-    fast = @('init', 'full')
+    fast     = @('init', 'full')
     standard = @('init', 'full', 'full')
-    full = @('init', 'full', 'full', 'update')
+    full     = @('init', 'full', 'full', 'update')
 }
 if ($PSBoundParameters.ContainsKey('Profile') -and $PSBoundParameters.ContainsKey('Modes')) {
     throw 'Specify either -Profile or -Modes, not both.'
@@ -47,10 +47,12 @@ function Get-HypervWorker {
             $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true)
             $record = $reader.ReadToEnd() | ConvertFrom-Json
             break
-        } catch [IO.IOException] {
+        }
+        catch [IO.IOException] {
             if ($attempt -eq 9) { throw }
             Start-Sleep -Milliseconds 25
-        } finally {
+        }
+        finally {
             if ($reader) { $reader.Dispose() }
             elseif ($stream) { $stream.Dispose() }
         }
@@ -74,12 +76,12 @@ function Invoke-HypervOperation {
 function Write-WorkerRecord {
     param([hashtable]$Context)
     $record = @{
-        Pid = $PID
-        Started = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')
-        Instance = $Context.Instance
+        Pid        = $PID
+        Started    = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')
+        Instance   = $Context.Instance
         Repository = $Context.Repository
-        Expires = $Context.IdleUntil.ToString('o')
-        Jobs = @($Context.Jobs.Keys)
+        Expires    = $Context.IdleUntil.ToString('o')
+        Jobs       = @($Context.Jobs.Keys)
     }
     $temporary = $workerPath + '.' + $Context.Instance + '.tmp'
     [IO.File]::WriteAllText($temporary, ($record | ConvertTo-Json), $utf8)
@@ -93,8 +95,8 @@ if ($Action -eq 'Start') {
     if (Get-HypervWorker $workerPath) { 'Worker already running.'; return }
     # Catch syntax and UTF-8/JSON problems before asking Windows to elevate.
     foreach ($path in @($PSCommandPath, $handlerPath,
-        (Join-Path $Repository 'tests/hyperv_guest_command.ps1'),
-        (Join-Path $Repository 'tests/hyperv_logon.ps1'))) {
+            (Join-Path $Repository 'tests/hyperv_guest_command.ps1'),
+            (Join-Path $Repository 'tests/hyperv_logon.ps1'))) {
         if (-not [IO.File]::Exists($path)) { throw "Required test script is missing: $path" }
         $tokens = $null
         $parseErrors = $null
@@ -114,9 +116,9 @@ if ($Action -eq 'Start') {
             '-Repository', ('"' + $Repository + '"'), '-IdleTimeoutMinutes', $IdleTimeoutMinutes
         )
         $start = @{
-            FilePath = "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe"
-            WindowStyle = 'Hidden'
-            PassThru = $true
+            FilePath     = "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe"
+            WindowStyle  = 'Hidden'
+            PassThru     = $true
             ArgumentList = $arguments
         }
         $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -130,7 +132,8 @@ if ($Action -eq 'Start') {
             $process.Refresh()
         }
         throw 'Worker did not become ready. See worker-error.json; do not start another diagnostic worker.'
-    } finally { $startLock.Dispose() }
+    }
+    finally { $startLock.Dispose() }
 }
 
 if ($Action -ne 'Worker') {
@@ -139,16 +142,16 @@ if ($Action -ne 'Worker') {
     $requestPath = Join-Path $StateDirectory 'request.json'
     if ([IO.File]::Exists($requestPath)) { throw 'Another operation is queued.' }
     $request = @{
-        Id = [guid]::NewGuid().ToString()
-        Worker = $worker.Instance
-        Action = $Action
-        Modes = $Modes
-        Baseline = $Baseline
-        AutoLogonCount = $AutoLogonCount
+        Id               = [guid]::NewGuid().ToString()
+        Worker           = $worker.Instance
+        Action           = $Action
+        Modes            = $Modes
+        Baseline         = $Baseline
+        AutoLogonCount   = $AutoLogonCount
         PreparationStage = $PreparationStage
-        IsoSource = $IsoSource
-        IsoSha256 = $IsoSha256
-        IsoLanguage = $IsoLanguage
+        IsoSource        = $IsoSource
+        IsoSha256        = $IsoSha256
+        IsoLanguage      = $IsoLanguage
     }
     if ($Action -eq 'Guest') {
         if (-not $ScriptPath -or [IO.Path]::GetExtension($ScriptPath) -ine '.ps1') {
@@ -163,7 +166,8 @@ if ($Action -ne 'Worker') {
     try {
         [IO.File]::WriteAllText($temporary, ($request | ConvertTo-Json -Depth 8), $utf8)
         [IO.File]::Move($temporary, $requestPath)
-    } finally { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } }
+    }
+    finally { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } }
     "Queued $Action : $($request.Id)"
     return
 }
@@ -195,7 +199,8 @@ try {
                 $context.IdleUntil = (Get-Date).AddMinutes($IdleTimeoutMinutes)
                 $result.Result = Invoke-HypervOperation $context $request
                 $result.Success = $true
-            } catch {
+            }
+            catch {
                 if ($result) { $result.Error = $_.Exception.Message; $result.Stack = $_.ScriptStackTrace }
                 else {
                     [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),
@@ -216,11 +221,13 @@ try {
         }
         Start-Sleep -Milliseconds 500
     }
-} catch {
+}
+catch {
     [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),
         (@{ Error = $_.Exception.Message; Stack = $_.ScriptStackTrace } | ConvertTo-Json), $utf8)
     throw
-} finally {
+}
+finally {
     try { $null = Invoke-HypervOperation $context ([pscustomobject]@{ Action = 'Disconnect' }) }
     catch {
         [IO.File]::WriteAllText((Join-Path $StateDirectory 'worker-error.json'),

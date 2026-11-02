@@ -1,8 +1,10 @@
 $_shared_os = if ($IsWindows -or $PSEdition -eq 'Desktop') {
     'windows'
-} elseif ($IsLinux) {
+}
+elseif ($IsLinux) {
     'Linux'
-} else {
+}
+else {
     ''
 }
 
@@ -21,7 +23,7 @@ if (-not $_shared_platform) {
 }
 
 $OutputEncoding = [console]::InputEncoding = [console]::OutputEncoding =
-    [System.Text.UTF8Encoding]::new()
+[System.Text.UTF8Encoding]::new()
 
 # Windows PowerShell drops empty native arguments, so WSL-only values are passed only on WSL.
 $_shared_arguments = @()
@@ -86,9 +88,11 @@ if ($_shared_docker -and $IsLinux) {
     try {
         docker --version 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { $_shared_docker = $null }
-    } catch {
+    }
+    catch {
         $_shared_docker = $null
-    } finally {
+    }
+    finally {
         $ErrorActionPreference = $_shared_error_action
     }
 }
@@ -111,8 +115,8 @@ Remove-Variable '_shared_docker'
 
 Set-PSReadLineOption -HistorySearchCursorMovesToEnd
 
-Set-PSReadlineKeyHandler -Key UpArrow -Function HistorySearchBackward
-Set-PSReadlineKeyHandler -Key DownArrow -Function HistorySearchForward
+Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
+Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
 
 if ($_shared_platform -eq 'windows') {
     # Machine entries are moved after the user entries so Scoop shims stay ahead of System32.

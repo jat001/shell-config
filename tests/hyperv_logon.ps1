@@ -56,11 +56,13 @@ if ($Action -eq 'Enable') {
     Set-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value $Count -Type DWord
     Set-ItemProperty -LiteralPath $key -Name AutoAdminLogon -Value '1'
     @{ AutoLoginEnabled = $true; Count = $Count }
-} else {
+}
+else {
     Set-ItemProperty -LiteralPath $key -Name AutoAdminLogon -Value '0'
     Set-ItemProperty -LiteralPath $key -Name AutoLogonCount -Value 0 -Type DWord
     Remove-ItemProperty -LiteralPath $key -Name DefaultPassword -ErrorAction SilentlyContinue
     Clear-TestLogonSecret
     @{ AutoLoginDisabled = $true; StoredLogonSecretRemoved = $true
-        RegistryPasswordRemoved = -not [bool](Get-ItemProperty -LiteralPath $key).DefaultPassword }
+        RegistryPasswordRemoved = -not [bool](Get-ItemProperty -LiteralPath $key).DefaultPassword
+    }
 }

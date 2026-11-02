@@ -16,10 +16,10 @@ $ast = [Management.Automation.Language.Parser]::ParseFile(
 )
 if ($errors) { throw ($errors -join "`n") }
 $definition = $ast.Find({
-    param($node)
-    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
-    $node.Name -eq 'Get-CachedDistribution'
-}, $true)
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-CachedDistribution'
+    }, $true)
 if (-not $definition) { throw 'The distribution cache function is missing.' }
 . ([scriptblock]::Create($definition.Extent.Text))
 
@@ -67,7 +67,8 @@ try {
         $rejected = $true
     }
     if (-not $rejected) { throw 'An HTML page was accepted as a distribution.' }
-} finally {
+}
+finally {
     $CacheDirectory = $originalCache
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'

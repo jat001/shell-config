@@ -61,7 +61,7 @@ $null = [IO.Directory]::CreateDirectory($StateDirectory)
 
 function Write-ProgressFile {
     param([string]$Phase)
-    [IO.File]::WriteAllText($progressPath, (@{ Phase=$Phase; Updated=[DateTime]::UtcNow.ToString('o') } | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText($progressPath, (@{ Phase = $Phase; Updated = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json), $utf8)
 }
 
 function Protect-StateDirectory {
@@ -69,10 +69,10 @@ function Protect-StateDirectory {
     $acl.SetOwner([Security.Principal.WindowsIdentity]::GetCurrent().User)
     $acl.SetAccessRuleProtection($true, $false)
     foreach ($sid in @(
-        [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-        'S-1-5-18'
-        'S-1-5-32-544'
-    )) {
+            [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            'S-1-5-18'
+            'S-1-5-32-544'
+        )) {
         $rule = [Security.AccessControl.FileSystemAccessRule]::new(
             [Security.Principal.SecurityIdentifier]::new($sid), 'FullControl',
             'ContainerInherit,ObjectInherit', 'None', 'Allow'
@@ -102,13 +102,15 @@ function Get-CachedIso {
                     ([IO.File]::ReadAllText($sourceRecord) | ConvertFrom-Json).Url -cne $IsoSource) {
                     throw 'The cached ISO belongs to a different source; choose a separate state directory.'
                 }
-            } else {
+            }
+            else {
                 & curl.exe --fail --location --retry 3 --continue-at - --output ($path + '.part') $IsoSource
                 if ($LASTEXITCODE -ne 0) { throw "Windows ISO download failed ($LASTEXITCODE); the partial file is retained for resume." }
                 [IO.File]::Move($path + '.part', $path)
-                [IO.File]::WriteAllText($sourceRecord, (@{ Url=$IsoSource } | ConvertTo-Json), $utf8)
+                [IO.File]::WriteAllText($sourceRecord, (@{ Url = $IsoSource } | ConvertTo-Json), $utf8)
             }
-        } else { $path = [IO.Path]::GetFullPath($IsoSource) }
+        }
+        else { $path = [IO.Path]::GetFullPath($IsoSource) }
     }
     if (-not [IO.File]::Exists($path)) { throw "Windows ISO was not found: $path" }
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
@@ -118,7 +120,7 @@ function Get-CachedIso {
         ([IO.File]::ReadAllText($recordPath) | ConvertFrom-Json).Hash -ine $hash) {
         throw 'The Windows ISO changed since it was cached.'
     }
-    [IO.File]::WriteAllText($recordPath, (@{ Algorithm='SHA256'; Hash=$hash; Path=$path } | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText($recordPath, (@{ Algorithm = 'SHA256'; Hash = $hash; Path = $path } | ConvertTo-Json), $utf8)
     $path
 }
 
@@ -153,7 +155,8 @@ function Wait-Guest {
                 (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\State').ImageState -eq 'IMAGE_STATE_COMPLETE'
             }
             if ($ready) { return $connection }
-        } catch { Write-Verbose 'Connection probe failed; retrying.' } finally {
+        }
+        catch { Write-Verbose 'Connection probe failed; retrying.' } finally {
             if ($connection -and -not $ready) { Remove-PSSession $connection }
         }
         Start-Sleep -Seconds 5
@@ -178,11 +181,12 @@ $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.Wind
 if (-not $ElevatedRequest) {
     Protect-StateDirectory
     Write-ProgressFile 'Resolve and cache installation media'
-    [IO.File]::WriteAllText($resultPath, (@{ Success=$false; Stage=$Stage; Status='Preparing' } | ConvertTo-Json), $utf8)
+    [IO.File]::WriteAllText($resultPath, (@{ Success = $false; Stage = $Stage; Status = 'Preparing' } | ConvertTo-Json), $utf8)
     $iso = if ($Stage -in @('All', 'Create')) { Get-CachedIso } else { $null }
     $msi = if ($Stage -in @('All', 'Baselines')) {
         & (Join-Path $Repository 'ansible/bootstrap/wsl.ps1') -Cache $cacheDirectory -DownloadOnly
-    } else { $null }
+    }
+    else { $null }
     $request = [ordered]@{
         Stage=$Stage; StateDirectory=$StateDirectory; Repository=$Repository; Name=$Name; UserName=$UserName
         MemoryGiB=$MemoryGiB; ProcessorCount=$ProcessorCount; SystemDiskGiB=$SystemDiskGiB
@@ -191,12 +195,12 @@ if (-not $ElevatedRequest) {
     $requestPath = Join-Path $StateDirectory ('prepare-' + [guid]::NewGuid().ToString('N') + '.json')
     [IO.File]::WriteAllText($requestPath, ($request | ConvertTo-Json), $utf8)
     $start = @{
-        FilePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        FilePath     = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
         ArgumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSCommandPath + '"'),
             '-ElevatedRequest', ('"' + $requestPath + '"'))
-        WindowStyle = 'Hidden'
-        Wait = $true
-        PassThru = $true
+        WindowStyle  = 'Hidden'
+        Wait         = $true
+        PassThru     = $true
     }
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { $start.Verb = 'RunAs' }
     $process = Start-Process @start
@@ -207,7 +211,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw 'Hyper-V preparation requires an administrator process.'
 }
 
-$result = @{ Success=$false; Stage=$Stage; Name=$Name }
+$result = @{ Success = $false; Stage = $Stage; Name = $Name }
 $connection = $null
 try {
     Write-ProgressFile 'Host prerequisites'
@@ -237,7 +241,7 @@ try {
     }
     $vm = Get-VM -Name $Name -ErrorAction SilentlyContinue
     if ($vm -and (-not [IO.File]::Exists($identityPath) -or
-        ([IO.File]::ReadAllText($identityPath) | ConvertFrom-Json).Id -ne [string]$vm.Id)) {
+            ([IO.File]::ReadAllText($identityPath) | ConvertFrom-Json).Id -ne [string]$vm.Id)) {
         throw 'A VM already uses this name without a matching identity record; refusing to adopt or replace it.'
     }
     if ($Stage -in @('All', 'Create') -and -not $vm) {
@@ -269,7 +273,7 @@ try {
             $credential = [pscredential]::new($UserName, (ConvertTo-SecureString $password -AsPlainText -Force))
             $credential | Export-Clixml -LiteralPath $credentialPath
             $null = New-VHD -Path $vhd -SizeBytes ([long]$SystemDiskGiB * 1GB) -Dynamic
-            $disk = Mount-VHD -Path $vhd -PassThru | Get-Disk
+            $disk = Mount-VHD -Path $vhd -Passthru | Get-Disk
             $mounted = $true
             if (@($disk).Count -ne 1 -or $disk.IsBoot -or $disk.IsSystem -or $disk.PartitionStyle -ne 'RAW' -or
                 $disk.Size -ne [long]$SystemDiskGiB * 1GB) { throw 'Refusing to initialize an unexpected system disk.' }
@@ -333,7 +337,8 @@ try {
             $null = [IO.Directory]::CreateDirectory($panther)
             [IO.File]::WriteAllText((Join-Path $panther 'Unattend.xml'), $unattend, $utf8)
             $password = $null; $escaped = $null; $unattend = $null
-        } finally {
+        }
+        finally {
             if ($mounted) { Dismount-VHD -Path $vhd }
             if ($isoMounted) { Dismount-DiskImage -ImagePath $request.Iso }
         }
@@ -347,7 +352,8 @@ try {
         Set-VMKeyProtector -VM $vm -NewLocalKeyProtector
         Enable-VMTPM -VM $vm
         [IO.File]::WriteAllText($identityPath, (@{ Name=$Name; Id=[string]$vm.Id;
-            Image=$windowsImage.ImageName; Credential='guest-credential.xml'; UserName=$UserName } | ConvertTo-Json), $utf8)
+                    Image=$windowsImage.ImageName; Credential='guest-credential.xml'; UserName=$UserName
+                } | ConvertTo-Json), $utf8)
         Start-VM -VM $vm
     }
     if ($Stage -in @('All', 'Create', 'Baselines')) {
@@ -428,10 +434,12 @@ try {
     }
     $result.Success = $true
     Write-ProgressFile 'Complete'
-} catch {
+}
+catch {
     $result.Error = $_.Exception.Message
     throw
-} finally {
+}
+finally {
     if ($connection) { Remove-PSSession $connection }
     [IO.File]::WriteAllText($resultPath, ($result | ConvertTo-Json -Depth 4), $utf8)
 }

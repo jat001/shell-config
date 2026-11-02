@@ -54,7 +54,8 @@ function Update-System {
 if ($Ansible.CheckMode) {
     if (-not [IO.File]::Exists($bash)) {
         $Ansible.Changed = $Mode -ne 'update'
-    } elseif ($Mode -ne 'update') {
+    }
+    elseif ($Mode -ne 'update') {
         $Ansible.Changed = (Invoke-Msys ('pacman -T ' + ($Packages -join ' ')) @(0, 127)).Code -eq 127
     }
     return
@@ -89,7 +90,8 @@ if (-not [IO.File]::Exists($bash)) {
 
 if ($Mode -eq 'update') {
     Update-System
-} else {
+}
+else {
     $missing = Invoke-Msys ('pacman -T ' + ($Packages -join ' ')) @(0, 127)
     if ($missing.Code -eq 127) {
         Update-System

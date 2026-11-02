@@ -106,7 +106,7 @@ print DOCKER_COMPLETION_OK
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('shell-docker-test-' + [guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($temporary)
 try {
-    $sources = @{ 'probe.bash'=$bash; 'probe.zsh'=$zsh; 'probe.fish'=$fish; 'probe.ps1'=$powershell; 'probe.nu'=$nu }
+    $sources = @{ 'probe.bash' = $bash; 'probe.zsh' = $zsh; 'probe.fish' = $fish; 'probe.ps1' = $powershell; 'probe.nu' = $nu }
     foreach ($name in $sources.Keys) {
         [IO.File]::WriteAllText((Join-Path $temporary $name), $sources[$name], [Text.UTF8Encoding]::new($false))
     }
@@ -126,8 +126,9 @@ try {
         if (-not [IO.File]::Exists($dockerScript)) { throw 'Clink Docker completion script is missing.' }
         $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
             $env:PROCESSOR_ARCHITEW6432
-        } else { $env:PROCESSOR_ARCHITECTURE }
-        $architecture = @{ AMD64='x64'; ARM64='arm64'; x86='x86' }[$nativeArchitecture]
+        }
+        else { $env:PROCESSOR_ARCHITECTURE }
+        $architecture = @{ AMD64 = 'x64'; ARM64 = 'arm64'; x86 = 'x86' }[$nativeArchitecture]
         if (-not $architecture) { throw "Unsupported Clink architecture: $nativeArchitecture" }
         $info = & (Join-Path $scoop "apps/clink/current/clink_$architecture.exe") info | Out-String
         if ($info -notmatch 'clink-completions') { throw 'Clink completion scripts are not registered.' }
@@ -168,10 +169,12 @@ try {
             foreach ($shell in @('bash', 'zsh', 'fish')) {
                 Invoke-Probe (Join-Path $Msys2Root "usr/bin/$shell.exe") @('-li', "$directory/probe.$shell") "MSYS2 $shell"
             }
-        } finally { $env:HOME=$savedHome; $env:MSYSTEM=$savedSystem }
+        }
+        finally { $env:HOME = $savedHome; $env:MSYSTEM = $savedSystem }
     }
     "$($passed.Count) Docker completion probes passed."
-} finally {
+}
+finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if ($resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase)) {

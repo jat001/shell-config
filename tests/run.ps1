@@ -14,9 +14,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $profiles = @{
-    fast = @('init', 'prepare', 'full', 'verify')
+    fast     = @('init', 'prepare', 'full', 'verify')
     standard = @('init', 'prepare', 'full', 'idempotence', 'verify', 'unprivileged')
-    full = @('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')
+    full     = @('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')
 }
 if ($PSBoundParameters.ContainsKey('Profile') -and $PSBoundParameters.ContainsKey('Step')) {
     throw 'Specify either -Profile or -Step, not both.'
@@ -57,9 +57,9 @@ $cache = $CacheDirectory
 $null = [IO.Directory]::CreateDirectory($sandbox)
 $null = [IO.Directory]::CreateDirectory((Join-Path $cache 'scoop'))
 $volumes = @{
-    arch = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/shell-aur')
+    arch   = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/shell-aur')
     debian = @('-v', 'shell-test-apt:/var/cache/apt/archives', '-v', 'shell-test-releases:/var/cache/shell-releases')
-    suse = @('-v', 'shell-test-zypp:/var/cache/zypp', '-v', 'shell-test-suse-releases:/var/cache/shell-releases')
+    suse   = @('-v', 'shell-test-zypp:/var/cache/zypp', '-v', 'shell-test-suse-releases:/var/cache/shell-releases')
 }
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -68,9 +68,9 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 $image = & $installer -PrepareOnly -StateDirectory $StateDirectory -CacheDirectory $CacheDirectory |
     Select-Object -Last 1
 foreach ($test in @(
-    'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
-    'test_nushell_defaults.py', 'test_locale_gen.py', 'test_invariants.py'
-)) {
+        'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
+        'test_nushell_defaults.py', 'test_locale_gen.py', 'test_invariants.py'
+    )) {
     Invoke-Native wslc.exe @(
         'run', '--rm', '-v', "${repository}:/work:ro", $image,
         'python', '-B', "/work/tests/$test"
@@ -131,15 +131,15 @@ $linuxSetup = {
     $inspected = $LASTEXITCODE -eq 0
     $ErrorActionPreference = 'Stop'
     $running = $inspected -and
-        @(($details | Out-String | ConvertFrom-Json))[0].State.Running -eq $true
+    @(($details | Out-String | ConvertFrom-Json))[0].State.Running -eq $true
     if (-not ($Reuse -and $running)) {
         $ErrorActionPreference = 'Continue'
         & wslc.exe remove -f $container *> $null
         $ErrorActionPreference = 'Stop'
         Invoke-Logged (@(
-            'run', '-d', '--name', $container, '--hostname', $Name, '--network', $Network
-            '-v', "${Repository}:/mnt/c/Users/shell/.config/shell:ro"
-        ) + $Volumes + @($Image, 'sleep', 'infinity'))
+                'run', '-d', '--name', $container, '--hostname', $Name, '--network', $Network
+                '-v', "${Repository}:/mnt/c/Users/shell/.config/shell:ro"
+            ) + $Volumes + @($Image, 'sleep', 'infinity'))
         Invoke-Logged exec $container rm -f /etc/apt/apt.conf.d/docker-clean
     }
 
@@ -165,13 +165,13 @@ foreach ($name in $linux) {
         $name, $images[$name], $network, $repository, $volumes[$name], $key, [bool]$Reuse, $log
     )
     $wsl[$name] = [ordered]@{
-        ansible_host = "shell-test-$name"
-        ansible_user = 'root'
+        ansible_host                 = "shell-test-$name"
+        ansible_user                 = 'root'
         ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
-        ansible_ssh_common_args = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
-        shell_windows_home = '/mnt/c/Users/shell'
-        shell_user = 'shell'
-        shell_aur_cache = '/var/cache/shell-aur'
+        ansible_ssh_common_args      = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+        shell_windows_home           = '/mnt/c/Users/shell'
+        shell_user                   = 'shell'
+        shell_aur_cache              = '/var/cache/shell-aur'
     }
 }
 
@@ -182,7 +182,8 @@ if ($Target -contains 'sandbox') {
         $ErrorActionPreference = 'Continue'
         if (-not [IO.Directory]::Exists($mirror)) {
             & git clone -q --bare --depth 1 "https://github.com/ScoopInstaller/$mirrorName" $mirror
-        } else {
+        }
+        else {
             & git -C $mirror fetch -q --depth 1 origin '+refs/heads/*:refs/heads/*'
         }
         $ErrorActionPreference = 'Stop'
@@ -198,7 +199,8 @@ if ($Target -contains 'sandbox') {
                     -Uri 'https://github.com/msys2/msys2-installer/releases/latest/download/msys2-base-x86_64-latest.sfx.exe'
                 Move-Item -LiteralPath $partial -Destination $msys2
                 break
-            } catch {
+            }
+            catch {
                 if ([IO.File]::Exists($partial)) { Remove-Item -LiteralPath $partial -Force }
                 if ($attempt -eq 3) { throw }
                 Start-Sleep -Seconds (5 * $attempt)
@@ -216,7 +218,7 @@ if ($Target -contains 'sandbox') {
         )
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'sandbox.ps1'), (Join-Path $PSScriptRoot 'winrm.ps1'),
-        (Join-Path $StateDirectory "winrm-$windowsUser.pem"), (Join-Path $StateDirectory "winrm-$adminUser.pem") `
+    (Join-Path $StateDirectory "winrm-$windowsUser.pem"), (Join-Path $StateDirectory "winrm-$adminUser.pem") `
         -Destination $sandbox -Force
 
     $jobs.sandbox = Start-Job -ArgumentList @(
@@ -272,8 +274,8 @@ if ($Target -contains 'sandbox') {
         if (-not [IO.File]::Exists($settingsFile) -or -not $Reuse) {
             $password = -join ((1..24) | ForEach-Object { [char](Get-Random -Minimum 33 -Maximum 127) }) + 'aA1!'
             [IO.File]::WriteAllText($settingsFile, (@{
-                Address = $address; Password = $password; User = $WindowsUser; AdminUser = $AdminUser
-            } | ConvertTo-Json), $utf8)
+                        Address = $address; Password = $password; User = $WindowsUser; AdminUser = $AdminUser
+                    } | ConvertTo-Json), $utf8)
         }
         $ready = Join-Path $Sandbox 'ready'
         if ([IO.File]::Exists($ready)) { [IO.File]::Delete($ready) }
@@ -308,24 +310,25 @@ foreach ($entry in $jobs.GetEnumerator()) {
 if ($Target -contains 'sandbox') {
     foreach ($user in @($windowsUser, $adminUser)) {
         $connection = [ordered]@{
-            ansible_host = $address
-            ansible_port = 5986
-            ansible_connection = 'psrp'
-            ansible_psrp_protocol = 'https'
-            ansible_psrp_auth = 'certificate'
-            ansible_psrp_certificate_pem = "/state/winrm-$user.pem"
+            ansible_host                     = $address
+            ansible_port                     = 5986
+            ansible_connection               = 'psrp'
+            ansible_psrp_protocol            = 'https'
+            ansible_psrp_auth                = 'certificate'
+            ansible_psrp_certificate_pem     = "/state/winrm-$user.pem"
             ansible_psrp_certificate_key_pem = "/state/winrm-$user.key"
-            ansible_psrp_ca_cert = '/state/winrm-server.pem'
-            shell_dev_drive_task = $true
-            shell_download_cache = 'C:\shell-cache'
-            shell_msys2_root = 'C:/msys64'
-            shell_msys2_installer = 'file:///C:/shell-cache/msys2-base-x86_64-latest.sfx.exe'
-            shell_msys2_cache = 'C:\shell-cache\msys2'
-            shell_store_cache = 'C:\shell-cache\store'
+            ansible_psrp_ca_cert             = '/state/winrm-server.pem'
+            shell_dev_drive_task             = $true
+            shell_download_cache             = 'C:\shell-cache'
+            shell_msys2_root                 = 'C:/msys64'
+            shell_msys2_installer            = 'file:///C:/shell-cache/msys2-base-x86_64-latest.sfx.exe'
+            shell_msys2_cache                = 'C:\shell-cache\msys2'
+            shell_store_cache                = 'C:\shell-cache\store'
         }
         if ($user -eq $adminUser) {
             $windows.sandbox = $connection
-        } else {
+        }
+        else {
             $connection.shell_elevate = $false
             $unprivileged['sandbox-user'] = $connection
         }
@@ -338,7 +341,7 @@ $inventoryPath = Join-Path $StateDirectory 'inventory.json'
 
 $userInventory = Join-Path $StateDirectory 'inventory-user.json'
 [IO.File]::WriteAllText($userInventory, (@{ all = @{ children = @{ windows = @{ hosts = $unprivileged } } } } |
-    ConvertTo-Json -Depth 8), $utf8)
+            ConvertTo-Json -Depth 8), $utf8)
 
 # Ansible colors the recap. The escape sequences are removed before changed= is read, or a clean run looks dirty.
 function Assert-Unchanged {
@@ -361,10 +364,10 @@ $env:ANSIBLE_CALLBACKS_ENABLED = 'ansible.posix.profile_tasks'
 $env:PROFILE_TASKS_TASK_OUTPUT_LIMIT = '15'
 
 $common = @{
-    Inventory = $inventoryPath
+    Inventory      = $inventoryPath
     StateDirectory = $StateDirectory
     CacheDirectory = $CacheDirectory
-    Network = $network
+    Network        = $network
 }
 
 try {
@@ -384,22 +387,22 @@ try {
             'unprivileged' {
                 if ($unprivileged.Count) {
                     $user = @{
-                        Mode = 'full'
-                        Inventory = $userInventory
-                        StateDirectory = $StateDirectory
-                        CacheDirectory = $CacheDirectory
-                        Network = $network
+                        Mode            = 'full'
+                        Inventory       = $userInventory
+                        StateDirectory  = $StateDirectory
+                        CacheDirectory  = $CacheDirectory
+                        Network         = $network
                         AnsibleArgument = @('--tags', 'config,dev_drive')
                     }
                     & $installer @user
                     & $installer @user 2>&1 | Tee-Object -Variable output | Out-Host
                     Assert-Unchanged $output 'Second unprivileged run' -ExpectedHost @($unprivileged.Keys)
                     $userVerify = @{
-                        Playbook = '../tests/verify.yml'
-                        Inventory = $userInventory
-                        StateDirectory = $StateDirectory
-                        CacheDirectory = $CacheDirectory
-                        Network = $network
+                        Playbook        = '../tests/verify.yml'
+                        Inventory       = $userInventory
+                        StateDirectory  = $StateDirectory
+                        CacheDirectory  = $CacheDirectory
+                        Network         = $network
                         AnsibleArgument = @('--tags', 'user')
                     }
                     & $installer @userVerify
@@ -408,7 +411,8 @@ try {
         }
         $timings[$name] = $clock.Elapsed
     }
-} finally {
+}
+finally {
     Remove-Item Env:ANSIBLE_CALLBACKS_ENABLED, Env:PROFILE_TASKS_TASK_OUTPUT_LIMIT -ErrorAction SilentlyContinue
     if ($name -and -not $timings.Contains($name)) { $timings[$name] = $clock.Elapsed }
     $report = $timings.GetEnumerator() | ForEach-Object {

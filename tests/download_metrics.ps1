@@ -25,7 +25,7 @@ try {
     }
 
     $records = @(Get-ChildItem -LiteralPath (Join-Path $cache 'records') -Filter '*.json' -File |
-        Sort-Object CreationTimeUtc)
+            Sort-Object CreationTimeUtc)
     if ($records.Count -ne 2) { throw "Expected two download records, got $($records.Count)." }
     $miss = [IO.File]::ReadAllText($records[0].FullName) | ConvertFrom-Json
     $hit = [IO.File]::ReadAllText($records[1].FullName) | ConvertFrom-Json
@@ -50,7 +50,8 @@ try {
     if (-not [IO.File]::Exists($withoutMetrics)) { throw 'A metrics write failure changed the download result.' }
 
     "PowerShell $($PSVersionTable.PSVersion): download metrics miss, hit and path-only output passed."
-} finally {
+}
+finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if ($resolved.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase) -and

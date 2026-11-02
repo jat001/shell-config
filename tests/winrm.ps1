@@ -25,8 +25,8 @@ if ($FullToken) {
 Set-Item -Path WSMan:\localhost\Service\Auth\Certificate -Value $true
 
 $alternative = ($Name | ForEach-Object {
-    if ($_ -as [ipaddress]) { "ipaddress=$_" } else { "dns=$_" }
-}) -join '&'
+        if ($_ -as [ipaddress]) { "ipaddress=$_" } else { "dns=$_" }
+    }) -join '&'
 $subject = "CN=$($Name[0])"
 $friendly = "shell-ansible-winrm $alternative"
 $server = Get-ChildItem Cert:\LocalMachine\My | Where-Object {
@@ -49,13 +49,15 @@ $pem = [Convert]::ToBase64String($server.RawData, 'InsertLineBreaks').Replace("`
 $selector = @{ Address = $Address; Transport = 'HTTPS' }
 try {
     $listener = Get-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $selector
-} catch {
+}
+catch {
     $listener = $null
 }
 $values = @{ Hostname = $Name[0]; CertificateThumbprint = $server.Thumbprint; Port = $Port }
 if (-not $listener) {
     $null = New-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $selector -ValueSet $values
-} elseif ($listener.CertificateThumbprint -ne $server.Thumbprint -or $listener.Port -ne $Port -or
+}
+elseif ($listener.CertificateThumbprint -ne $server.Thumbprint -or $listener.Port -ne $Port -or
     $listener.Hostname -ne $Name[0]) {
     $null = Set-WSManInstance -ResourceURI winrm/config/Listener -SelectorSet $selector -ValueSet $values
 }
@@ -65,16 +67,17 @@ foreach ($storeName in @('Root', 'TrustedPeople')) {
     $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, 'LocalMachine')
     $store.Open('ReadWrite')
     try {
-        if (-not ($store.Certificates | Where-Object Thumbprint -eq $client.Thumbprint)) {
+        if (-not ($store.Certificates | Where-Object Thumbprint -EQ $client.Thumbprint)) {
             $store.Add($client)
         }
-    } finally {
+    }
+    finally {
         $store.Close()
     }
 }
 
 $mapping = @(Get-WSManInstance -ResourceURI winrm/config/service/certmapping -Enumerate |
-    Where-Object { $_.Issuer -eq $client.Thumbprint -and $_.Subject -eq "$User@localhost" })
+        Where-Object { $_.Issuer -eq $client.Thumbprint -and $_.Subject -eq "$User@localhost" })
 if (-not $mapping) {
     if (-not $CredentialFile) { throw "A credential is required to map the client certificate for $User." }
     $credential = Import-Clixml -LiteralPath $CredentialFile

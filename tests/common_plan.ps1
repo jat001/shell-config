@@ -79,28 +79,28 @@ if ($mounted.environment.OMP_CACHE_DIR -ne "$planHome/.cache") {
 }
 
 $linux = (Invoke-Jq "-r --arg platform Linux --arg home $planHome --arg mode platform -f `"$filter`" `"$data`"" @{
-    WSL_DISTRO_NAME = ''; WSL_INTEROP = ''; MSYSTEM = ''
-}).Trim()
+        WSL_DISTRO_NAME = ''; WSL_INTEROP = ''; MSYSTEM = ''
+    }).Trim()
 if ($linux) { throw "Empty WSL variables selected platform '$linux'." }
 
 $wsl = (Invoke-Jq "-r --arg platform Linux --arg home $planHome --arg mode platform -f `"$filter`" `"$data`"" @{
-    WSL_DISTRO_NAME = 'Debian'; WSL_INTEROP = ''; MSYSTEM = ''
-}).Trim()
+        WSL_DISTRO_NAME = 'Debian'; WSL_INTEROP = ''; MSYSTEM = ''
+    }).Trim()
 if ($wsl -ne 'wsl') { throw "WSL was not detected: '$wsl'." }
 
 $mingw = (Invoke-Jq "-r --arg platform MINGW64_NT --arg home $planHome --arg mode platform -f `"$filter`" `"$data`"" @{
-    MSYSTEM = ''; WSL_DISTRO_NAME = ''; WSL_INTEROP = ''
-}).Trim()
+        MSYSTEM = ''; WSL_DISTRO_NAME = ''; WSL_INTEROP = ''
+    }).Trim()
 if ($mingw) { throw "An empty MSYSTEM selected platform '$mingw'." }
 
 $msys = (Invoke-Jq "-r --arg platform MINGW64_NT --arg home $planHome --arg mode platform -f `"$filter`" `"$data`"" @{
-    MSYSTEM = 'UCRT64'; WSL_DISTRO_NAME = ''; WSL_INTEROP = ''
-}).Trim()
+        MSYSTEM = 'UCRT64'; WSL_DISTRO_NAME = ''; WSL_INTEROP = ''
+    }).Trim()
 if ($msys -ne 'msys2') { throw "MSYS2 was not detected: '$msys'." }
 
 $msysPlan = (Invoke-Jq "-r --arg platform msys2 --arg home /home/Jat --arg windows_home /c/Users/Jat --arg lc_all zh_CN.UTF-8 --arg mode plan -f `"$filter`" `"$data`"" @{
-    MSYSTEM_PREFIX = '/ucrt64'
-}) | ConvertFrom-Json
+        MSYSTEM_PREFIX = '/ucrt64'
+    }) | ConvertFrom-Json
 if ($msysPlan.aliases.code -ne '/c/Users/Jat/scoop/apps/vscode/current/bin/code') {
     throw "MSYS2 did not use the resolved Windows home: $($msysPlan.aliases.code)"
 }
@@ -109,9 +109,9 @@ if ($msysPlan.environment.LC_ALL -ne 'zh_CN.UTF-8' -or
     throw 'MSYS2 locale or LOCALAPPDATA was not resolved.'
 }
 $nativeMsysPlan = (Invoke-Jq "-r --arg platform msys2 --arg home /home/shell --arg lc_all zh_CN.UTF-8 --arg mode plan -f `"$filter`" `"$data`"" @{
-    USERPROFILE = 'C:\Users\shell'
-    MSYSTEM = 'UCRT64'
-}) | ConvertFrom-Json
+        USERPROFILE = 'C:\Users\shell'
+        MSYSTEM     = 'UCRT64'
+    }) | ConvertFrom-Json
 if ($nativeMsysPlan.aliases.code -ne '/c/Users/shell/scoop/apps/vscode/current/bin/code') {
     throw "MSYS2 did not convert USERPROFILE: $($nativeMsysPlan.aliases.code)"
 }

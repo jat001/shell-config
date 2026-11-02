@@ -4,7 +4,7 @@ param([Parameter(Mandatory)][string]$Path, [string]$LegacyKey, [switch]$AllowDet
 $ErrorActionPreference = 'Stop'
 $Path = [IO.Path]::GetFullPath($Path)
 if (-not [IO.File]::Exists($Path) -or $Path -notlike '*.vhdx') { throw 'Expected an existing VHDX.' }
-if (-not $PSCmdlet.ShouldProcess($Path,'Attach the VHDX now and at Windows startup')) { return }
+if (-not $PSCmdlet.ShouldProcess($Path, 'Attach the VHDX now and at Windows startup')) { return }
 
 Add-Type -Namespace Shell -Name BootAttach -MemberDefinition @'
 [StructLayout(LayoutKind.Sequential)]
@@ -65,11 +65,11 @@ public static void Attach(string path) {
 }
 '@
 
-$key='HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
-$legacy=@(Get-ChildItem -LiteralPath $key -ErrorAction SilentlyContinue | Where-Object {
-    $_.GetValue('Path') -eq $Path -and $_.PSChildName -eq $LegacyKey -and
-    @($_.GetValueNames()).Count -eq 1
-})
+$key = 'HKLM:\SYSTEM\CurrentControlSet\Control\AutoAttachVirtualDisks'
+$legacy = @(Get-ChildItem -LiteralPath $key -ErrorAction SilentlyContinue | Where-Object {
+        $_.GetValue('Path') -eq $Path -and $_.PSChildName -eq $LegacyKey -and
+        @($_.GetValueNames()).Count -eq 1
+    })
 $detached = $false
 try {
     # A legacy registration is removed only for a test VM that opted into detach. A live disk is left mounted.
@@ -77,12 +77,13 @@ try {
         Dismount-DiskImage -ImagePath $Path
         $detached = $true
     }
-    foreach($entry in $legacy){ Remove-Item -LiteralPath $entry.PSPath }
+    foreach ($entry in $legacy) { Remove-Item -LiteralPath $entry.PSPath }
     [Shell.BootAttach]::Attach($Path)
-} catch {
-    foreach($entry in $legacy){
-        $restored=New-Item -Path (Join-Path $key $entry.PSChildName) -Force
-        $null=New-ItemProperty -LiteralPath $restored.PSPath -Name Path -Value $Path -PropertyType String -Force
+}
+catch {
+    foreach ($entry in $legacy) {
+        $restored = New-Item -Path (Join-Path $key $entry.PSChildName) -Force
+        $null = New-ItemProperty -LiteralPath $restored.PSPath -Name Path -Value $Path -PropertyType String -Force
     }
     if ($detached) { Mount-DiskImage -ImagePath $Path | Out-Null }
     throw

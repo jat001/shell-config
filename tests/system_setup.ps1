@@ -12,12 +12,15 @@ Copy-Item -LiteralPath (Join-Path $Repository 'ansible/roles/windows/files/syste
 $utf8 = [Text.UTF8Encoding]::new($false)
 $request = @{
     Configuration = @{ environments = @{
-        windows = @{ dev_drive = @{ vhd='windows.vhdx'; size_gib=1024 } }
-        wsl = @{ dev_drive = @{ vhd='linux.vhdx'; size_gib=1024; filesystem='btrfs';
-            task='Shell Test Drive'; mountpoint='/mnt/wsl/dev'; options='compress=zstd:1' } }
-    } }
+            windows = @{ dev_drive = @{ vhd = 'windows.vhdx'; size_gib = 1024 } }
+            wsl     = @{ dev_drive = @{ vhd='linux.vhdx'; size_gib=1024; filesystem='btrfs';
+                    task='Shell Test Drive'; mountpoint='/mnt/wsl/dev'; options='compress=zstd:1'
+                }
+            }
+        }
+    }
     Home=$homePath; Mode='full'; UserSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    LegacyKey='{00000000-0000-0000-0000-000000000000}'
+    LegacyKey     ='{00000000-0000-0000-0000-000000000000}'
     ManageDeveloperMode=$true; ManageWindowsDrive=$true; ManageWslDrive=$true; AllowDetach=$false
     ManageTimeZone=$true; TimeZone='China Standard Time'
 }
@@ -31,14 +34,14 @@ $global:ShellSystemTestTaskException = $null
 function Get-ItemProperty {
     param([string]$LiteralPath, [string]$ErrorAction)
     if ($LiteralPath -notlike 'HKLM:*AppModelUnlock') { throw 'Unexpected registry read.' }
-    [pscustomobject]@{ AllowDevelopmentWithoutDevLicense=$global:ShellSystemTestDeveloperMode }
+    [pscustomobject]@{ AllowDevelopmentWithoutDevLicense = $global:ShellSystemTestDeveloperMode }
 }
 function Get-TimeZone {
     param([switch]$ListAvailable)
     if ($ListAvailable) {
-        return @([pscustomobject]@{ Id='China Standard Time' }, [pscustomobject]@{ Id='UTC' })
+        return @([pscustomobject]@{ Id = 'China Standard Time' }, [pscustomobject]@{ Id = 'UTC' })
     }
-    [pscustomobject]@{ Id=$global:ShellSystemTestTimeZone }
+    [pscustomobject]@{ Id = $global:ShellSystemTestTimeZone }
 }
 function Set-TimeZone {
     param([string]$Id)
@@ -51,7 +54,8 @@ function Get-ScheduledTask {
     if ($null -ne $global:ShellSystemTestTaskErrorCategory) {
         $taskException = if ($global:ShellSystemTestTaskException) {
             $global:ShellSystemTestTaskException
-        } else { [Exception]::new('Scheduled task query fixture') }
+        }
+        else { [Exception]::new('Scheduled task query fixture') }
         $record = [Management.Automation.ErrorRecord]::new(
             $taskException, 'ShellSystemTestTaskQuery',
             [Management.Automation.ErrorCategory]$global:ShellSystemTestTaskErrorCategory, $TaskName
@@ -65,7 +69,7 @@ function Write-Request {
 }
 function Invoke-Plan {
     Write-Request
-    $Ansible = @{ Changed=$false; Result=$null }
+    $Ansible = @{ Changed = $false; Result = $null }
     $plan = & $scriptPath -RequestPath $requestPath
     if ($null -ne $plan) { return @($plan)[-1] }
     $Ansible.Result
@@ -86,8 +90,8 @@ try {
     $taskErrorData = [Microsoft.Management.Infrastructure.CimInstance]::new('CIM_Error')
     try {
         $taskErrorData.CimInstanceProperties.Add([Microsoft.Management.Infrastructure.CimProperty]::Create(
-            'CIMStatusCode', [uint32]2, [Microsoft.Management.Infrastructure.CimFlags]::None
-        ))
+                'CIMStatusCode', [uint32]2, [Microsoft.Management.Infrastructure.CimFlags]::None
+            ))
         $global:ShellSystemTestTaskException = [Exception]::new(
             'Scheduled task query fixture', [Microsoft.Management.Infrastructure.CimException]::new($taskErrorData)
         )
@@ -95,7 +99,8 @@ try {
         if ((Invoke-Plan).Pending -contains 'RegisterTask') {
             throw 'A wrapped CIM AccessDenied was mistaken for a missing task.'
         }
-    } finally {
+    }
+    finally {
         $global:ShellSystemTestTaskException = $null
         $taskErrorData.Dispose()
     }
@@ -107,7 +112,7 @@ try {
     }
     if (-not $rejected) { throw 'An unexpected scheduled task query failure was hidden.' }
     $global:ShellSystemTestTaskErrorCategory = $null
-    $Ansible = @{ Changed=$false; Result=$null }
+    $Ansible = @{ Changed = $false; Result = $null }
     $null = & $scriptPath -RequestPath $requestPath -Apply -WhatIf
     if ([IO.File]::Exists((Join-Path $homePath 'windows.vhdx')) -or
         [IO.File]::Exists((Join-Path $homePath 'linux.vhdx'))) { throw 'Preview created a disk.' }
@@ -122,12 +127,14 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
     $global:ShellSystemTestDeveloperMode = 1
     $global:ShellSystemTestTimeZone = 'China Standard Time'
     $global:ShellSystemTestTask = [pscustomobject]@{
-        Description='Shared shell configuration: attach the WSL development VHDX.'
-        Actions=@([pscustomobject]@{ Execute=(Join-Path $env:SystemRoot 'System32\wsl.exe');
-            Arguments=('--mount --vhd "' + (Join-Path $homePath 'linux.vhdx') + '" --type btrfs --name dev --options "compress=zstd:1"') })
-        Principal=[pscustomobject]@{ UserId=$request.UserSid; RunLevel='Highest'; LogonType='Interactive' }
-        Settings=[pscustomobject]@{ Enabled=$true; AllowDemandStart=$true; DisallowStartIfOnBatteries=$false;
-            StopIfGoingOnBatteries=$false; MultipleInstances='IgnoreNew'; ExecutionTimeLimit='PT1M' }
+        Description ='Shared shell configuration: attach the WSL development VHDX.'
+        Actions     =@([pscustomobject]@{ Execute =(Join-Path $env:SystemRoot 'System32\wsl.exe');
+                Arguments                         =('--mount --vhd "' + (Join-Path $homePath 'linux.vhdx') + '" --type btrfs --name dev --options "compress=zstd:1"')
+            })
+        Principal   =[pscustomobject]@{ UserId = $request.UserSid; RunLevel = 'Highest'; LogonType = 'Interactive' }
+        Settings    =[pscustomobject]@{ Enabled=$true; AllowDemandStart=$true; DisallowStartIfOnBatteries=$false;
+            StopIfGoingOnBatteries=$false; MultipleInstances='IgnoreNew'; ExecutionTimeLimit='PT1M'
+        }
     }
     if ((Invoke-Plan).Pending.Count) { throw 'An already configured machine requested another elevation.' }
 
@@ -157,7 +164,8 @@ $Ansible.Result = @{ registered=$true; attached=$true; legacy_registration=$fals
     }
     if (-not $rejected) { throw 'A VHDX outside the configured Windows home was accepted.' }
     "PowerShell $($PSVersionTable.PSVersion): batched system plan, idempotency, preview and conflict checks passed."
-} finally {
+}
+finally {
     Remove-Variable -Name @(
         'ShellSystemTestDeveloperMode', 'ShellSystemTestTask',
         'ShellSystemTestTimeZone', 'ShellSystemTestTimeZoneSetCount',

@@ -5,9 +5,9 @@ $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($installer, [ref]$tokens, [ref]$errors)
 if ($errors) { throw ($errors -join "`n") }
 $resolver = $ast.Find({
-    param($node)
-    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-Wslc'
-}, $true)
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-Wslc'
+    }, $true)
 if (-not $resolver) { throw 'The WSL container executable resolver is missing.' }
 . ([scriptblock]::Create($resolver.Extent.Text))
 $wslc = Get-Wslc
@@ -17,12 +17,13 @@ try {
     # A stale process PATH is the case Get-Wslc exists for. System32 alone must still resolve the registered binary.
     $env:PATH = Join-Path $env:SystemRoot 'System32'
     if ((Get-Wslc) -ine $wslc) { throw 'WSL cannot be resolved when the process PATH is stale.' }
-} finally { $env:PATH = $savedPath }
+}
+finally { $env:PATH = $savedPath }
 
 $wrapper = $ast.Find({
-    param($node)
-    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Wslc'
-}, $true)
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Wslc'
+    }, $true)
 if (-not $wrapper) { throw 'The WSL container wrapper is missing.' }
 Invoke-Expression $wrapper.Extent.Text
 

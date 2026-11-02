@@ -25,7 +25,8 @@ $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powersh
 try {
     $process = Start-Process -FilePath $powershell -Verb RunAs -Wait -PassThru -WindowStyle Hidden `
         -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded
-} catch {
+}
+catch {
     throw "Administrator approval was not granted for: $Description"
 }
 if ($process.ExitCode -ne 0) {
