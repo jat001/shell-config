@@ -11,13 +11,20 @@ try {
         throw 'Scoop is required. Install it from https://scoop.sh first.'
     }
 
-    $packages = @('uv', 'lefthook', 'shellcheck', 'shfmt', 'ruff', 'jq')
-    foreach ($command in $packages) {
-        if (Get-Command $command -ErrorAction SilentlyContinue) {
+    $packages = @(
+        @{ Name = 'jq'; Bucket = 'main' }
+        @{ Name = 'lefthook'; Bucket = 'main' }
+        @{ Name = 'ruff'; Bucket = 'main' }
+        @{ Name = 'shellcheck'; Bucket = 'main' }
+        @{ Name = 'shfmt'; Bucket = 'main' }
+        @{ Name = 'uv'; Bucket = 'main' }
+    )
+    foreach ($package in $packages) {
+        if (Get-Command $package.Name -ErrorAction SilentlyContinue) {
             continue
         }
-        Write-Host "Installing $command"
-        scoop install $command
+        Write-Host "Installing $($package.Bucket)/$($package.Name)"
+        scoop install "$($package.Bucket)/$($package.Name)"
     }
 
     if (-not (Get-Command yamllint -ErrorAction SilentlyContinue)) {
