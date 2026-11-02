@@ -57,6 +57,17 @@ class InvariantTests(unittest.TestCase):
         self.assertIn('-CacheDirectory $CacheDirectory', runner)
         self.assertEqual(runner.count('CacheDirectory = $CacheDirectory'), 3)
 
+    def test_dev_drive_reads_uuid_with_sudo_on_suse(self):
+        script = (root / 'wsl-dev-drive.sh').read_text(encoding='utf-8')
+        self.assertIn('sudo -n blkid -s UUID -o value', script)
+        self.assertIn('actual_filesystem', script)
+
+    def test_installer_moves_wsl_shortcuts_into_programs(self):
+        installer = (root / 'install.ps1').read_text(encoding='utf-8')
+        self.assertIn('function Set-WslStartMenuShortcut', installer)
+        self.assertIn("'Create Start Menu shortcut'", installer)
+        self.assertIn("-eq $arguments", installer)
+
     def test_bash_entry_ignores_repeated_sourcing(self):
         entry = (root / 'common.bash').read_text(encoding='utf-8')
         self.assertIn('[ -n "${_shell_bash_loaded-}" ] && return 0', entry)

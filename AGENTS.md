@@ -160,7 +160,9 @@ NAT 只转发默认发行版的 `127.0.0.1`，每个 sshd 都听在这个地址�
 干净的 `opensuse/tumbleweed` 没有 Python、sshd 和 btrfs 工具。`wsl.sh` 用 zypper 先刷新再装 `ca-certificates openssh python3 btrfsprogs`。
 openSUSE 的 `sshd` 10.6 在 `-D` 模式下不写 `PidFile`。`start-sshd.sh` 在 `exec` 前把自己的进程号写进 `sshd.pid`，停止和测试都读这个文件。
 openSUSE 的 WSL 镜像还缺 `tar`、`gzip` 和 `findmnt`。`packages_suse` 要装 `tar`、`gzip`、`util-linux-systemd`；少了前两个，`ble.sh` 的 `.tar.xz` 不能解压，少了 `findmnt`，`wsl-dev-drive.service` 会等满 60 秒后失败。
+openSUSE 的普通用户读不到块设备 UUID，`findmnt -o UUID` 为空。`wsl-dev-drive.sh` 在 UUID 为空时用 `sudo -n blkid` 补查；WSL 账户有免密 sudo。
 openSUSE 的 `/etc/profile` 对登录 bash 先 source `~/.bashrc`，随后 bash 再读 `~/.bash_profile`，`common.bash` 会执行两次。用 `_shell_bash_loaded` 防重入；否则 ble.sh 会打印 `[ble: reload]` 并重建缓存。
+WSL 把发行版快捷方式写在 `%APPDATA%\Microsoft\Windows\Start Menu\<名>.lnk` 根目录；Windows 的 All apps 只枚举 `Programs`。`install.ps1` 对每个已注册发行版把它移到 `Programs`，按 `--distribution-id` 去重，不覆盖指向其他发行版的同名文件。
 
 Arch 的 `farseerfc` 在官方 keyring 里，但 `pacman-key --init` 不导入它。先 `pacman-key --populate archlinux`，再 `--lsign-key`，然后才能同步带 archlinuxcn 的库。
 

@@ -194,6 +194,45 @@ function Get-CachedDistribution {
     $path
 }
 
+function Set-WslStartMenuShortcut {
+    param([string]$Name, [object]$Registration)
+
+    $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    $guid = $Registration.PSChildName
+    if (-not $programs -or -not $guid) { return }
+    $launcher = Join-Path $env:ProgramFiles 'WSL/wsl.exe'
+    if (-not [IO.File]::Exists($launcher)) { $launcher = $wsl }
+    $arguments = "--distribution-id $guid --cd ~"
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($file in Get-ChildItem $programs -Filter *.lnk -ErrorAction SilentlyContinue) {
+        if ($shell.CreateShortcut($file.FullName).Arguments -eq $arguments) { return }
+    }
+    $source = $Registration.ShortcutPath
+    $display = $Name
+    if ($source -and [IO.File]::Exists($source)) {
+        $display = [IO.Path]::GetFileNameWithoutExtension($source)
+    }
+    $target = Join-Path $programs ($display + '.lnk')
+    if ([IO.File]::Exists($target)) {
+        $display = $Name
+        $target = Join-Path $programs ($display + '.lnk')
+        if ([IO.File]::Exists($target)) { return }
+    }
+    if ($source -and [IO.File]::Exists($source)) {
+        if ([IO.Path]::GetFullPath($source) -eq [IO.Path]::GetFullPath($target)) { return }
+        [IO.File]::Move($source, $target)
+        return
+    }
+    $base = [string]$Registration.BasePath
+    if ($base.StartsWith('\\?\')) { $base = $base.Substring(4) }
+    $icon = Join-Path $base 'shortcut.ico'
+    $shortcut = $shell.CreateShortcut($target)
+    $shortcut.TargetPath = $launcher
+    $shortcut.Arguments = $arguments
+    if ([IO.File]::Exists($icon)) { $shortcut.IconLocation = "$icon,0" }
+    $shortcut.Save()
+}
+
 $configuration = [IO.File]::ReadAllText((Join-Path $repository 'common.json')) | ConvertFrom-Json
 $distributions = @($configuration.environments.wsl.distributions | Where-Object { $_ })
 
@@ -321,6 +360,19 @@ try {
             Where-Object { $_ })
         if (-not $WslDistribution) {
             throw 'A WSL distribution is required; it also carries the Windows connection.'
+        }
+
+        # WSL writes its shortcut at the Start Menu root; All apps only enumerates Programs.
+        if (-not $SkipWsl) {
+            $registrations = Get-WslRegistration
+            foreach ($name in $WslDistribution) {
+                $registration = $registrations | Where-Object DistributionName -eq $name | Select-Object -First 1
+                if (-not $registration) { continue }
+                if ($PSCmdlet.ShouldProcess($name, 'Create Start Menu shortcut')) {
+                    try { Set-WslStartMenuShortcut -Name $name -Registration $registration }
+                    catch { Write-Warning "Could not create the Start Menu shortcut for ${name}: $($_.Exception.Message)" }
+                }
+            }
         }
 
         $profileHome = if ($WindowsHome) { [IO.Path]::GetFullPath($WindowsHome) } else {

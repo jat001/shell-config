@@ -16,8 +16,14 @@ schtasks=$(printf '%s' "$drive" | jq -er '.schtasks')
 check_mount() {
     actual=$(findmnt -rn -M "$mountpoint" -o UUID,FSTYPE) || return 1
     actual_uuid=${actual%% *}
+    actual_filesystem=${actual#* }
+    # openSUSE hides device UUIDs from unprivileged users; the WSL account has passwordless sudo.
+    if [ -z "$actual_uuid" ]; then
+        device=$(findmnt -rn -M "$mountpoint" -o SOURCE) || return 1
+        actual_uuid=$(sudo -n blkid -s UUID -o value "$device" 2>/dev/null || true)
+    fi
     # exit, not return: a wrong filesystem at the mountpoint fails the service instead of requesting another attach.
-    if [ "${actual#* }" != "$filesystem" ] || [ -z "$actual_uuid" ] ||
+    if [ "$actual_filesystem" != "$filesystem" ] || [ -z "$actual_uuid" ] ||
         { [ -n "$uuid" ] && [ "$actual_uuid" != "$uuid" ]; }; then
         printf 'Unexpected filesystem at %s: %s\n' "$mountpoint" "$actual" >&2
         [ -z "$uuid" ] || printf 'Expected UUID %s from %s\n' "$uuid" "$state" >&2
