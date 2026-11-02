@@ -19,7 +19,8 @@ Playbook 用 `strategy: free`，Windows/MSYS2 和各 Linux 主机一起配。
 入口和链接先检查再改。相同的留下。内容和入口不同的普通文件，或非空目录，整组失败，原文件留着。
 模块不递归删目录，也不做备份。能换掉的只有：和入口内容相同的文件、空目录、指向别处的链接、和发行版模板完全相同的默认 dotfile。
 
-和 `/etc/skel`、Debian `dot.*`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。路径里有 `/` 的不比。
+和 `/etc/skel`、openSUSE `/usr/etc/skel`、Debian `dot.*`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。读不到的默认文件按不匹配处理。路径里有 `/` 的不比。
+openSUSE 的 `/usr/etc/skel` 是 `0640 root:root`。新建 WSL 账户时由 playbook 建空主目录，`useradd` 不复制模板，否则新账户读不到这些模板也无法比较。
 Debian 的 Nushell 包在 postinst 里跑 `config reset -w`，留下 `/root/.config/nushell/env.nu` 和 `config.nu`。
 部署前用同一支 `nu`，在临时家目录生成 scaffold，内容完全一致才按 `defaults` 换。这两个文件不能无条件覆盖。
 `config nu --default` 是另一份内置文件，不能拿来比。`config reset -w` 在配置目录不存在时退出 0 但不写文件，`--no-config-file` 也不写。生成时若改动了账户自己的 `env.nu` 或 `config.nu`，这次捕获要失败。
@@ -55,6 +56,7 @@ MSYS2 进程若没有 `USERPROFILE`，common shell 用 Windows API 查询用户�
 WSL 不只写系统 locale 文件。common shell 要从 `/etc/locale.conf` 或 `/etc/default/locale` 读取并显式导出 `LC_ALL`，覆盖直接 `wsl.exe`、Bash、zsh、fish、PowerShell 和 Nushell；`su -` 的 PAM 检查不能代替这些入口。
 只跑区域设置用 `--tags regional -e shell_regional_only=true`；这个开关同时跳过 `always` 的软件引导、仓库准备和账户入口任务。正常部署不要传它。
 Arch 官方容器的 `NoExtract` 排除了非英文 locale 源文件。缺目标源文件时，在 options 的提取规则末尾加目标例外并重装 `glibc`；不能只跑 `locale-gen`，它可能返回 0 但没有生成 locale。
+openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc/locale.gen` 和 `locale-gen`。部署只检查 `locale -a`，不写 locale 定义文件。`/usr/etc/profile.d/lang.sh` 在 `LC_ALL` 等于 `LANG` 时会 unset `LC_ALL`；common shell 仍从 `/etc/locale.conf` 显式导出。
 
 ## 测试
 
@@ -101,22 +103,25 @@ Arch 官方容器的 `NoExtract` 排除了非英文 locale 源文件。缺目标
 - `tests/docker_completions.ps1` 用本机现有的 Docker、WSL 和 MSYS2。
 - `tests/dev_drives.ps1` 和 `tests/hyperv.ps1` 要管理员，会创建虚拟磁盘或 Hyper-V 虚拟机。
 
-`tests/run.ps1` 的 Windows 目标是 Windows Sandbox，Linux 目标是 `archlinux:latest` 和 `debian:testing`。
+`tests/run.ps1` 的 Windows 目标是 Windows Sandbox，Linux 目标是 `archlinux:latest`、`debian:testing` 和 `opensuse/tumbleweed:latest`。
 容器里没有 systemd，用户单元只链接，不启动。
 `shell-test` 网络固定 `10.77.90.0/24`。wslc 默认的下一个地址池可能是 `172.18.0.0/16`，这台机器的 Hyper-V 默认交换机是 `172.18.144.0/20`。重叠时沙盒 IP 像在本地网桥上，连接报 `No route to host`。
 沙盒执行策略是 Restricted。写进模块参数的脚本能跑，磁盘上的 `.ps1` 不行。调用 `system_setup.ps1`、`download.ps1`、`clink.ps1` 之前，把当前进程的执行策略设成 Bypass。
 `wsb exec -c` 会把命令字符串里的 PowerShell 开关当成自己的参数。启动命令放进映射进去的 `launch.cmd`，传给 `wsb` 的只是这个文件的路径。
 普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
-容器和沙盒（`-Target arch,debian,sandbox`，沙盒用完已停）：Arch、Debian、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
+容器和沙盒（`-Target arch,debian,suse,sandbox`，沙盒用完已停）：Arch、Debian、openSUSE、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
 无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME、Culture 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
 Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
 虚拟机用状态目录里已有的 `ShellConfig-Test`。从 `WSL-Ready` 恢复，同步仓库，再跑 `init,full,full,update`。不要另建同名虚拟机，测完也不要删。
 VM 里的 Debian 必须和容器一样跑 testing。`hyperv_guest.ps1` 给安装器加 `-TestDebianTesting`，bootstrap 只替换 Debian 官方源并做 `full-upgrade`，`shell-*` 第三方源不动。普通安装不传这个开关，仍用 stable。
-`init`、连续两次 `full`、`update` 已回归，三台都是 failed=0，重复 `full` 的三台都是 `changed=0`。
+`init`、连续两次 `full`、`update` 已回归，Windows 和 archlinux、Debian、openSUSE 都是 failed=0，重复 `full` 都是 `changed=0`。更新后的断电冷启动验证通过（20 项检查），自动登录产生交互会话，AtLogOn 任务运行并在结束时清理凭据。
+冷启动前要对 Winlogon 键本身调用 `RegFlushKey`；只 flush `HKLM\SOFTWARE` 会在强制断电时丢掉 `AutoAdminLogon` 和 `DefaultPassword`，自动登录不会发生，计划任务也不会触发。
+MSYS2 的 `LC_ALL` 只在交互 shell 里由 `locale -uU` 设置；`verify-msys2.sh` 要在 `bash/zsh/fish -ic` 里断言，父 shell 看不到。
 断电冷启动后的 16 项检查包括开发盘、启动设置、各 shell、Clink、WSL 用户和 Terminal GUI。临时自动登录及凭据必须清理，无提权 Windows 账户矩阵留在 Sandbox，不在 VM 里重复。
-更新构建曾遇 Docker Hub 和 Galaxy TLS EOF，重试后通过；别关闭 TLS 校验或把失败当成成功。
+更新构建曾遇 Docker Hub 和 Galaxy TLS EOF，重试后通过；别关闭 TLS 校验或把失败当成成功。PowerShell Gallery 的 `Save-PSResource` 和 winget 的 Store 源也会遇到 TLS/超时，属于外部网络，重试即可。
+客户机的 `wslc image save` 可能写出缺少 `manifest.json`/`index.json` 的 tar。导入前用 `tar -tf` 核对；必要时用宿主机的 `wslc image save` 生成完整归档再同步。
 MSYS2 核心升级会主动关闭当前 Bash。只有退出 1 且出现明确核心重启提示时，第一轮升级才能接续；第二轮用新进程执行，仍检查退出码。
 测试脚本只停提权 worker。
 
@@ -152,6 +157,10 @@ NAT 只转发默认发行版的 `127.0.0.1`，每个 sshd 都听在这个地址�
 ## 改的时候
 
 干净的 `debian:testing` 没有 `ca-certificates`。`ansible/bootstrap/wsl.sh` 得在 Ansible 用 Python 下 HTTPS 密钥之前装上。只装 Python 不够。
+干净的 `opensuse/tumbleweed` 没有 Python、sshd 和 btrfs 工具。`wsl.sh` 用 zypper 先刷新再装 `ca-certificates openssh python3 btrfsprogs`。
+openSUSE 的 `sshd` 10.6 在 `-D` 模式下不写 `PidFile`。`start-sshd.sh` 在 `exec` 前把自己的进程号写进 `sshd.pid`，停止和测试都读这个文件。
+openSUSE 的 WSL 镜像还缺 `tar`、`gzip` 和 `findmnt`。`packages_suse` 要装 `tar`、`gzip`、`util-linux-systemd`；少了前两个，`ble.sh` 的 `.tar.xz` 不能解压，少了 `findmnt`，`wsl-dev-drive.service` 会等满 60 秒后失败。
+openSUSE 的 `/etc/profile` 对登录 bash 先 source `~/.bashrc`，随后 bash 再读 `~/.bash_profile`，`common.bash` 会执行两次。用 `_shell_bash_loaded` 防重入；否则 ble.sh 会打印 `[ble: reload]` 并重建缓存。
 
 Arch 的 `farseerfc` 在官方 keyring 里，但 `pacman-key --init` 不导入它。先 `pacman-key --populate archlinux`，再 `--lsign-key`，然后才能同步带 archlinuxcn 的库。
 

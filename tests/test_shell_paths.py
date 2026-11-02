@@ -220,7 +220,7 @@ class ShellPathTests(unittest.TestCase):
         )
         by_path = {item['path']: item for item in items}
         self.assertEqual(by_path['/home/shell/.bashrc']['defaults'], [
-            '/etc/skel/.bashrc', '/usr/share/base-files/dot.bashrc',
+            '/etc/skel/.bashrc', '/usr/etc/skel/.bashrc', '/usr/share/base-files/dot.bashrc',
         ])
         self.assertNotIn('defaults', by_path['/home/shell/.config/nushell/env.nu'])
         self.assertNotIn('defaults', by_path['/home/shell/.config/fish/config.fish'])

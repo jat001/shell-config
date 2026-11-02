@@ -93,6 +93,26 @@ shell_apt_packages:
   - zsh-autosuggestions
   - zsh-syntax-highlighting
 
+# glibc-locale ships every compiled locale; Tumbleweed has no locale.gen or locale-gen.
+# icu is the runtime the PowerShell archive links against.
+shell_zypper_packages:
+  - bash-completion
+  - ca-certificates
+  - fish
+  - git
+  - glibc-locale
+  - gzip
+  - icu
+  - jq
+  - nushell
+  - openssh
+  - sudo
+  - tar
+  - timezone
+  - util-linux-systemd
+  - xz
+  - zsh
+
 shell_release_root: /opt/shell-releases
 shell_release_cache: /var/cache/shell-releases
 shell_release_bin: /usr/local/bin

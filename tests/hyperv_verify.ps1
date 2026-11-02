@@ -118,11 +118,10 @@ try {
     $windowsOffset = (Get-Date -Format 'zzz').Replace(':', '')
     $msysProbe = @"
 set -e
-bash -ic 'alias code && command -v oh-my-posh'
-zsh -ic 'alias code && command -v oh-my-posh'
-fish -ic 'functions code && command -s oh-my-posh'
+bash -ic 'alias code && command -v oh-my-posh && test "`$LC_ALL" = "$($regional.shell_host_lc_all)"'
+zsh -ic 'alias code && command -v oh-my-posh && test "`$LC_ALL" = "$($regional.shell_host_lc_all)"'
+fish -ic 'functions code && command -s oh-my-posh && test "`$LC_ALL" = "$($regional.shell_host_lc_all)"'
 test "`$LANG" = "$($regional.shell_host_locale)"
-test "`$LC_ALL" = "$($regional.shell_host_lc_all)"
 locale charmap | grep -qx UTF-8
 test "`$(date +%z)" = "$windowsOffset"
 "@
@@ -166,21 +165,29 @@ grep -qx 'options="metadata"' /etc/wsl.conf
 zone=$2
 locale_name=$3
 lc_all=$4
-cmp -s /etc/localtime "/usr/share/zoneinfo/$zone"
+[ "$(readlink -f /etc/localtime)" = "/usr/share/zoneinfo/$zone" ]
 grep -qx "LANG=$locale_name" /etc/locale.conf
 grep -qx "LC_ALL=$lc_all" /etc/locale.conf
-[ "$(grep -c "^$locale_name UTF-8$" /etc/locale.gen)" -eq 1 ]
+[ -f /etc/locale.gen ] && [ "$(grep -c "^$locale_name UTF-8$" /etc/locale.gen)" -eq 1 ]
 if [ -f /etc/debian_version ]; then
     grep -qx "LANG=$locale_name" /etc/default/locale
     grep -qx "LC_ALL=$lc_all" /etc/default/locale
 fi
 LC_ALL=$locale_name locale charmap | grep -qx UTF-8
 if [ "${locale_name#en_}" = "$locale_name" ]; then
-    [ "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1 ]
+    if [ -f /etc/locale.gen ]; then
+        [ "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1 ]
+    fi
     LC_ALL=en_US.UTF-8 locale charmap | grep -qx UTF-8
 fi
-env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    su - "$user" -c "test \"\$LANG\" = \"$locale_name\" && test \"\$LC_ALL\" = \"$lc_all\" && test \"\$(locale charmap)\" = UTF-8"
+# openSUSE's lang.sh removes LC_ALL when it equals LANG; the interactive shell probe checks LC_ALL there.
+if [ -f /etc/locale.gen ]; then
+    env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        su - "$user" -c "test \"\$LANG\" = \"$locale_name\" && test \"\$LC_ALL\" = \"$lc_all\" && test \"\$(locale charmap)\" = UTF-8"
+else
+    env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        su - "$user" -c "test \"\$LANG\" = \"$locale_name\" && test \"\$(locale charmap)\" = UTF-8"
+fi
 '@
     [IO.File]::WriteAllText('C:\shell-test\verify-wsl-system.sh', $systemProbe.Replace("`r",'')+"`n",
         [Text.UTF8Encoding]::new($false))

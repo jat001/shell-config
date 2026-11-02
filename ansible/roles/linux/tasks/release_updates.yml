@@ -16,7 +16,7 @@
     dest: "{{ shell_release_manifest }}"
     mode: "0644"
     content: "{{ {'root': shell_release_root, 'bin': shell_release_bin, 'cache': shell_release_cache,
-      'packages': shell_debian_fallback_releases,
+      'packages': shell_fallback_releases,
       'users': shell_accounts | default([ansible_facts.user_id])} | to_nice_json }}\n"
   register: shell_release_manifest_copy
 
@@ -34,10 +34,17 @@
 - name: Report release package initialization in preview
   ansible.builtin.debug:
     msg: The shared updater and manifest will be installed before release packages can be checked.
-  changed_when: shell_debian_fallback_releases | length > 0
+  changed_when: shell_fallback_releases | length > 0
   when:
     - ansible_check_mode
     - shell_release_updater_copy is changed or shell_release_manifest_copy is changed
+
+# A container image can omit systemd and therefore its unit directory.
+- name: Create systemd unit directory
+  ansible.builtin.file:
+    path: /etc/systemd/system
+    state: directory
+    mode: "0755"
 
 - name: Install release update units
   ansible.builtin.template:
@@ -50,8 +57,8 @@
 - name: Enable timer only when fallback packages remain
   ansible.builtin.systemd_service:
     name: shell-releases-update.timer
-    enabled: "{{ shell_debian_fallback_releases | length > 0 }}"
-    state: "{{ 'started' if shell_debian_fallback_releases | length > 0 else 'stopped' }}"
+    enabled: "{{ shell_fallback_releases | length > 0 }}"
+    state: "{{ 'started' if shell_fallback_releases | length > 0 else 'stopped' }}"
     daemon_reload: "{{ shell_release_units is changed }}"
   when:
     - ansible_facts.service_mgr == 'systemd'

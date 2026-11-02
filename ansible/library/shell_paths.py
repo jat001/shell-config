@@ -60,9 +60,15 @@ def evaluate(item):
             existing = None
         if existing != item['content']:
             # A file that still matches a distro skeleton is unmodified, so it can become the managed link.
+            # SUSE ships its samples readable only by their owner, so an unreadable default cannot match.
+            def matches_default(default):
+                try:
+                    return os.path.isfile(default) and read(default) == existing
+                except OSError:
+                    return False
+
             if existing is not None and current['type'] == 'file' and any(
-                os.path.isfile(default) and read(default) == existing
-                for default in item['defaults']
+                matches_default(default) for default in item['defaults']
             ):
                 return 'replace', None
             return None, 'Existing file contains other configuration'

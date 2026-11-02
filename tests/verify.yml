@@ -65,9 +65,8 @@
         for command in jq zsh fish nu pwsh oh-my-posh git wsl2-ssh-agent; do
             command -v "$command"
         done
-        for file in blesh/ble.sh zsh-antidote/antidote.zsh; do
-            test -f "/usr/share/$file"
-        done
+        test -f /usr/share/blesh/ble.sh || test -f /usr/local/share/blesh/ble.sh
+        test -f /usr/share/zsh-antidote/antidote.zsh || test -f /usr/local/share/antidote/antidote.zsh
       changed_when: false
 
     # bash -ic and the nushell --config pair actually execute the shared files. A parse-only check would miss a runtime error.
@@ -199,17 +198,24 @@
     - name: Check regional settings
       ansible.builtin.shell: |
         set -e
-        cmp -s /etc/localtime '/usr/share/zoneinfo/{{ shell_host_timezone_iana }}'
+        test "$(readlink -f /etc/localtime)" = '/usr/share/zoneinfo/{{ shell_host_timezone_iana }}'
         grep -qx 'LANG={{ shell_host_locale }}' /etc/locale.conf
         grep -qx 'LC_ALL={{ shell_host_lc_all }}' /etc/locale.conf
-        test "$(grep -c '^{{ shell_host_locale }} UTF-8$' /etc/locale.gen)" -eq 1
+        if [ -f /etc/locale.gen ]; then
+            test "$(grep -c '^{{ shell_host_locale }} UTF-8$' /etc/locale.gen)" -eq 1
+        fi
         if [ -f /etc/debian_version ]; then
             grep -qx 'LANG={{ shell_host_locale }}' /etc/default/locale
             grep -qx 'LC_ALL={{ shell_host_lc_all }}' /etc/default/locale
         fi
         test "$(locale charmap)" = UTF-8
-        env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-            su - shell -c 'test "$LANG" = "{{ shell_host_locale }}" && test "$LC_ALL" = "{{ shell_host_lc_all }}" && test "$(locale charmap)" = UTF-8'
+        if [ -f /etc/locale.gen ]; then
+            env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+                su - shell -c 'test "$LANG" = "{{ shell_host_locale }}" && test "$LC_ALL" = "{{ shell_host_lc_all }}" && test "$(locale charmap)" = UTF-8'
+        else
+            env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+                su - shell -c 'test "$LANG" = "{{ shell_host_locale }}" && test "$(locale charmap)" = UTF-8'
+        fi
       environment:
         LC_ALL: "{{ shell_host_locale }}"
       changed_when: false
@@ -217,7 +223,9 @@
     - name: Check fallback English locale
       ansible.builtin.shell: |
         set -e
-        test "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1
+        if [ -f /etc/locale.gen ]; then
+            test "$(grep -c '^en_US.UTF-8 UTF-8$' /etc/locale.gen)" -eq 1
+        fi
         LC_ALL=en_US.UTF-8 locale charmap | grep -qx UTF-8
       when: shell_host_locale is not match('^en_')
       changed_when: false

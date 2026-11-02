@@ -238,7 +238,9 @@ function Update-Jobs {
 public static extern int RegFlushKey(System.IntPtr hKey);
 '@
                             }
-                            $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SOFTWARE', $true)
+                            # Flushing HKLM\SOFTWARE does not persist the Winlogon subkey values before the forced power-off.
+                            $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey(
+                                'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon', $true)
                             try {
                                 $code = [ShellTest.RegistryFlush]::RegFlushKey($key.Handle.DangerousGetHandle())
                                 if ($code -ne 0) { throw [ComponentModel.Win32Exception]::new($code) }

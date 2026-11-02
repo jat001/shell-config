@@ -25,7 +25,11 @@ fi
 [ -n "${BASH_VERSION-}" ] || return
 [[ $- == *i* ]] || return
 
+# openSUSE's /etc/profile sources ~/.bashrc for login shells and then bash reads ~/.bash_profile,
+# so this file runs twice; a second ble.sh source would report "[ble: reload]".
+[ -n "${_shell_bash_loaded-}" ] && return 0
 source "$HOME/.config/shell/common.sh" || return
+_shell_bash_loaded=1
 
 if ! declare -F _init_completion >/dev/null; then
     _shell_bash_completion="$(_shell_find_path -f bash-completion/bash_completion)"

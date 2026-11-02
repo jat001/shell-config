@@ -24,20 +24,20 @@
 # A name that apt does not have becomes a GitHub release instead. ble.sh and antidote may instead use the archive fallback.
 - name: Resolve available Debian packages
   ansible.builtin.set_fact:
-    shell_apt_available: "{{ shell_apt_probe.stdout | from_json }}"
-    shell_debian_fallback_releases: "{{ shell_releases
+    shell_package_available: "{{ shell_apt_probe.stdout | from_json }}"
+    shell_fallback_releases: "{{ shell_releases
       | rejectattr('name', 'in', shell_apt_probe.stdout | from_json) | list }}"
 
 - name: Require nonoptional Debian packages
   ansible.builtin.assert:
-    that: shell_debian_apt_packages | difference(shell_apt_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
-    fail_msg: "Packages unavailable: {{ shell_debian_apt_packages | difference(shell_apt_available) }}"
+    that: shell_debian_apt_packages | difference(shell_package_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
+    fail_msg: "Packages unavailable: {{ shell_debian_apt_packages | difference(shell_package_available) }}"
     quiet: true
   when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
 - name: Install or update Debian packages
   ansible.builtin.apt:
-    name: "{{ shell_apt_available }}"
+    name: "{{ shell_package_available }}"
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
     update_cache: true
     cache_valid_time: 3600
@@ -50,7 +50,7 @@
 
 - name: Select releases that still need the archive PowerShell runtime
   ansible.builtin.set_fact:
-    shell_powershell_archive: "{{ shell_debian_fallback_releases | selectattr('name', 'equalto', 'powershell') | list | length > 0 }}"
+    shell_powershell_archive: "{{ shell_fallback_releases | selectattr('name', 'equalto', 'powershell') | list | length > 0 }}"
 
 - name: Find ICU runtime package for archive installations
   ansible.builtin.shell: >-
@@ -87,7 +87,7 @@
                 ;;
         esac
     fi
-  loop: "{{ shell_releases | selectattr('name', 'in', shell_apt_available) | list }}"
+  loop: "{{ shell_releases | selectattr('name', 'in', shell_package_available) | list }}"
   loop_control:
     label: "{{ item.name }}"
   register: shell_apt_migration
@@ -99,4 +99,4 @@
   ansible.builtin.import_tasks: release_updates.yml
 
 - name: Install unavailable Debian shell dependencies
-  ansible.builtin.import_tasks: debian-fallbacks.yml
+  ansible.builtin.import_tasks: fallbacks.yml

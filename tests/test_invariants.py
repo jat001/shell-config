@@ -56,6 +56,30 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("full = @('init', 'full', 'full', 'update')", hyperv)
         self.assertIn('-CacheDirectory $CacheDirectory', runner)
         self.assertEqual(runner.count('CacheDirectory = $CacheDirectory'), 3)
+
+    def test_bash_entry_ignores_repeated_sourcing(self):
+        entry = (root / 'common.bash').read_text(encoding='utf-8')
+        self.assertIn('[ -n "${_shell_bash_loaded-}" ] && return 0', entry)
+
+    def test_hyperv_cold_boot_flushes_winlogon_key(self):
+        actions = (root / 'tests/hyperv_actions.ps1').read_text(encoding='utf-8')
+        self.assertIn('SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon', actions)
+
+    def test_hyperv_msys2_probe_checks_lc_all_in_interactive_shells(self):
+        verify = (root / 'tests/hyperv_verify.ps1').read_text(encoding='utf-8')
+        self.assertIn("bash -ic 'alias code && command -v oh-my-posh && test", verify)
+
+
+        bootstrap = (root / 'ansible/bootstrap/wsl.sh').read_text(encoding='utf-8')
+        self.assertIn('zypper --non-interactive install --no-recommends', bootstrap)
+        self.assertIn("printf '%s\\n' \\$\\$ > $directory/sshd.pid", bootstrap)
+        user = (root / 'ansible/roles/linux/tasks/user.yml').read_text(encoding='utf-8')
+        self.assertIn("create_home: \"{{ ansible_facts.os_family != 'Suse' }}\"", user)
+        self.assertIn("Create SUSE WSL user home", user)
+        regional = (root / 'ansible/roles/linux/tasks/regional.yml').read_text(encoding='utf-8')
+        self.assertIn("when: ansible_facts.os_family != 'Suse'", regional)
+        self.assertIn("Require host locale support on SUSE", regional)
+
     def test_debian_testing_is_test_only_and_sandbox_cache_stays_in_guest(self):
         installer = (root / 'install.ps1').read_text(encoding='utf-8')
         bootstrap = (root / 'ansible/bootstrap/wsl.sh').read_text(encoding='utf-8')

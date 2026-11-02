@@ -47,7 +47,18 @@
     name: "{{ shell_user }}"
     uid: "{{ shell_user_uid }}"
     group: "{{ shell_user }}"
-    create_home: true
+    create_home: "{{ ansible_facts.os_family != 'Suse' }}"
+
+# openSUSE's useradd also copies /usr/etc/skel, whose samples are 0640 root:root.
+# The managed entries could not compare against them as the new account, so the home is created here instead.
+- name: Create SUSE WSL user home
+  ansible.builtin.file:
+    path: "/home/{{ shell_user }}"
+    state: directory
+    owner: "{{ shell_user }}"
+    group: "{{ shell_user }}"
+    mode: "0700"
+  when: ansible_facts.os_family == 'Suse'
 
 - name: Allow WSL user to use sudo
   ansible.builtin.copy:

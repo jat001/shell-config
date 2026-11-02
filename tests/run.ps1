@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('arch', 'debian', 'sandbox')]
-    [string[]]$Target = @('arch', 'debian', 'sandbox'),
+    [ValidateSet('arch', 'debian', 'suse', 'sandbox')]
+    [string[]]$Target = @('arch', 'debian', 'suse', 'sandbox'),
     [ValidateSet('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')]
     [string[]]$Step,
     [ValidateSet('fast', 'standard', 'full')]
@@ -27,7 +27,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repository = Split-Path $PSScriptRoot
 $installer = Join-Path $repository 'install.ps1'
 $network = 'shell-test'
-$images = @{ arch = 'archlinux:latest'; debian = 'debian:testing' }
+$images = @{ arch = 'archlinux:latest'; debian = 'debian:testing'; suse = 'opensuse/tumbleweed:latest' }
 $utf8 = [Text.UTF8Encoding]::new($false)
 $linux = @($Target | Where-Object { $_ -ne 'sandbox' })
 
@@ -59,6 +59,7 @@ $null = [IO.Directory]::CreateDirectory((Join-Path $cache 'scoop'))
 $volumes = @{
     arch = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/shell-aur')
     debian = @('-v', 'shell-test-apt:/var/cache/apt/archives', '-v', 'shell-test-releases:/var/cache/shell-releases')
+    suse = @('-v', 'shell-test-zypp:/var/cache/zypp', '-v', 'shell-test-suse-releases:/var/cache/shell-releases')
 }
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -103,7 +104,7 @@ function Get-TestNetworkSubnet {
 
 if ((Get-TestNetworkSubnet $network) -ne $networkSubnet) {
     $ErrorActionPreference = 'Continue'
-    foreach ($name in @('arch', 'debian')) { & wslc.exe remove -f "shell-test-$name" *> $null }
+    foreach ($name in @('arch', 'debian', 'suse')) { & wslc.exe remove -f "shell-test-$name" *> $null }
     & wslc.exe network remove $network *> $null
     $ErrorActionPreference = 'Stop'
     Invoke-Native wslc.exe @(
@@ -151,8 +152,8 @@ $linuxSetup = {
     $alive = 'pid=$(cat /etc/shell-ansible/sshd.pid 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid"'
     & wslc.exe exec $container sh -c $alive *> $null
     if ($LASTEXITCODE -ne 0) {
-        Invoke-Logged exec $container setsid -f $sshd.Trim() -D -E /var/log/shell-ansible-sshd.log `
-            -f /etc/shell-ansible/sshd_config
+        Invoke-Logged exec $container setsid -f sh -c `
+            '/etc/shell-ansible/start-sshd.sh >> /var/log/shell-ansible-sshd.log 2>&1'
         Invoke-Logged exec $container sh -c "for i in 1 2 3 4 5 6 7 8 9 10; do $alive && exit 0; sleep 1; done; exit 1"
     }
 }

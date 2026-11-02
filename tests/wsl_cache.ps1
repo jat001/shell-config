@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$CacheDirectory,
-    [string[]]$Distribution = @('Debian', 'archlinux'),
+    [string[]]$Distribution = @('Debian', 'archlinux', 'openSUSE-Tumbleweed'),
     [string]$Repository
 )
 
