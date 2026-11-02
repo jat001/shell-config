@@ -4,93 +4,86 @@ import re
 
 
 def _join(*parts):
-    return '/'.join(part.rstrip('/') for part in parts if part)
+    return "/".join(part.rstrip("/") for part in parts if part)
 
 
 def shell_windows_items(entries, home, repository, fish, plugins, clink):
-    items = [
-        {'path': _join(home, entry['path']), 'state': 'file', 'content': entry['content']}
-        for entry in entries
-    ]
+    items = [{"path": _join(home, entry["path"]), "state": "file", "content": entry["content"]} for entry in entries]
+    items += [{"path": _join(home, ".config/fish", name), "state": "directory"} for name in fish]
     items += [
-        {'path': _join(home, '.config/fish', name), 'state': 'directory'}
-        for name in fish
-    ]
-    items += [
-        {'path': _join(home, '.config/shell'), 'state': 'link', 'src': repository},
+        {"path": _join(home, ".config/shell"), "state": "link", "src": repository},
         {
-            'path': _join(home, '.config/oh-my-posh'),
-            'state': 'link',
-            'src': _join(repository, 'oh-my-posh'),
+            "path": _join(home, ".config/oh-my-posh"),
+            "state": "link",
+            "src": _join(repository, "oh-my-posh"),
         },
         {
-            'path': _join(home, '.zsh_plugins.txt'),
-            'state': 'link',
-            'src': _join(repository, 'zsh_plugins.txt'),
-            'type': 'file',
-            'content': plugins,
+            "path": _join(home, ".zsh_plugins.txt"),
+            "state": "link",
+            "src": _join(repository, "zsh_plugins.txt"),
+            "type": "file",
+            "content": plugins,
         },
         {
-            'path': _join(home, 'AppData/Local/clink/clink_settings'),
-            'state': 'link',
-            'src': _join(repository, 'common.clink_settings'),
-            'type': 'file',
-            'content': clink,
+            "path": _join(home, "AppData/Local/clink/clink_settings"),
+            "state": "link",
+            "src": _join(repository, "common.clink_settings"),
+            "type": "file",
+            "content": clink,
         },
     ]
     return items
 
 
-def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys=False, skel=None,
-                     nushell_defaults=''):
+def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys=False, skel=None, nushell_defaults=""):
     items = [
-        {'path': _join(home, '.config/shell'), 'state': 'link', 'src': repository},
+        {"path": _join(home, ".config/shell"), "state": "link", "src": repository},
         {
-            'path': _join(home, '.config/oh-my-posh'),
-            'state': 'link',
-            'src': _join(repository, 'oh-my-posh'),
+            "path": _join(home, ".config/oh-my-posh"),
+            "state": "link",
+            "src": _join(repository, "oh-my-posh"),
         },
         {
-            'path': _join(home, '.zsh_plugins.txt'),
-            'state': 'link',
-            'src': _join(repository, 'zsh_plugins.txt'),
-            'type': 'file',
-            'content': plugins,
+            "path": _join(home, ".zsh_plugins.txt"),
+            "state": "link",
+            "src": _join(repository, "zsh_plugins.txt"),
+            "type": "file",
+            "content": plugins,
         },
     ]
     items += [
         {
-            'path': _join(home, '.config/fish', name),
-            'state': 'link',
-            'src': _join(source_home, '.config/fish', name),
+            "path": _join(home, ".config/fish", name),
+            "state": "link",
+            "src": _join(source_home, ".config/fish", name),
         }
         for name in fish
     ]
 
     for entry in entries:
-        unix = entry.get('unix', entry['path'])
-        if unix is False or (msys and entry.get('msys') is False):
+        unix = entry.get("unix", entry["path"])
+        if unix is False or (msys and entry.get("msys") is False):
             continue
         item = {
-            'path': _join(home, unix),
-            'state': 'link',
-            'src': _join(source_home, entry['path']),
-            'type': 'file',
-            'content': entry['content'],
+            "path": _join(home, unix),
+            "state": "link",
+            "src": _join(source_home, entry["path"]),
+            "type": "file",
+            "content": entry["content"],
         }
         # Only a top-level name exists in /etc/skel or base-files. The Debian Nushell package
         # writes a scaffold under .config/nushell; those two files are defaults only when a
         # capture from this nu was supplied. Any other content still conflicts.
-        if nushell_defaults and unix in ('.config/nushell/env.nu', '.config/nushell/config.nu'):
-            item['defaults'] = [_join(nushell_defaults, unix.rsplit('/', 1)[-1])]
-        elif '/' not in unix:
+        if nushell_defaults and unix in (".config/nushell/env.nu", ".config/nushell/config.nu"):
+            item["defaults"] = [_join(nushell_defaults, unix.rsplit("/", 1)[-1])]
+        elif "/" not in unix:
             if msys:
-                item['defaults'] = [_join(skel, unix)] if skel else []
+                item["defaults"] = [_join(skel, unix)] if skel else []
             else:
-                item['defaults'] = [
-                    _join('/etc/skel', unix),
-                    _join('/usr/etc/skel', unix),
-                    _join('/usr/share/base-files', 'dot' + unix),
+                item["defaults"] = [
+                    _join("/etc/skel", unix),
+                    _join("/usr/etc/skel", unix),
+                    _join("/usr/share/base-files", "dot" + unix),
                 ]
         items.append(item)
 
@@ -100,54 +93,53 @@ def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys
 def shell_units(directory, only=None, exclude=()):
     units = []
     for name in sorted(os.listdir(directory)):
-        if not re.fullmatch(r'[^.].*\.(service|socket|timer|path|target)', name):
+        if not re.fullmatch(r"[^.].*\.(service|socket|timer|path|target)", name):
             continue
         if (only and name not in only) or name in exclude:
             continue
-        with open(os.path.join(directory, name), encoding='utf-8') as handle:
-            content = handle.read().replace('\r', '').rstrip('\n')
-        enable = bool(re.search(r'(?m)^\[Install\]\s*$', content)) and not os.path.splitext(name)[0].endswith('@')
-        units.append({
-            'name': name,
-            'content': content,
-            'enable': enable,
-            'wanted_by': [
-                target
-                for line in re.findall(r'(?m)^WantedBy=(.*)$', content)
-                for target in line.split()
-            ] if enable else [],
-        })
+        with open(os.path.join(directory, name), encoding="utf-8") as handle:
+            content = handle.read().replace("\r", "").rstrip("\n")
+        enable = bool(re.search(r"(?m)^\[Install\]\s*$", content)) and not os.path.splitext(name)[0].endswith("@")
+        units.append(
+            {
+                "name": name,
+                "content": content,
+                "enable": enable,
+                "wanted_by": [target for line in re.findall(r"(?m)^WantedBy=(.*)$", content) for target in line.split()]
+                if enable
+                else [],
+            }
+        )
     return units
 
 
 def shell_unit_items(units, home, repository):
     items = [
         {
-            'path': _join(home, '.config/systemd/user', unit['name']),
-            'state': 'link',
-            'src': _join(repository, 'systemd', unit['name']),
-            'type': 'file',
-            'content': unit['content'],
+            "path": _join(home, ".config/systemd/user", unit["name"]),
+            "state": "link",
+            "src": _join(repository, "systemd", unit["name"]),
+            "type": "file",
+            "content": unit["content"],
         }
         for unit in units
     ]
     # The same links systemctl --user enable creates, so units are enabled without a running user manager.
     items += [
         {
-            'path': _join(home, '.config/systemd/user', target + '.wants', unit['name']),
-            'state': 'link',
-            'src': _join(repository, 'systemd', unit['name']),
+            "path": _join(home, ".config/systemd/user", target + ".wants", unit["name"]),
+            "state": "link",
+            "src": _join(repository, "systemd", unit["name"]),
         }
         for unit in units
-        for target in unit['wanted_by']
+        for target in unit["wanted_by"]
     ]
     return items
 
 
 def shell_link_items(links):
     return [
-        {'path': path, 'state': 'link', 'src': target, 'type': 'external'}
-        for path, target in sorted(links.items())
+        {"path": path, "state": "link", "src": target, "type": "external"} for path, target in sorted(links.items())
     ]
 
 
@@ -164,14 +156,14 @@ def _strip_jsonc(text):
         if char == '"':
             end = index + 1
             while end < len(text) and text[end] != '"':
-                end += 2 if text[end] == '\\' else 1
-            output.append(text[index:end + 1])
+                end += 2 if text[end] == "\\" else 1
+            output.append(text[index : end + 1])
             index = end + 1
-        elif text.startswith('//', index):
-            end = text.find('\n', index)
+        elif text.startswith("//", index):
+            end = text.find("\n", index)
             index = len(text) if end < 0 else end
-        elif text.startswith('/*', index):
-            end = text.find('*/', index + 2)
+        elif text.startswith("/*", index):
+            end = text.find("*/", index + 2)
             index = len(text) if end < 0 else end + 2
         else:
             output.append(char)
@@ -179,7 +171,7 @@ def _strip_jsonc(text):
     return re.sub(
         r'"(?:\\.|[^"\\])*"|,(\s*[}\]])',
         lambda match: match.group(1) if match.group(1) is not None else match.group(0),
-        ''.join(output),
+        "".join(output),
     )
 
 
@@ -196,20 +188,22 @@ def _expand(value, variables):
                 pass
         return items
     if isinstance(value, str):
+
         def replace(match):
             if not variables.get(match.group(1)):
                 raise _Undefined(match.group(1))
             return variables[match.group(1)]
-        return re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', replace, value)
+
+        return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", replace, value)
     return value
 
 
 _TERMINAL_KEYS = {
-    ('actions',): 'id',
-    ('keybindings',): 'id',
-    ('schemes',): 'name',
-    ('themes',): 'name',
-    ('profiles', 'list'): 'guid',
+    ("actions",): "id",
+    ("keybindings",): "id",
+    ("schemes",): "name",
+    ("themes",): "name",
+    ("profiles", "list"): "guid",
 }
 
 
@@ -222,12 +216,10 @@ def _merge(existing, managed, path=()):
     key = _TERMINAL_KEYS.get(path)
     if key and isinstance(existing, list) and isinstance(managed, list):
         merged = list(existing)
-        positions = {
-            item[key]: index for index, item in enumerate(merged) if isinstance(item, dict) and key in item
-        }
+        positions = {item[key]: index for index, item in enumerate(merged) if isinstance(item, dict) and key in item}
         for item in managed:
             if item.get(key) in positions:
-                merged[positions[item[key]]] = _merge(merged[positions[item[key]]], item, path + ('*',))
+                merged[positions[item[key]]] = _merge(merged[positions[item[key]]], item, path + ("*",))
             else:
                 merged.append(item)
         return merged
@@ -240,22 +232,22 @@ def shell_terminal_settings(existing, managed, variables):
     Entries of managed lists that reference an undefined ${NAME} are dropped; list entries are matched by
     their identity key, and everything not in the managed settings is kept.
     """
-    existing = existing.lstrip('\ufeff')
+    existing = existing.lstrip("\ufeff")
     current = json.loads(_strip_jsonc(existing)) if existing.strip() else {}
     merged = _merge(current, _expand(managed, variables))
     return {
-        'changed': merged != current,
-        'content': json.dumps(merged, indent=4, ensure_ascii=False) + '\n',
+        "changed": merged != current,
+        "content": json.dumps(merged, indent=4, ensure_ascii=False) + "\n",
     }
 
 
 class FilterModule:
     def filters(self):
         return {
-            'shell_terminal_settings': shell_terminal_settings,
-            'shell_windows_items': shell_windows_items,
-            'shell_unix_items': shell_unix_items,
-            'shell_link_items': shell_link_items,
-            'shell_units': shell_units,
-            'shell_unit_items': shell_unit_items,
+            "shell_terminal_settings": shell_terminal_settings,
+            "shell_windows_items": shell_windows_items,
+            "shell_unix_items": shell_unix_items,
+            "shell_link_items": shell_link_items,
+            "shell_units": shell_units,
+            "shell_unit_items": shell_unit_items,
         }

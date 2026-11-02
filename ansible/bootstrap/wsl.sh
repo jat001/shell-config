@@ -32,12 +32,12 @@ if [ "${SHELL_DEBIAN_TESTING:-0}" = 1 ] && command -v apt-get >/dev/null 2>&1 &&
             [ -f "$file" ] || continue
             case "$file" in */shell-*) continue ;; esac
             if [ "$file" != "$source" ] && {
-                [ "$file" = /etc/apt/sources.list ] || grep -Eq 'deb\.debian\.org|security\.debian\.org' "$file";
+                [ "$file" = /etc/apt/sources.list ] || grep -Eq 'deb\.debian\.org|security\.debian\.org' "$file"
             }; then
-                : > "$file"
+                : >"$file"
             fi
         done
-        cat > "$source.tmp" <<'EOF'
+        cat >"$source.tmp" <<'EOF'
 Types: deb
 URIs: http://deb.debian.org/debian
 Suites: testing testing-updates
@@ -86,10 +86,10 @@ fi
 mkdir -p -m 700 "$directory" /run/sshd
 [ -f "$directory/host_ed25519" ] ||
     ssh-keygen -q -t ed25519 -N '' -C shell-ansible -f "$directory/host_ed25519"
-printf '%s\n' "$key" > "$directory/authorized_keys"
+printf '%s\n' "$key" >"$directory/authorized_keys"
 chmod 600 "$directory/authorized_keys"
 
-cat > "$directory/sshd_config" <<EOF
+cat >"$directory/sshd_config" <<EOF
 Port $port
 ListenAddress $address
 HostKey $directory/host_ed25519
@@ -117,18 +117,18 @@ if [ -n "$powershell" ]; then
         printf 'WSLENV=${WSLENV:+$WSLENV:}PSModulePath\n'
         printf 'export PSModulePath WSLENV\n'
         printf 'exec %s "$@"\n' "'$powershell'"
-    } > "$directory/bin/PowerShell"
+    } >"$directory/bin/PowerShell"
     chmod 755 "$directory/bin/PowerShell"
     ln -sf PowerShell "$directory/bin/powershell"
     printf 'SetEnv PATH=%s/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n' \
-        "$directory" >> "$directory/sshd_config"
+        "$directory" >>"$directory/sshd_config"
 fi
 
 sshd=$(command -v sshd || printf /usr/sbin/sshd)
 "$sshd" -t -f "$directory/sshd_config"
 # The next Windows process is a new distribution instance, so /run may already be gone.
 # OpenSSH 10.6 on openSUSE does not write PidFile with -D; the script records the process it execs instead.
-cat > "$directory/start-sshd.sh" <<EOF
+cat >"$directory/start-sshd.sh" <<EOF
 #!/bin/sh
 mkdir -p -m 700 /run/sshd
 printf '%s\n' \$\$ > $directory/sshd.pid

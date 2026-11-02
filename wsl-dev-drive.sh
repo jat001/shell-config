@@ -32,7 +32,7 @@ check_mount() {
     if [ -z "$uuid" ]; then
         uuid=$actual_uuid
         mkdir -p "$(dirname -- "$state")"
-        printf '%s\n' "$uuid" > "$state"
+        printf '%s\n' "$uuid" >"$state"
         printf 'Recorded development drive UUID in %s\n' "$state"
     fi
     printf 'Development drive ready: %s (%s)\n' "$mountpoint" "$uuid"

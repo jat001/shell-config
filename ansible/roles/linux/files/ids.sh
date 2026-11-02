@@ -11,15 +11,15 @@ shift 4
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-: > "$work/groups"
-: > "$work/users"
+: >"$work/groups"
+: >"$work/users"
 names=" "
 
 manage() {
     names="$names$1 "
-    printf '%s %s\n' "$1" "$3" >> "$work/groups"
+    printf '%s %s\n' "$1" "$3" >>"$work/groups"
     if [ "$1" = "$user" ] || getent passwd "$1" >/dev/null; then
-        printf '%s %s\n' "$1" "$2" >> "$work/users"
+        printf '%s %s\n' "$1" "$2" >>"$work/users"
     fi
 }
 
@@ -36,19 +36,19 @@ check_free() {
         case "$names" in *" $holder "*) continue ;; esac
         printf 'conflict %s %s %s %s\n' "$1" "$id" "$holder" "$name"
         conflict=1
-    done < "$2"
+    done <"$2"
 }
 check_free group "$work/groups"
 check_free passwd "$work/users"
 [ "$conflict" -eq 0 ] || exit 3
 
-: > "$work/changes"
+: >"$work/changes"
 record_change() {
     while read -r name id; do
         entry=$(getent "$1" "$name") || continue
         current=$(printf '%s\n' "$entry" | cut -d: -f3)
-        [ "$current" = "$id" ] || printf '%s %s %s %s\n' "$1" "$name" "$current" "$id" >> "$work/changes"
-    done < "$2"
+        [ "$current" = "$id" ] || printf '%s %s %s %s\n' "$1" "$name" "$current" "$id" >>"$work/changes"
+    done <"$2"
 }
 record_change group "$work/groups"
 record_change passwd "$work/users"
@@ -63,8 +63,8 @@ while read -r kind name old new; do
     index=$((index + 1))
     test=-gid
     [ "$kind" = group ] || test=-uid
-    find / /run /tmp -xdev "$test" "$old" -print0 2>/dev/null > "$work/files.$index" || true
-done < "$work/changes"
+    find / /run /tmp -xdev "$test" "$old" -print0 2>/dev/null >"$work/files.$index" || true
+done <"$work/changes"
 
 free_id() {
     # A temporary id breaks a swap. Moving straight to the target id would collide with the account that still holds it.
@@ -77,17 +77,17 @@ renumber() {
 }
 while read -r kind name old new; do
     renumber "$kind" "$name" "$(free_id "$kind")"
-done < "$work/changes"
+done <"$work/changes"
 while read -r kind name old new; do
     renumber "$kind" "$name" "$new"
-done < "$work/changes"
+done <"$work/changes"
 
 index=0
 while read -r kind name old new; do
     index=$((index + 1))
     if [ "$kind" = group ]; then
-        xargs -0 -r chgrp -h "$name" < "$work/files.$index"
+        xargs -0 -r chgrp -h "$name" <"$work/files.$index"
     else
-        xargs -0 -r chown -h "$name" < "$work/files.$index"
+        xargs -0 -r chown -h "$name" <"$work/files.$index"
     fi
-done < "$work/changes"
+done <"$work/changes"

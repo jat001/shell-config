@@ -27,7 +27,10 @@ if [ "$_shell_environment" = wsl ]; then
     if [ -z "$_shell_lc_all" ]; then
         for _shell_locale_file in /etc/locale.conf /etc/default/locale; do
             [ -r "$_shell_locale_file" ] || continue
-            _shell_lc_all="$(. "$_shell_locale_file"; printf '%s' "${LC_ALL-}")"
+            _shell_lc_all="$(
+                . "$_shell_locale_file"
+                printf '%s' "${LC_ALL-}"
+            )"
             [ -n "$_shell_lc_all" ] && break
         done
         unset _shell_locale_file

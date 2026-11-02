@@ -19,12 +19,18 @@ fingerprint() {
     fi
 }
 
-before=$(fingerprint "$home/.config/nushell/env.nu"; fingerprint "$home/.config/nushell/config.nu")
+before=$(
+    fingerprint "$home/.config/nushell/env.nu"
+    fingerprint "$home/.config/nushell/config.nu"
+)
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p -- "$work/.config/nushell"
 HOME=$work XDG_CONFIG_HOME=$work/.config nu -c 'config reset -w' || true
-after=$(fingerprint "$home/.config/nushell/env.nu"; fingerprint "$home/.config/nushell/config.nu")
+after=$(
+    fingerprint "$home/.config/nushell/env.nu"
+    fingerprint "$home/.config/nushell/config.nu"
+)
 if [ "$before" != "$after" ]; then
     printf 'config reset changed the account home\n' >&2
     exit 1
