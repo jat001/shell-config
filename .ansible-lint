@@ -1,0 +1,16 @@
+profile: min
+
+# The repository already uses these patterns across roles:
+# - variables are prefixed with shell_ instead of the role name
+# - command tasks report their own changed state or run every time
+# - strategy: free is required so Windows and Linux hosts run together
+# - wsl_conf builds its expression from a native Jinja list, which the linter cannot render
+skip_list:
+  - var-naming[no-role-prefix]
+  - no-handler
+  - no-changed-when
+  - risky-shell-pipe
+  - run-once[play]
+  - latest[git]
+  - risky-file-permissions
+  - jinja[invalid]

@@ -62,7 +62,7 @@ load-env $shared.environment
 # The init script names this system's oh-my-posh binary, so it is kept with the configuration rather than in
 # the data directory, which WSL distributions share.
 (
-    ^oh-my-posh init nu --print --config ($env.HOME | path join '.config' 'oh-my-posh' 'config.omp.json')
+    ^oh-my-posh init nu --print --config ($env.HOME | path join '.config' 'oh-my-posh' 'config.omp.jsonc')
     | str replace --all "\r\n" "\n"
     | save --force ($nu.default-config-dir | path join 'oh-my-posh.nu')
 )

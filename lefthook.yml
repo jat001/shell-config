@@ -1,0 +1,27 @@
+pre-commit:
+  parallel: false
+  jobs:
+    - name: powershell
+      glob: "*.ps1"
+      run: pwsh -NoProfile -File scripts/lint-powershell.ps1 {staged_files}
+
+    - name: python
+      glob: "*.py"
+      run: ruff format {staged_files} && ruff check --fix {staged_files} && ruff check {staged_files}
+      stage_fixed: true
+
+    - name: shell
+      glob: "*.{sh,bash}"
+      run: shfmt -w -i 4 -ci {staged_files} && shellcheck -x {staged_files}
+      stage_fixed: true
+
+    - name: yaml
+      glob: "*.{yml,yaml}"
+      run: yamllint -f parsable {staged_files}
+
+    - name: json
+      glob: "*.{json,jsonc}"
+      run: pwsh -NoProfile -File scripts/check-json.ps1 {staged_files}
+
+    - name: encoding
+      run: pwsh -NoProfile -File scripts/check-encoding.ps1 {staged_files}

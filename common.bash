@@ -60,7 +60,7 @@ fi
 
 eval "$(
     oh-my-posh init bash \
-        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.json"
+        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.jsonc"
 )"
 
 shopt -s histappend

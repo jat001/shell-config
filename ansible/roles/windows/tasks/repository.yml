@@ -24,10 +24,10 @@
     - common.jq
     - zsh_plugins.txt
     - common.clink_settings
-    - oh-my-posh/config.omp.json
-    - oh-my-posh/shell-integration.omp.json
-    - oh-my-posh/msys2.omp.json
-    - oh-my-posh/msys2-fish.omp.json
+    - oh-my-posh/config.omp.jsonc
+    - oh-my-posh/shell-integration.omp.jsonc
+    - oh-my-posh/msys2.omp.jsonc
+    - oh-my-posh/msys2-fish.omp.jsonc
   register: shell_repository_files
   when: not ansible_check_mode or shell_repository_state.stat.exists
 

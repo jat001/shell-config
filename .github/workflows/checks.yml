@@ -1,0 +1,51 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "ruff==0.17.3" "yamllint==1.38.0" "ansible-lint==26.10.1"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install shell tools
+        run: |
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz" |
+            tar -xJ -C "$RUNNER_TEMP"
+          sudo install -m 755 "$RUNNER_TEMP/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+          curl -fsSL "https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64" -o "$RUNNER_TEMP/shfmt"
+          sudo install -m 755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
+
+      - name: Install PSScriptAnalyzer
+        run: |
+          pwsh -NoProfile -Command "Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force"
+
+      - name: Install Ansible collections
+        working-directory: ansible
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Check
+        run: |
+          ruff check $(git ls-files '*.py')
+          ruff format --check $(git ls-files '*.py')
+          shellcheck -x $(git ls-files '*.sh' '*.bash')
+          shfmt -d -i 4 -ci -ln bash $(git ls-files '*.sh' '*.bash')
+          yamllint -f parsable $(git ls-files '*.yml' '*.yaml')
+          pwsh -NoProfile -File scripts/lint-powershell.ps1
+          pwsh -NoProfile -File scripts/check-json.ps1
+          pwsh -NoProfile -File scripts/check-encoding.ps1 $(git ls-files)
+
+      - name: Ansible lint
+        working-directory: ansible
+        run: ansible-lint site.yml ../tests/prepare.yml ../tests/verify.yml

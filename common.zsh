@@ -129,7 +129,7 @@ bindkey '^[[3~' delete-char
 
 eval "$(
     oh-my-posh init zsh \
-        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.json"
+        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.jsonc"
 )"
 
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)

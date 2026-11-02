@@ -143,7 +143,7 @@ if status is-interactive
     end
 
     oh-my-posh init fish \
-        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.json" |
+        --config "$HOME/.config/oh-my-posh/$_shell_theme.omp.jsonc" |
         source
 end
 

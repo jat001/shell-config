@@ -1,0 +1,16 @@
+extends: default
+
+rules:
+  # Ansible tasks and inventories legitimately contain long lines.
+  line-length: disable
+  # Playbooks are not standalone documents and never start with "---".
+  document-start: disable
+  # These match the style ansible-lint expects from a project yamllint configuration.
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

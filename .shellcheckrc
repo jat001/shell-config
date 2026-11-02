@@ -1,0 +1,6 @@
+# Profiles source each other through paths assembled at runtime.
+external-sources=true
+disable=SC1090,SC1091
+
+# mkdir -p with -m only applies the mode to the deepest directory, which is intended here.
+disable=SC2174

@@ -63,7 +63,7 @@ if ($_shared_platform -eq 'windows') {
 }
 
 oh-my-posh init pwsh `
-    --config "$HOME/.config/oh-my-posh/shell-integration.omp.json" |
+    --config "$HOME/.config/oh-my-posh/shell-integration.omp.jsonc" |
     Invoke-Expression
 
 # PowerShell computes PSModulePath at startup, before this profile sets XDG_DATA_HOME.

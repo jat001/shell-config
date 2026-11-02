@@ -79,3 +79,24 @@ MSYS2 不放 PowerShell 和 Nushell 的入口。
 WSL 共享开发盘没挂上时，数据目录留在本机。挂上之后才用盘上的目录。
 Debian 装 Nushell 时会写下 `env.nu` 和 `config.nu`。
 和这台机器上的 `nu` 生成的默认文件一样，`full` 会换成入口。改过的文件让这一组停下。
+
+## 开发检查
+
+克隆后在新机器上跑一次：
+
+```powershell
+pwsh -NoProfile -File scripts/setup-dev.ps1
+```
+
+脚本用 Scoop 安装 lefthook、shellcheck、shfmt、ruff 和 jq，用 uv 或 pipx 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer，然后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
+
+- PowerShell：PSScriptAnalyzer，规则见 `.psscriptanalyzer.psd1`
+- Python：Ruff 自动格式化并重新暂存，再做静态检查
+- Shell：shfmt 自动格式化并重新暂存，shellcheck 只检查
+- YAML：yamllint
+- JSON：`.json` 按严格 JSON 校验；带注释的文件必须用 `.jsonc` 扩展名
+- 编码：UTF-8 无 BOM。LF 由 `.gitattributes` 保证
+
+只跑本地钩子：`lefthook run pre-commit --all-files`。跳过某次提交的检查：`git commit --no-verify`。
+CI 在 `.github/workflows/checks.yml` 跑同一套检查，另外执行 ansible-lint。Windows 不是 Ansible 控制节点，所以 ansible-lint 只在 CI 和容器里运行。
+

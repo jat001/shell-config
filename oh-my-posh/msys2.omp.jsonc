@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
-  "extends": "config.omp.json",
+  "extends": "config.omp.jsonc",
   "version": 4,
   "shell_integration": true,
   "blocks": [
