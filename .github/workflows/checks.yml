@@ -9,27 +9,23 @@ permissions:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Python tools
+      - name: Install system tools
         run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install "ruff==0.17.3" "yamllint==1.38.0" "ansible-lint==26.10.1"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          sudo apt-get update
+          sudo apt-get install -y ansible-lint pipx shellcheck shfmt yamllint
 
-      - name: Install shell tools
+      - name: Install Ruff
         run: |
-          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz" |
-            tar -xJ -C "$RUNNER_TEMP"
-          sudo install -m 755 "$RUNNER_TEMP/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
-          curl -fsSL "https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64" -o "$RUNNER_TEMP/shfmt"
-          sudo install -m 755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
+          pipx install ruff
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install PSScriptAnalyzer
         run: |
-          pwsh -NoProfile -Command "Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force"
+          pwsh -NoProfile -Command "Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force"
 
       - name: Install Ansible collections
         working-directory: ansible
