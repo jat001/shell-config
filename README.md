@@ -88,15 +88,16 @@ Debian 装 Nushell 时会写下 `env.nu` 和 `config.nu`。
 pwsh -NoProfile -File scripts/setup-dev.ps1
 ```
 
-脚本用 Scoop 安装 uv、lefthook、shellcheck、shfmt、ruff 和 jq，再用 uv 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer，然后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
+脚本用 Scoop 安装 uv、lefthook、shellcheck、shfmt、ruff 和 jq，再用 uv 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer；还会在默认 WSL 发行版里用 pacman、apt 或 zypper 安装 ansible-lint 和所需 collections。最后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
 
 - PowerShell：PSScriptAnalyzer 自动格式化并重新暂存，再做静态检查，规则见 `.psscriptanalyzer.psd1`
 - Python：Ruff 自动格式化并重新暂存，再做静态检查
 - Shell：shfmt 自动格式化并重新暂存，shellcheck 只检查
 - YAML：yamllint
+- Ansible：ansible-lint，通过默认 WSL 发行版运行
 - JSON：`.json` 按严格 JSON 校验；带注释的文件必须用 `.jsonc` 扩展名
 - 编码：UTF-8 无 BOM。LF 由 `.gitattributes` 保证
 
 只跑本地钩子：`lefthook run pre-commit --all-files`。跳过某次提交的检查：`git commit --no-verify`。
-CI 在 `.github/workflows/checks.yml` 跑同一套检查，另外执行 ansible-lint。Windows 不是 Ansible 控制节点，所以 ansible-lint 只在 CI 和容器里运行。
+CI 在 `.github/workflows/checks.yml` 跑同一套检查，也包括 ansible-lint。
 

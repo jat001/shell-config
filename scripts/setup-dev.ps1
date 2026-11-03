@@ -39,6 +39,19 @@ try {
         Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
     }
 
+    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+        throw 'WSL is required for ansible-lint.'
+    }
+    Write-Host 'Installing ansible-lint in the default WSL distribution'
+    $linuxRepository = (& wsl.exe wslpath -a -u ($repository -replace '\\', '/') | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $linuxRepository) {
+        throw 'Could not resolve the repository path inside WSL.'
+    }
+    & wsl.exe -e bash "$linuxRepository/scripts/install-wsl-ansible-lint.sh"
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Installing ansible-lint in WSL failed.'
+    }
+
     Write-Host 'Installing git hooks'
     & lefthook install
     if ($LASTEXITCODE -ne 0) {
@@ -52,7 +65,7 @@ try {
         }
     }
 
-    Write-Host 'Ready. ansible-lint runs in CI because Windows is not an Ansible control node.'
+    Write-Host 'Ready. ansible-lint runs in the default WSL distribution and in CI.'
 }
 finally {
     Pop-Location

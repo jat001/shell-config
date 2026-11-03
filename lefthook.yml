@@ -30,3 +30,7 @@ pre-commit:
 
     - name: encoding
       run: pwsh -NoProfile -File scripts/check-encoding.ps1 {staged_files}
+
+    - name: ansible-lint
+      glob: "*.{yml,yaml}"
+      run: pwsh -NoProfile -File scripts/lint-ansible.ps1
