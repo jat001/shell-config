@@ -26,10 +26,6 @@ jobs:
         run: |
           pipx install ansible-lint
 
-      - name: Install PSScriptAnalyzer
-        run: |
-          pwsh -NoProfile -Command "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force }"
-
       - name: Install Ansible collections
         working-directory: ansible
         run: |
@@ -50,8 +46,6 @@ jobs:
 
       - name: Ansible lint
         working-directory: ansible
-        env:
-          ANSIBLE_DEPRECATION_WARNINGS: "false"
         run: |
           lint_bin="$(dirname "$(readlink -f "$(command -v ansible-lint)")")"
           PATH="$lint_bin:$PATH" ansible-lint site.yml ../tests/prepare.yml ../tests/verify.yml
