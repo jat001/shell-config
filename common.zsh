@@ -66,7 +66,7 @@ _shell_sanitize_fpath() {
             fi
         done
 
-        if (( ! _dangling )); then
+        if ((! _dangling)); then
             _directories+=("$_directory")
             continue
         fi
@@ -81,8 +81,8 @@ _shell_sanitize_fpath() {
             for _entry in "${_entries[@]}"; do
                 ln -sf -- "$_entry" "$_mirror/${_entry:t}" || return 1
             done
-            print -r -- "${(F)_entries}" >| "$_mirror/.sources"
-            print -r -- "$_directory" >| "$_mirror/.directory"
+            print -r -- "${(F)_entries}" >|"$_mirror/.sources"
+            print -r -- "$_directory" >|"$_mirror/.directory"
         fi
 
         _directories+=("$_mirror")
@@ -111,7 +111,7 @@ ${(F)_completion_files}"
     fi
     autoload -Uz compinit
     compinit -d "$_cache/zcompdump" || return
-    print -r -- "$_context" > "$_cache/completions.context"
+    print -r -- "$_context" >"$_cache/completions.context"
     typeset -g _shell_completion_ready=1
 }
 
@@ -141,13 +141,13 @@ zstyle ':antidote:bundle' file "$_shell_plugin_file"
 _shell_package_completion_dir() {
     local _files _file _directory
 
-    if (( $+commands[pacman] )) &&
+    if (($+commands[pacman])) &&
         _files="$(pacman -Qql "$1" 2>/dev/null)"; then
         :
-    elif (( $+commands[dpkg-query] )) &&
+    elif (($+commands[dpkg - query])) &&
         _files="$(dpkg-query -L "$1" 2>/dev/null)"; then
         :
-    elif (( $+commands[rpm] )) &&
+    elif (($+commands[rpm])) &&
         _files="$(rpm -ql "$1" 2>/dev/null)"; then
         :
     else
@@ -175,7 +175,7 @@ _shell_resolve_plugins() {
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _words=("${(@z)_line}")
 
-        if (( ! ${#_words} )); then
+        if ((! ${#_words})); then
             print -r -- "$_line"
             continue
         fi
@@ -245,7 +245,7 @@ _shell_resolve_plugins() {
         fi
 
         print -r -- "$_line"
-    done < "$_shell_plugin_file"
+    done <"$_shell_plugin_file"
 }
 
 _shell_plugin_lines="$(_shell_resolve_plugins)" || return
@@ -258,13 +258,13 @@ $(antidote home)"
 
 if [[ ! -r "$_shell_plugins_list" ]] ||
     [[ "$_shell_plugin_lines" != "$(<"$_shell_plugins_list")" ]]; then
-    print -r -- "$_shell_plugin_lines" > "$_shell_plugins_list.$$.tmp"
+    print -r -- "$_shell_plugin_lines" >"$_shell_plugins_list.$$.tmp"
     mv -f -- "$_shell_plugins_list.$$.tmp" "$_shell_plugins_list"
 fi
 
 if [[ ! -r "$_shell_plugins_context" ]] ||
     [[ "$_shell_context" != "$(<"$_shell_plugins_context")" ]]; then
-    print -r -- "$_shell_context" > "$_shell_plugins_context.$$.tmp"
+    print -r -- "$_shell_context" >"$_shell_plugins_context.$$.tmp"
     mv -f -- "$_shell_plugins_context.$$.tmp" "$_shell_plugins_context"
 fi
 
@@ -276,8 +276,8 @@ if [[ ! -r "$_shell_plugins_script" ||
     "$ANTIDOTE_CONFIG" -nt "$_shell_plugins_script" ]]; then
     # Git's own directory goes first so its helpers are the ones next to this git, not a hardcoded /usr/bin.
     if PATH="${commands[git]:h}:$PATH" \
-        antidote bundle < "$_shell_plugins_list" \
-        > "$_shell_plugins_script.$$.tmp"; then
+        antidote bundle <"$_shell_plugins_list" \
+        >"$_shell_plugins_script.$$.tmp"; then
         mv -f -- "$_shell_plugins_script.$$.tmp" "$_shell_plugins_script"
     else
         rm -f -- "$_shell_plugins_script.$$.tmp"
@@ -288,7 +288,7 @@ fi
 _shell_completion_ready=0
 source "$_shell_plugins_script" || return
 
-if (( ! _shell_completion_ready )); then
+if ((! _shell_completion_ready)); then
     _shell_init_completion
 fi
 
