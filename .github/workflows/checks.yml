@@ -37,11 +37,33 @@ jobs:
           path: ${{ runner.temp }}/tools
           key: tools-${{ runner.os }}-${{ steps.tool-versions.outputs.shfmt }}-${{ steps.tool-versions.outputs.ruff }}-${{ steps.tool-versions.outputs.nu }}-${{ steps.tool-versions.outputs.fish }}
 
+      - name: Resolve package versions
+        id: package-versions
+        run: |
+          sudo apt-get update
+          version_of() {
+            LC_ALL=C apt-cache policy "$1" | sed -n 's/^ *Candidate: *//p'
+          }
+          zsh="$(version_of zsh)"
+          zsh_common="$(version_of zsh-common)"
+          lua="$(version_of lua5.5)"
+          for version in "$zsh" "$zsh_common" "$lua"; do
+            if [ -z "$version" ]; then
+              echo "apt-cache returned no candidate version" >&2
+              exit 1
+            fi
+          done
+          {
+            echo "zsh=$zsh"
+            echo "zsh_common=$zsh_common"
+            echo "lua=$lua"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Cache zsh and Lua packages
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/shell-deb
-          key: zsh-lua55-${{ runner.os }}-${{ steps.cache-week.outputs.week }}
+          key: zsh-lua-${{ runner.os }}-${{ steps.package-versions.outputs.zsh }}-${{ steps.package-versions.outputs.zsh_common }}-${{ steps.package-versions.outputs.lua }}
 
       - name: Cache pipx tools
         uses: actions/cache@v6
@@ -88,13 +110,16 @@ jobs:
           echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
 
       - name: Install zsh and Lua packages
+        env:
+          ZSH_VERSION: ${{ steps.package-versions.outputs.zsh }}
+          ZSH_COMMON_VERSION: ${{ steps.package-versions.outputs.zsh_common }}
+          LUA_VERSION: ${{ steps.package-versions.outputs.lua }}
         run: |
           if [ -z "$(ls -A "$RUNNER_TEMP/shell-deb" 2>/dev/null)" ]; then
-            sudo apt-get update
             mkdir -p "$RUNNER_TEMP/shell-deb"
             cd "$RUNNER_TEMP/shell-deb"
             # apt-get download does not resolve dependencies; zsh depends on zsh-common.
-            apt-get download zsh zsh-common lua5.5
+            apt-get download "zsh=$ZSH_VERSION" "zsh-common=$ZSH_COMMON_VERSION" "lua5.5=$LUA_VERSION"
           fi
           sudo dpkg -i "$RUNNER_TEMP/shell-deb"/*.deb
 
