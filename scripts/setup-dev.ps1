@@ -14,6 +14,8 @@ try {
     $packages = @(
         @{ Name = 'jq'; Bucket = 'main' }
         @{ Name = 'lefthook'; Bucket = 'main' }
+        @{ Name = 'lua'; Bucket = 'main' }
+        @{ Name = 'nu'; Bucket = 'main' }
         @{ Name = 'ruff'; Bucket = 'main' }
         @{ Name = 'shellcheck'; Bucket = 'main' }
         @{ Name = 'shfmt'; Bucket = 'main' }
@@ -47,7 +49,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not $linuxRepository) {
         throw 'Could not resolve the repository path inside WSL.'
     }
-    & wsl.exe -e bash "$linuxRepository/scripts/install-wsl-ansible-lint.sh"
+    & wsl.exe -e bash "$linuxRepository/scripts/install-wsl-dev-tools.sh"
     if ($LASTEXITCODE -ne 0) {
         throw 'Installing ansible-lint in WSL failed.'
     }

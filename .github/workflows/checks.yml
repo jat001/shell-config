@@ -18,8 +18,14 @@ jobs:
         run: |
           shfmt="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/mvdan/sh/releases/latest | sed 's#.*/tag/##')"
           ruff="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/astral-sh/ruff/releases/latest | sed 's#.*/tag/##')"
-          echo "shfmt=$shfmt" >> "$GITHUB_OUTPUT"
-          echo "ruff=$ruff" >> "$GITHUB_OUTPUT"
+          nu="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/nushell/nushell/releases/latest | sed 's#.*/tag/##')"
+          fish="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/fish-shell/fish-shell/releases/latest | sed 's#.*/tag/##')"
+          {
+            echo "shfmt=$shfmt"
+            echo "ruff=$ruff"
+            echo "nu=$nu"
+            echo "fish=$fish"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set cache week
         id: cache-week
@@ -29,7 +35,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/tools
-          key: tools-${{ runner.os }}-${{ steps.tool-versions.outputs.shfmt }}-${{ steps.tool-versions.outputs.ruff }}
+          key: tools-${{ runner.os }}-${{ steps.tool-versions.outputs.shfmt }}-${{ steps.tool-versions.outputs.ruff }}-${{ steps.tool-versions.outputs.nu }}-${{ steps.tool-versions.outputs.fish }}
+
+      - name: Cache zsh and Lua packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/shell-deb
+          key: zsh-lua-${{ runner.os }}-${{ steps.cache-week.outputs.week }}
+          restore-keys: |
+            zsh-lua-${{ runner.os }}-
 
       - name: Cache pipx tools
         uses: actions/cache@v6
@@ -59,10 +73,31 @@ jobs:
           fi
           if [ ! -x "$RUNNER_TEMP/tools/ruff" ]; then
             curl -fsSL "https://github.com/astral-sh/ruff/releases/download/${{ steps.tool-versions.outputs.ruff }}/ruff-x86_64-unknown-linux-gnu.tar.gz" |
-              tar -xz -C "$RUNNER_TEMP/tools" --strip-components=1
+              tar -xz -C "$RUNNER_TEMP/tools" --strip-components=1 "ruff-x86_64-unknown-linux-gnu/ruff"
             chmod +x "$RUNNER_TEMP/tools/ruff"
           fi
+          if [ ! -x "$RUNNER_TEMP/tools/nu" ]; then
+            curl -fsSL "https://github.com/nushell/nushell/releases/download/${{ steps.tool-versions.outputs.nu }}/nu-${{ steps.tool-versions.outputs.nu }}-x86_64-unknown-linux-gnu.tar.gz" |
+              tar -xz -C "$RUNNER_TEMP/tools" --strip-components=1 "nu-${{ steps.tool-versions.outputs.nu }}-x86_64-unknown-linux-gnu/nu"
+            chmod +x "$RUNNER_TEMP/tools/nu"
+          fi
+          if [ ! -x "$RUNNER_TEMP/tools/fish" ]; then
+            curl -fsSL "https://github.com/fish-shell/fish-shell/releases/download/${{ steps.tool-versions.outputs.fish }}/fish-${{ steps.tool-versions.outputs.fish }}-linux-x86_64.tar.xz" |
+              tar -xJ -C "$RUNNER_TEMP/tools" fish
+            chmod +x "$RUNNER_TEMP/tools/fish"
+          fi
+          ln -sf fish "$RUNNER_TEMP/tools/fish_indent"
           echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
+
+      - name: Install zsh and Lua packages
+        run: |
+          if [ -z "$(ls -A "$RUNNER_TEMP/shell-deb" 2>/dev/null)" ]; then
+            sudo apt-get update
+            mkdir -p "$RUNNER_TEMP/shell-deb"
+            cd "$RUNNER_TEMP/shell-deb"
+            apt-get download zsh zsh-common lua5.4
+          fi
+          sudo dpkg -i "$RUNNER_TEMP/shell-deb"/*.deb
 
       - name: Install Ansible lint
         env:
@@ -79,13 +114,13 @@ jobs:
           PATH="$lint_bin:$PATH" ansible-galaxy collection install -r requirements.yml
 
       - name: Encoding
-        run: pwsh -NoProfile -File scripts/check-encoding.ps1
+        run: git ls-files -z | xargs -0 -r pwsh -NoProfile -File scripts/check-encoding.ps1
 
       - name: PowerShell format
-        run: pwsh -NoProfile -File scripts/format-powershell.ps1 -Check
+        run: git ls-files -z '*.ps1' | xargs -0 -r pwsh -NoProfile -File scripts/format-powershell.ps1 -Check
 
       - name: PowerShell lint
-        run: pwsh -NoProfile -File scripts/lint-powershell.ps1
+        run: git ls-files -z '*.ps1' | xargs -0 -r pwsh -NoProfile -File scripts/lint-powershell.ps1
 
       - name: Ruff format
         run: git ls-files -z '*.py' | xargs -0 -r ruff format --check
@@ -96,14 +131,35 @@ jobs:
       - name: shfmt
         run: git ls-files -z '*.sh' '*.bash' | xargs -0 -r shfmt -d -i 4 -ci -ln bash
 
+      - name: shfmt-zsh
+        run: git ls-files -z '*.zsh' | xargs -0 -r shfmt -d -ln zsh -i 4 -ci
+
       - name: ShellCheck
         run: git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck -x
+
+      - name: zsh
+        run: git ls-files -z '*.zsh' | xargs -0 -r zsh -n
+
+      - name: fish-format
+        run: git ls-files -z '*.fish' | xargs -0 -r sh scripts/check-fish-format.sh
+
+      - name: fish
+        run: git ls-files -z '*.fish' | xargs -0 -r fish --no-execute
 
       - name: yamllint
         run: git ls-files -z '*.yml' '*.yaml' | xargs -0 -r yamllint -f parsable
 
       - name: JSON
-        run: pwsh -NoProfile -File scripts/check-json.ps1
+        run: git ls-files -z '*.json' '*.jsonc' | xargs -0 -r pwsh -NoProfile -File scripts/check-json.ps1
+
+      - name: Nushell
+        run: git ls-files -z '*.nu' | xargs -0 -r pwsh -NoProfile -File scripts/check-nushell.ps1
+
+      - name: jq
+        run: git ls-files -z '*.jq' | xargs -0 -r pwsh -NoProfile -File scripts/check-jq.ps1
+
+      - name: Lua
+        run: git ls-files -z '*.lua' | xargs -0 -r luac -p
 
       - name: Ansible lint
         working-directory: ansible

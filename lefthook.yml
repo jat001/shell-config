@@ -28,9 +28,27 @@ pre-commit:
       run: shfmt -w -i 4 -ci -ln bash {staged_files}
       stage_fixed: true
 
+    - name: shfmt-zsh
+      glob: "*.zsh"
+      run: shfmt -w -ln zsh -i 4 -ci {staged_files}
+      stage_fixed: true
+
     - name: shellcheck
       glob: "*.{sh,bash}"
       run: shellcheck -x {staged_files}
+
+    - name: zsh
+      glob: "*.zsh"
+      run: pwsh -NoProfile -File scripts/check-wsl-shell.ps1 zsh {staged_files}
+
+    - name: fish-format
+      glob: "*.fish"
+      run: pwsh -NoProfile -File scripts/format-wsl-fish.ps1 {staged_files}
+      stage_fixed: true
+
+    - name: fish
+      glob: "*.fish"
+      run: pwsh -NoProfile -File scripts/check-wsl-shell.ps1 fish {staged_files}
 
     - name: yamllint
       glob: "*.{yml,yaml}"
@@ -39,6 +57,18 @@ pre-commit:
     - name: json
       glob: "*.{json,jsonc}"
       run: pwsh -NoProfile -File scripts/check-json.ps1 {staged_files}
+
+    - name: nushell
+      glob: "*.nu"
+      run: pwsh -NoProfile -File scripts/check-nushell.ps1 {staged_files}
+
+    - name: jq
+      glob: "*.jq"
+      run: pwsh -NoProfile -File scripts/check-jq.ps1 {staged_files}
+
+    - name: lua
+      glob: "*.lua"
+      run: luac -p {staged_files}
 
     - name: ansible-lint
       glob: "*.{yml,yaml}"

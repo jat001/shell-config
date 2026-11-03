@@ -88,14 +88,18 @@ Debian 装 Nushell 时会写下 `env.nu` 和 `config.nu`。
 pwsh -NoProfile -File scripts/setup-dev.ps1
 ```
 
-脚本用 Scoop 安装 uv、lefthook、shellcheck、shfmt、ruff 和 jq，再用 uv 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer；还会在默认 WSL 发行版里用 pacman、apt 或 zypper 安装 ansible-lint 和所需 collections。最后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
+脚本用 Scoop 安装 uv、lefthook、shellcheck、shfmt、ruff、jq、lua 和 nu，再用 uv 安装 yamllint，从 PowerShell Gallery 安装 PSScriptAnalyzer；还会在默认 WSL 发行版里用 pacman、apt 或 zypper 安装 ansible-lint、fish、zsh 和所需 collections。最后执行 `lefthook install`。之后 `git commit` 会自动检查暂存的文件。
 
 - PowerShell：PSScriptAnalyzer 自动格式化并重新暂存，再做静态检查，规则见 `.psscriptanalyzer.psd1`
 - Python：Ruff 自动格式化并重新暂存，再做静态检查
-- Shell：shfmt 自动格式化并重新暂存，shellcheck 只检查
+- Shell（sh/bash）：shfmt 自动格式化并重新暂存，shellcheck 只检查
+- Zsh / Fish：语法检查，本地通过默认 WSL 发行版运行
 - YAML：yamllint
-- Ansible：ansible-lint，通过默认 WSL 发行版运行
 - JSON：`.json` 按严格 JSON 校验；带注释的文件必须用 `.jsonc` 扩展名
+- Nushell：`nu-check` 语法检查
+- jq：执行 `common.jq` 校验
+- Lua：`luac -p` 语法检查
+- Ansible：ansible-lint，通过默认 WSL 发行版运行
 - 编码：UTF-8 无 BOM。LF 由 `.gitattributes` 保证
 
 只跑本地钩子：`lefthook run pre-commit --all-files`。跳过某次提交的检查：`git commit --no-verify`。
