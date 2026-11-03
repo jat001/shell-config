@@ -41,9 +41,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/shell-deb
-          key: zsh-lua-${{ runner.os }}-${{ steps.cache-week.outputs.week }}
-          restore-keys: |
-            zsh-lua-${{ runner.os }}-
+          key: zsh-lua55-${{ runner.os }}-${{ steps.cache-week.outputs.week }}
 
       - name: Cache pipx tools
         uses: actions/cache@v6
@@ -95,7 +93,8 @@ jobs:
             sudo apt-get update
             mkdir -p "$RUNNER_TEMP/shell-deb"
             cd "$RUNNER_TEMP/shell-deb"
-            apt-get download zsh zsh-common lua5.4
+            # apt-get download does not resolve dependencies; zsh depends on zsh-common.
+            apt-get download zsh zsh-common lua5.5
           fi
           sudo dpkg -i "$RUNNER_TEMP/shell-deb"/*.deb
 
