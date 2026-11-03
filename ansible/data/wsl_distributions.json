@@ -1,0 +1,16 @@
+{
+  "ModernDistributions": {
+    "FedoraLinux-45": {
+      "Name": "FedoraLinux-45",
+      "FriendlyName": "Fedora Linux 45",
+      "Amd64Url": {
+        "Url": "https://download.fedoraproject.org/pub/fedora/linux/releases/45/Container/x86_64/images/Fedora-WSL-Base-45-1.4.x86_64.wsl",
+        "Sha256": "0xd20e476140d4cb121b85b1ad2b8fd6bf9fc2750140a7212ad4051ae3c6bd1e23"
+      },
+      "Arm64Url": {
+        "Url": "https://download.fedoraproject.org/pub/fedora/linux/releases/45/Container/aarch64/images/Fedora-WSL-Base-45-1.4.aarch64.wsl",
+        "Sha256": "0x9a25779562113c10ce8f480857217d52f6a386cee2301752d2a34a320e8fd35c"
+      }
+    }
+  }
+}

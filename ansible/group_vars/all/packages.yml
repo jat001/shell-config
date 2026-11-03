@@ -113,6 +113,25 @@ shell_zypper_packages:
   - xz
   - zsh
 
+# DNF5 is the default package manager. The release PowerShell archive links against ICU and OpenSSL 3.
+shell_redhat_packages:
+  - bash-completion
+  - fish
+  - git
+  - gzip
+  - jq
+  - libicu
+  - nushell
+  - openssl-libs
+  - openssl3-libs
+  - sudo
+  - tar
+  - tzdata
+  - xz
+  - zsh
+  - zsh-autosuggestions
+  - zsh-syntax-highlighting
+
 shell_release_root: /opt/shell-releases
 shell_release_cache: /var/cache/shell-releases
 shell_release_bin: /usr/local/bin

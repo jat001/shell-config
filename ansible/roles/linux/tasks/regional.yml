@@ -15,7 +15,7 @@
   ansible.builtin.slurp:
     path: /etc/locale.gen
   register: shell_locale_definitions
-  when: ansible_facts.os_family != 'Suse'
+  when: ansible_facts.os_family not in ['Suse', 'RedHat']
 
 - name: Require host locale support
   ansible.builtin.assert:
@@ -26,7 +26,7 @@
   loop: "{{ shell_required_locales }}"
   loop_control:
     label: "{{ item }}"
-  when: ansible_facts.os_family != 'Suse'
+  when: ansible_facts.os_family not in ['Suse', 'RedHat']
 
 - name: Inspect Arch locale sources
   ansible.builtin.stat:
@@ -111,6 +111,27 @@
     mode: '0644'
   when: ansible_facts.os_family == 'Debian'
 
+# Fedora has no /etc/locale.gen; each language comes from a glibc-langpack RPM.
+- name: Resolve Fedora locale packages
+  ansible.builtin.set_fact:
+    shell_fedora_langpacks: "{{ shell_required_locales | select('match', '^[A-Za-z]+_')
+      | map('regex_replace', '_.*$', '') | map('lower') | unique
+      | map('regex_replace', '^', 'glibc-langpack-') | list }}"
+  when: ansible_facts.os_family == 'RedHat'
+
+- name: Install Fedora locale packages
+  ansible.builtin.dnf5:
+    name: "{{ shell_fedora_langpacks }}"
+    state: present
+    install_weak_deps: false
+  register: shell_fedora_locale_packages
+  until: shell_fedora_locale_packages is succeeded
+  retries: 3
+  delay: 10
+  when:
+    - ansible_facts.os_family == 'RedHat'
+    - shell_fedora_langpacks | length > 0
+
 - name: Inspect generated locales
   ansible.builtin.command:
     argv: [locale, -a]
@@ -141,6 +162,21 @@
     - ansible_facts.os_family == 'Suse'
     - shell_available_locales.rc == 0
 
+# glibc-langpack RPMs provide compiled locales; there is no locale.gen and no locale-gen to run.
+- name: Require host locale support on Fedora
+  ansible.builtin.assert:
+    that: (item | lower | replace('-', '')) in (shell_available_locales.stdout_lines
+      | map('lower') | map('replace', '-', '') | list)
+    fail_msg: "Locale {{ item }} is not provided by the installed glibc language packs on this target."
+    quiet: true
+  loop: "{{ shell_required_locales }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - ansible_facts.os_family == 'RedHat'
+    - not ansible_check_mode
+    - shell_available_locales.rc == 0
+
 - name: Configure host locale entries
   ansible.builtin.script: locale_gen.py /etc/locale.gen
   environment:
@@ -149,13 +185,13 @@
   register: shell_locale_entry
   changed_when: shell_locale_entry.stdout == 'changed'
   check_mode: false
-  when: ansible_facts.os_family != 'Suse'
+  when: ansible_facts.os_family not in ['Suse', 'RedHat']
 
 - name: Generate host locale
   ansible.builtin.command:
     argv: [locale-gen]
   when:
-    - ansible_facts.os_family != 'Suse'
+    - ansible_facts.os_family not in ['Suse', 'RedHat']
     - shell_locale_entry.changed | default(false) or
       (shell_required_locales | map('lower') | map('replace', '-', '') | list |
       difference(shell_available_locales.stdout_lines | map('lower') | map('replace', '-', '') | list) |

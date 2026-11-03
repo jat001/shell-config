@@ -1,7 +1,13 @@
+import json
+import re
 import unittest
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+
+
+def collapsed(text):
+    return re.sub(r"[ \t]+", " ", text)
 
 
 class InvariantTests(unittest.TestCase):
@@ -44,8 +50,8 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("ErrorActionPreference = 'Continue'", runner)
 
     def test_profiles_preserve_release_steps_and_shared_cache_forwarding(self):
-        runner = (root / "tests/run.ps1").read_text(encoding="utf-8")
-        hyperv = (root / "tests/hyperv.ps1").read_text(encoding="utf-8")
+        runner = collapsed((root / "tests/run.ps1").read_text(encoding="utf-8"))
+        hyperv = collapsed((root / "tests/hyperv.ps1").read_text(encoding="utf-8"))
         for text in (runner, hyperv):
             self.assertIn("[string]$Profile = 'full'", text)
         self.assertIn("fast = @('init', 'prepare', 'full', 'verify')", runner)
@@ -87,14 +93,14 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("create_home: \"{{ ansible_facts.os_family != 'Suse' }}\"", user)
         self.assertIn("Create SUSE WSL user home", user)
         regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
-        self.assertIn("when: ansible_facts.os_family != 'Suse'", regional)
+        self.assertIn("ansible_facts.os_family not in ['Suse', 'RedHat']", regional)
         self.assertIn("Require host locale support on SUSE", regional)
 
     def test_debian_testing_is_test_only_and_sandbox_cache_stays_in_guest(self):
         installer = (root / "install.ps1").read_text(encoding="utf-8")
         bootstrap = (root / "ansible/bootstrap/wsl.sh").read_text(encoding="utf-8")
         guest = (root / "tests/hyperv_guest.ps1").read_text(encoding="utf-8")
-        runner = (root / "tests/run.ps1").read_text(encoding="utf-8")
+        runner = collapsed((root / "tests/run.ps1").read_text(encoding="utf-8"))
         self.assertIn("[switch]$TestDebianTesting", installer)
         self.assertIn("@('env', 'SHELL_DEBIAN_TESTING=1')", installer)
         self.assertIn("ContainsKey('CacheDirectory') -and -not $Inventory", installer)
@@ -104,6 +110,41 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("debian-testing-complete", bootstrap)
         self.assertIn("-TestDebianTesting", guest)
         self.assertIn("shell_download_cache = 'C:\\shell-cache'", runner)
+
+    def test_unindexed_distribution_images_are_pinned_and_hashed(self):
+        pinned = json.loads((root / "ansible/data/wsl_distributions.json").read_text(encoding="utf-8"))
+        entries = pinned["ModernDistributions"]
+        self.assertIn("FedoraLinux-45", entries)
+        for entry in entries.values():
+            for field in ("Amd64Url", "Arm64Url"):
+                asset = entry[field]
+                self.assertRegex(asset["Url"], r"^https://download\.fedoraproject\.org/")
+                self.assertRegex(asset["Sha256"], r"^0x[0-9a-f]{64}$")
+        installer = (root / "install.ps1").read_text(encoding="utf-8")
+        self.assertIn("ansible/data/wsl_distributions.json", installer)
+        self.assertIn("$pinned.ModernDistributions", installer)
+        configuration = json.loads((root / "common.json").read_text(encoding="utf-8"))
+        self.assertIn("FedoraLinux-45", configuration["environments"]["wsl"]["distributions"])
+
+    def test_fedora_uses_dnf5_bindings_and_language_packs(self):
+        bootstrap = (root / "ansible/bootstrap/wsl.sh").read_text(encoding="utf-8")
+        self.assertIn("python3-libdnf5", bootstrap)
+        self.assertNotIn("python3.14", bootstrap)
+        startup = (root / "ansible/roles/linux/tasks/main.yml").read_text(encoding="utf-8")
+        self.assertIn("python3-libdnf5", startup)
+        installer = (root / "install.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("ansible_python_interpreter = '/usr/bin/python3.14'", installer)
+        packages = (root / "ansible/roles/linux/tasks/packages_redhat.yml").read_text(encoding="utf-8")
+        self.assertIn("ansible.builtin.dnf5", packages)
+        regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
+        self.assertIn("glibc-langpack-", regional)
+        self.assertIn("Require host locale support on Fedora", regional)
+        self.assertIn("ansible.builtin.dnf5", regional)
+        runner = (root / "tests/run.ps1").read_text(encoding="utf-8")
+        self.assertNotIn("python3.14", runner)
+        self.assertIn("fedora = 'fedora:45'", runner)
+        filter_plugin = (root / "ansible/filter_plugins/shell.py").read_text(encoding="utf-8")
+        self.assertIn("/usr/share/rootfiles", filter_plugin)
 
 
 if __name__ == "__main__":

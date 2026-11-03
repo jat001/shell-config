@@ -21,6 +21,8 @@ import urllib.request
 import uuid
 from pathlib import Path, PurePosixPath
 
+NETWORK_ERRORS = (urllib.error.URLError, TimeoutError)
+
 
 def request(url, method="GET"):
     for attempt in range(3):
@@ -32,7 +34,7 @@ def request(url, method="GET"):
         except urllib.error.HTTPError as error:
             if error.code not in (408, 429, 500, 502, 503, 504) or attempt == 2:
                 raise
-        except urllib.error.URLError, TimeoutError:
+        except NETWORK_ERRORS:
             if attempt == 2:
                 raise
         time.sleep(5 * (attempt + 1))

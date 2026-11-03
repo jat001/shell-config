@@ -60,11 +60,13 @@ fi
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.
 # A clean Debian image has no CA bundle. Ansible then downloads signing keys over HTTPS.
 # A clean openSUSE image has no Python, sshd or btrfs tools.
+# A clean Fedora image has no sshd or btrfs tools, and Ansible's dnf5 module needs the libdnf5 bindings.
 if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
     ! command -v python3 >/dev/null 2>&1 ||
     { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; } ||
     { command -v apt-get >/dev/null 2>&1 && ! python3 -c 'import apt' 2>/dev/null; } ||
-    { command -v apt-get >/dev/null 2>&1 && ! dpkg -s ca-certificates >/dev/null 2>&1; }; then
+    { command -v apt-get >/dev/null 2>&1 && ! dpkg -s ca-certificates >/dev/null 2>&1; } ||
+    { command -v dnf >/dev/null 2>&1 && ! python3 -c 'import libdnf5' 2>/dev/null; }; then
     if command -v pacman >/dev/null 2>&1; then
         [ -s /etc/pacman.d/gnupg/pubring.gpg ] ||
             { pacman-key --init && pacman-key --populate archlinux; } >&2
@@ -77,6 +79,9 @@ if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
         retry zypper --non-interactive refresh >&2
         retry zypper --non-interactive install --no-recommends \
             ca-certificates openssh python3 btrfsprogs >&2
+    elif command -v dnf >/dev/null 2>&1; then
+        retry dnf --assumeyes --setopt=install_weak_deps=False install \
+            ca-certificates openssh-server python3 python3-libdnf5 btrfs-progs >&2
     else
         printf 'Unsupported distribution.\n' >&2
         exit 1
@@ -89,6 +94,10 @@ mkdir -p -m 700 "$directory" /run/sshd
 printf '%s\n' "$key" >"$directory/authorized_keys"
 chmod 600 "$directory/authorized_keys"
 
+# Fedora's OpenSSH build rejects "UsePAM no", and its root account is shadow-locked.
+# The PAM account check accepts the key login that the non-PAM path refuses.
+usepam=no
+command -v dnf >/dev/null 2>&1 && usepam=yes
 cat >"$directory/sshd_config" <<EOF
 Port $port
 ListenAddress $address
@@ -99,7 +108,7 @@ PermitRootLogin prohibit-password
 AllowUsers root
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-UsePAM no
+UsePAM $usepam
 Subsystem sftp internal-sftp
 EOF
 

@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string]$CacheDirectory,
-    [string[]]$Distribution = @('Debian', 'archlinux', 'openSUSE-Tumbleweed'),
+    [string[]]$Distribution = @('Debian', 'archlinux', 'openSUSE-Tumbleweed', 'FedoraLinux-45'),
     [string]$Repository
 )
 
@@ -9,6 +9,8 @@ if (-not $Repository) { $Repository = Split-Path $PSScriptRoot }
 $repository = [IO.Path]::GetFullPath($Repository)
 $CacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
 $bootstrap = Join-Path $repository 'ansible/bootstrap/wsl.ps1'
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+if (-not (Test-Path -LiteralPath $windowsPowerShell)) { throw "Windows PowerShell was not found: $windowsPowerShell" }
 $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile(
@@ -63,7 +65,7 @@ try {
     $CacheDirectory = $temporary
     $rejected = $false
     try { Get-CachedDistribution $Distribution[0] | Out-Null } catch {
-        if ($_.Exception.Message -notlike '*does not match the Microsoft distribution index*') { throw }
+        if ($_.Exception.Message -notlike '*does not match its published SHA256*') { throw }
         $rejected = $true
     }
     if (-not $rejected) { throw 'An HTML page was accepted as a distribution.' }

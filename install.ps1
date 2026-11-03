@@ -165,6 +165,13 @@ function Get-CachedDistribution {
     $metadata = [IO.File]::ReadAllText($metadataPath) | ConvertFrom-Json
     $distribution = $metadata.ModernDistributions.PSObject.Properties |
         ForEach-Object { $_.Value } | Where-Object Name -EQ $Name | Select-Object -First 1
+    # Microsoft has not indexed every published distribution. Official images pinned in the repository fill the gap.
+    if (-not $distribution) {
+        $pinnedPath = Join-Path $repository 'ansible/data/wsl_distributions.json'
+        $pinned = [IO.File]::ReadAllText($pinnedPath) | ConvertFrom-Json
+        $distribution = $pinned.ModernDistributions.PSObject.Properties |
+            ForEach-Object { $_.Value } | Where-Object Name -EQ $Name | Select-Object -First 1
+    }
     if (-not $distribution) { return }
     $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
         $env:PROCESSOR_ARCHITEW6432
@@ -187,7 +194,7 @@ function Get-CachedDistribution {
                 -Url $asset.Url -Path $partial | Out-Host
             if ($LASTEXITCODE -ne 0) { throw "Downloading $Name failed ($LASTEXITCODE)." }
             if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $expected) {
-                throw "The downloaded $Name image does not match the Microsoft distribution index; no package was cached."
+                throw "The downloaded $Name image does not match its published SHA256; no package was cached."
             }
             [IO.File]::Move($partial, $path)
         }
@@ -196,7 +203,7 @@ function Get-CachedDistribution {
         }
     }
     if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $expected) {
-        throw "The cached $Name image does not match the Microsoft distribution index: $path"
+        throw "The cached $Name image does not match its published SHA256: $path"
     }
     $path
 }
