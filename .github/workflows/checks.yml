@@ -10,9 +10,6 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-26.04
-    env:
-      PIPX_HOME: ${{ runner.temp }}/pipx
-      PIPX_BIN_DIR: ${{ runner.temp }}/pipx-bin
     steps:
       - uses: actions/checkout@v7
 
@@ -68,6 +65,9 @@ jobs:
           echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
 
       - name: Install Ansible lint
+        env:
+          PIPX_HOME: ${{ runner.temp }}/pipx
+          PIPX_BIN_DIR: ${{ runner.temp }}/pipx-bin
         run: |
           pipx upgrade ansible-lint >/dev/null 2>&1 || pipx install ansible-lint
           echo "$PIPX_BIN_DIR" >> "$GITHUB_PATH"
@@ -79,7 +79,7 @@ jobs:
           PATH="$lint_bin:$PATH" ansible-galaxy collection install -r requirements.yml
 
       - name: Encoding
-        run: pwsh -NoProfile -File scripts/check-encoding.ps1 $(git ls-files)
+        run: pwsh -NoProfile -File scripts/check-encoding.ps1
 
       - name: PowerShell format
         run: pwsh -NoProfile -File scripts/format-powershell.ps1 -Check
@@ -88,19 +88,19 @@ jobs:
         run: pwsh -NoProfile -File scripts/lint-powershell.ps1
 
       - name: Ruff format
-        run: ruff format --check $(git ls-files '*.py')
+        run: git ls-files -z '*.py' | xargs -0 -r ruff format --check
 
       - name: Ruff check
-        run: ruff check $(git ls-files '*.py')
+        run: git ls-files -z '*.py' | xargs -0 -r ruff check
 
       - name: shfmt
-        run: shfmt -d -i 4 -ci -ln bash $(git ls-files '*.sh' '*.bash')
+        run: git ls-files -z '*.sh' '*.bash' | xargs -0 -r shfmt -d -i 4 -ci -ln bash
 
       - name: ShellCheck
-        run: shellcheck -x $(git ls-files '*.sh' '*.bash')
+        run: git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck -x
 
       - name: yamllint
-        run: yamllint -f parsable $(git ls-files '*.yml' '*.yaml')
+        run: git ls-files -z '*.yml' '*.yaml' | xargs -0 -r yamllint -f parsable
 
       - name: JSON
         run: pwsh -NoProfile -File scripts/check-json.ps1
