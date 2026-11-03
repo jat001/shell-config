@@ -1,6 +1,9 @@
 pre-commit:
   parallel: false
   jobs:
+    - name: encoding
+      run: pwsh -NoProfile -File scripts/check-encoding.ps1 {staged_files}
+
     - name: powershell-format
       glob: "*.ps1"
       run: pwsh -NoProfile -File scripts/format-powershell.ps1 {staged_files}
@@ -10,26 +13,32 @@ pre-commit:
       glob: "*.ps1"
       run: pwsh -NoProfile -File scripts/lint-powershell.ps1 {staged_files}
 
-    - name: python
+    - name: ruff-format
       glob: "*.py"
-      run: ruff format {staged_files} && ruff check --fix {staged_files} && ruff check {staged_files}
+      run: ruff format {staged_files}
       stage_fixed: true
 
-    - name: shell
+    - name: ruff-check
+      glob: "*.py"
+      run: ruff check --fix {staged_files} && ruff check {staged_files}
+      stage_fixed: true
+
+    - name: shfmt
       glob: "*.{sh,bash}"
-      run: shfmt -w -i 4 -ci {staged_files} && shellcheck -x {staged_files}
+      run: shfmt -w -i 4 -ci -ln bash {staged_files}
       stage_fixed: true
 
-    - name: yaml
+    - name: shellcheck
+      glob: "*.{sh,bash}"
+      run: shellcheck -x {staged_files}
+
+    - name: yamllint
       glob: "*.{yml,yaml}"
       run: yamllint -f parsable {staged_files}
 
     - name: json
       glob: "*.{json,jsonc}"
       run: pwsh -NoProfile -File scripts/check-json.ps1 {staged_files}
-
-    - name: encoding
-      run: pwsh -NoProfile -File scripts/check-encoding.ps1 {staged_files}
 
     - name: ansible-lint
       glob: "*.{yml,yaml}"

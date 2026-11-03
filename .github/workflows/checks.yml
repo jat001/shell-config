@@ -10,21 +10,67 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-26.04
+    env:
+      PIPX_HOME: ${{ runner.temp }}/pipx
+      PIPX_BIN_DIR: ${{ runner.temp }}/pipx-bin
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install system tools
+      - name: Resolve tool versions
+        id: tool-versions
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shfmt
+          shfmt="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/mvdan/sh/releases/latest | sed 's#.*/tag/##')"
+          ruff="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/astral-sh/ruff/releases/latest | sed 's#.*/tag/##')"
+          echo "shfmt=$shfmt" >> "$GITHUB_OUTPUT"
+          echo "ruff=$ruff" >> "$GITHUB_OUTPUT"
 
-      - name: Install Ruff
+      - name: Set cache week
+        id: cache-week
+        run: echo "week=$(date +%Y%W)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache binaries
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/tools
+          key: tools-${{ runner.os }}-${{ steps.tool-versions.outputs.shfmt }}-${{ steps.tool-versions.outputs.ruff }}
+
+      - name: Cache pipx tools
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/pipx
+            ${{ runner.temp }}/pipx-bin
+            ~/.cache/pip
+          key: pipx-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('.github/workflows/checks.yml') }}
+          restore-keys: |
+            pipx-${{ runner.os }}-
+
+      - name: Cache Ansible collections
+        uses: actions/cache@v6
+        with:
+          path: ~/.ansible/collections
+          key: ansible-collections-${{ runner.os }}-${{ steps.cache-week.outputs.week }}-${{ hashFiles('ansible/requirements.yml') }}
+          restore-keys: |
+            ansible-collections-${{ runner.os }}-
+
+      - name: Install binaries
         run: |
-          pipx install ruff
+          mkdir -p "$RUNNER_TEMP/tools"
+          if [ ! -x "$RUNNER_TEMP/tools/shfmt" ]; then
+            curl -fsSL "https://github.com/mvdan/sh/releases/download/${{ steps.tool-versions.outputs.shfmt }}/shfmt_${{ steps.tool-versions.outputs.shfmt }}_linux_amd64" -o "$RUNNER_TEMP/tools/shfmt"
+            chmod +x "$RUNNER_TEMP/tools/shfmt"
+          fi
+          if [ ! -x "$RUNNER_TEMP/tools/ruff" ]; then
+            curl -fsSL "https://github.com/astral-sh/ruff/releases/download/${{ steps.tool-versions.outputs.ruff }}/ruff-x86_64-unknown-linux-gnu.tar.gz" |
+              tar -xz -C "$RUNNER_TEMP/tools" --strip-components=1
+            chmod +x "$RUNNER_TEMP/tools/ruff"
+          fi
+          echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
 
       - name: Install Ansible lint
         run: |
-          pipx install ansible-lint
+          pipx upgrade ansible-lint >/dev/null 2>&1 || pipx install ansible-lint
+          echo "$PIPX_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Install Ansible collections
         working-directory: ansible
@@ -32,17 +78,32 @@ jobs:
           lint_bin="$(dirname "$(readlink -f "$(command -v ansible-lint)")")"
           PATH="$lint_bin:$PATH" ansible-galaxy collection install -r requirements.yml
 
-      - name: Check
-        run: |
-          ruff check $(git ls-files '*.py')
-          ruff format --check $(git ls-files '*.py')
-          shellcheck -x $(git ls-files '*.sh' '*.bash')
-          shfmt -d -i 4 -ci -ln bash $(git ls-files '*.sh' '*.bash')
-          yamllint -f parsable $(git ls-files '*.yml' '*.yaml')
-          pwsh -NoProfile -File scripts/format-powershell.ps1 -Check
-          pwsh -NoProfile -File scripts/lint-powershell.ps1
-          pwsh -NoProfile -File scripts/check-json.ps1
-          pwsh -NoProfile -File scripts/check-encoding.ps1 $(git ls-files)
+      - name: Encoding
+        run: pwsh -NoProfile -File scripts/check-encoding.ps1 $(git ls-files)
+
+      - name: PowerShell format
+        run: pwsh -NoProfile -File scripts/format-powershell.ps1 -Check
+
+      - name: PowerShell lint
+        run: pwsh -NoProfile -File scripts/lint-powershell.ps1
+
+      - name: Ruff format
+        run: ruff format --check $(git ls-files '*.py')
+
+      - name: Ruff check
+        run: ruff check $(git ls-files '*.py')
+
+      - name: shfmt
+        run: shfmt -d -i 4 -ci -ln bash $(git ls-files '*.sh' '*.bash')
+
+      - name: ShellCheck
+        run: shellcheck -x $(git ls-files '*.sh' '*.bash')
+
+      - name: yamllint
+        run: yamllint -f parsable $(git ls-files '*.yml' '*.yaml')
+
+      - name: JSON
+        run: pwsh -NoProfile -File scripts/check-json.ps1
 
       - name: Ansible lint
         working-directory: ansible

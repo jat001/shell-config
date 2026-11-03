@@ -18,14 +18,22 @@ try {
     }
     Import-Module PSScriptAnalyzer
 
+    $module = Split-Path (Get-Module PSScriptAnalyzer).Path
+    $default = Import-PowerShellDataFile (Join-Path $module 'Settings/CodeFormatting.psd1')
+    # The default formatter preserves existing trailing whitespace (PSScriptAnalyzer #1992).
+    $settings = @{
+        IncludeRules = @($default.IncludeRules) + 'PSAvoidTrailingWhitespace'
+        Rules        = $default.Rules + @{
+            PSAvoidTrailingWhitespace = @{ Enable = $true }
+        }
+    }
+
     $utf8 = [Text.UTF8Encoding]::new($false)
     $failed = $false
     foreach ($file in $Path) {
         $resolved = (Resolve-Path -LiteralPath $file).Path
         $text = [IO.File]::ReadAllText($resolved)
-        $formatted = (Invoke-Formatter -ScriptDefinition $text) -replace "`r`n", "`n"
-        # Match .editorconfig: no trailing whitespace.
-        $formatted = $formatted -replace '(?m)[ \t]+$', ''
+        $formatted = (Invoke-Formatter -ScriptDefinition $text -Settings $settings) -replace "`r`n", "`n"
         if ($formatted -cne ($text -replace "`r`n", "`n")) {
             if ($Check) {
                 "Would reformat: $file"
