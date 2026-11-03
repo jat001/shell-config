@@ -21,16 +21,14 @@ jobs:
       - name: Install Ruff
         run: |
           pipx install ruff
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install Ansible lint
         run: |
           pipx install ansible-lint
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Install PSScriptAnalyzer
         run: |
-          pwsh -NoProfile -Command "Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force"
+          pwsh -NoProfile -Command "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { Set-PSRepository PSGallery -InstallationPolicy Trusted; Install-Module PSScriptAnalyzer -Scope CurrentUser -Force }"
 
       - name: Install Ansible collections
         working-directory: ansible
@@ -52,6 +50,8 @@ jobs:
 
       - name: Ansible lint
         working-directory: ansible
+        env:
+          ANSIBLE_DEPRECATION_WARNINGS: "false"
         run: |
           lint_bin="$(dirname "$(readlink -f "$(command -v ansible-lint)")")"
           PATH="$lint_bin:$PATH" ansible-lint site.yml ../tests/prepare.yml ../tests/verify.yml
