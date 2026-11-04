@@ -28,6 +28,21 @@ function Invoke-Container {
     $process.ExitCode
 }
 
+function Test-ContainerArchive {
+    param([string]$Path)
+    $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
+    if (-not [IO.File]::Exists($tar)) { return $true }
+    $preference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $entries = @(& $tar -tf $Path 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        $names = @($entries | ForEach-Object { $_ -replace '^\./', '' })
+        return ($names -contains 'manifest.json') -and ($names -contains 'index.json')
+    }
+    finally { $ErrorActionPreference = $preference }
+}
+
 function Import-ControllerCache {
     if (-not [IO.File]::Exists($wslc)) { return }
     $seen = @{}
@@ -35,11 +50,16 @@ function Import-ControllerCache {
         if ($archive.BaseName -notmatch '^shell-ansible-([0-9a-f]{12})-([0-9]{18})-([0-9a-f]{12})$') { continue }
         $tag = 'shell-ansible:' + $Matches[1]
         if ($seen.ContainsKey($tag)) { continue }
-        $seen[$tag] = $true
-        if ((Invoke-Container @('image', 'inspect', $tag) 'image-check') -eq 0) { continue }
-        if ((Invoke-Container @('image', 'load', '-i', $archive.FullName) 'image-load') -ne 0) {
-            throw 'Cached controller image could not be loaded.'
+        if (-not (Test-ContainerArchive $archive.FullName)) { continue }
+        if ((Invoke-Container @('image', 'inspect', $tag) 'image-check') -eq 0) {
+            $seen[$tag] = $true
+            continue
         }
+        if ((Invoke-Container @('image', 'load', '-i', $archive.FullName) 'image-load') -ne 0) {
+            [IO.File]::Delete($archive.FullName)
+            continue
+        }
+        $seen[$tag] = $true
     }
 }
 
@@ -58,6 +78,10 @@ function Export-ControllerCache {
     $archive = Join-Path $imageCache $name
     if ((Invoke-Container @('image', 'save', '-o', ($archive + '.part'), $tag) 'image-save') -ne 0) {
         throw 'Controller image could not be cached.'
+    }
+    if (-not (Test-ContainerArchive ($archive + '.part'))) {
+        [IO.File]::Delete($archive + '.part')
+        throw 'The cached controller image archive is incomplete.'
     }
     [IO.File]::Move($archive + '.part', $archive)
 }

@@ -18,8 +18,20 @@ function Assert-TestVm {
 function Connect-Guest {
     if (-not $Context.Session -or $Context.Session.State -ne 'Opened') {
         if ($Context.Session) { Remove-PSSession $Context.Session -ErrorAction SilentlyContinue }
+        $Context.Session = $null
         $credential = Import-Clixml (Join-Path $StateDirectory 'guest-credential.xml')
-        $Context.Session = New-PSSession -VMName $Context.VmName -Credential $credential
+        # Start-VM returns before the guest is ready, so wait for PowerShell Direct.
+        $deadline = (Get-Date).AddMinutes(10)
+        while ($true) {
+            try {
+                $Context.Session = New-PSSession -VMName $Context.VmName -Credential $credential -ErrorAction Stop
+                break
+            }
+            catch {
+                if ((Get-Date) -ge $deadline) { throw }
+                Start-Sleep -Seconds 5
+            }
+        }
     }
 }
 
@@ -35,6 +47,21 @@ function Write-GuestFile {
         if ($parent) { [void][IO.Directory]::CreateDirectory($parent) }
         [IO.File]::WriteAllBytes($Path, $bytes)
     }
+}
+
+function Test-ContainerArchive {
+    param([string]$Path)
+    $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
+    if (-not [IO.File]::Exists($tar)) { return $true }
+    $preference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $entries = @(& $tar -tf $Path 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        $names = @($entries | ForEach-Object { $_ -replace '^\./', '' })
+        return ($names -contains 'manifest.json') -and ($names -contains 'index.json')
+    }
+    finally { $ErrorActionPreference = $preference }
 }
 
 function Copy-Logs {
@@ -68,6 +95,8 @@ function Copy-Cache {
     $remote = 'C:\shell-cache'
     if ($Direction -eq 'ToGuest') {
         foreach ($file in Get-ChildItem -LiteralPath $cache -Recurse -File) {
+            if ($file.DirectoryName -eq (Join-Path $cache 'images') -and $file.Extension -eq '.tar' -and
+                -not (Test-ContainerArchive $file.FullName)) { continue }
             $relative = $file.FullName.Substring($cache.Length + 1)
             $target = Join-Path $remote $relative
             $needed = Invoke-Command -Session $Context.Session -ArgumentList $target, $file.Length -ScriptBlock {
@@ -102,11 +131,29 @@ function Copy-Cache {
                     finally { $stream.Dispose() }
                 } | Select-Object FullName, Length
         }
+        $invalid = [Collections.Generic.List[string]]::new()
         foreach ($file in $files) {
             $target = Join-Path $cache $file.FullName.Substring($remote.Length + 1)
+            $isImage = (Split-Path -Parent $target) -eq (Join-Path $cache 'images') -and
+            [IO.Path]::GetExtension($target) -eq '.tar'
+            if ($isImage -and [IO.File]::Exists($target) -and -not (Test-ContainerArchive $target)) {
+                [IO.File]::Delete($target)
+            }
             if ([IO.File]::Exists($target) -and (Get-Item -LiteralPath $target).Length -eq $file.Length) { continue }
             [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
             Copy-Item -FromSession $Context.Session -LiteralPath $file.FullName -Destination $target -Force
+            if ($isImage -and -not (Test-ContainerArchive $target)) {
+                [IO.File]::Delete($target)
+                $invalid.Add([string]$file.FullName)
+            }
+        }
+        if ($invalid.Count) {
+            Invoke-Command -Session $Context.Session -ArgumentList ($invalid -join "`n") -ScriptBlock {
+                param([string]$Paths)
+                foreach ($path in ($Paths -split "`n")) {
+                    if ($path) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+                }
+            }
         }
     }
 }

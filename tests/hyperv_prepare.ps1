@@ -143,6 +143,21 @@ function Get-OfficialIsoUrl {
     [Net.WebUtility]::HtmlDecode($link.Groups[1].Value)
 }
 
+function Test-ContainerArchive {
+    param([string]$Path)
+    $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
+    if (-not [IO.File]::Exists($tar)) { return $true }
+    $preference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $entries = @(& $tar -tf $Path 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        $names = @($entries | ForEach-Object { $_ -replace '^\./', '' })
+        return ($names -contains 'manifest.json') -and ($names -contains 'index.json')
+    }
+    finally { $ErrorActionPreference = $preference }
+}
+
 function Wait-Guest {
     param([pscredential]$Credential)
     $deadline = [DateTime]::UtcNow.AddMinutes(20)
@@ -162,6 +177,43 @@ function Wait-Guest {
         Start-Sleep -Seconds 5
     }
     throw 'The guest did not finish Windows setup or become available through PowerShell Direct.'
+}
+
+function Wait-Settled {
+    param([object]$Connection, [pscredential]$Credential)
+    $deadline = [DateTime]::UtcNow.AddMinutes(20)
+    $stableSince = $null
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $state = $null
+        try {
+            if (-not $Connection) { $Connection = Wait-Guest $Credential }
+            $state = Invoke-Command -Session $Connection -ScriptBlock {
+                $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime()
+                $oobe = @(Get-Process -Name CloudExperienceHostBroker -ErrorAction SilentlyContinue).Count
+                $lastShutdown = Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074 } -MaxEvents 1 `
+                    -ErrorAction SilentlyContinue | Select-Object -ExpandProperty TimeCreated
+                [pscustomobject]@{ Boot = $boot; Oobe = $oobe; LastShutdown = $lastShutdown }
+            }
+        }
+        catch {
+            if ($Connection) { Remove-PSSession $Connection -ErrorAction SilentlyContinue }
+            $Connection = $null
+            $state = $null
+        }
+        if ($state) {
+            $now = [DateTime]::UtcNow
+            $quiet = if ($state.LastShutdown) { ($now - $state.LastShutdown.ToUniversalTime()).TotalMinutes } else { 999 }
+            $up = ($now - $state.Boot).TotalMinutes
+            # OOBE reboots the guest several times after ImageState becomes COMPLETE.
+            if ($state.Oobe -eq 0 -and $up -ge 3 -and $quiet -ge 3) {
+                if (-not $stableSince) { $stableSince = $now }
+                elseif (($now - $stableSince).TotalMinutes -ge 2) { return $Connection }
+            }
+            else { $stableSince = $null }
+        }
+        Start-Sleep -Seconds 10
+    }
+    throw 'The guest did not settle after Windows setup.'
 }
 
 function Save-Baseline {
@@ -240,16 +292,57 @@ try {
         throw 'This state directory belongs to another VM; use a separate state directory.'
     }
     $vm = Get-VM -Name $Name -ErrorAction SilentlyContinue
-    if ($vm -and (-not [IO.File]::Exists($identityPath) -or
-            ([IO.File]::ReadAllText($identityPath) | ConvertFrom-Json).Id -ne [string]$vm.Id)) {
-        throw 'A VM already uses this name without a matching identity record; refusing to adopt or replace it.'
+    if ($vm) {
+        $identity = if ([IO.File]::Exists($identityPath)) {
+            [IO.File]::ReadAllText($identityPath) | ConvertFrom-Json
+        }
+        $owned = $identity -and $identity.Name -eq $Name -and
+        ([string]$vm.Id -eq [string]$identity.Id)
+        if ($owned) {
+            $owned = @(Get-VMHardDiskDrive -VMName $vm.Name | Where-Object {
+                    $_.Path -and -not [IO.File]::Exists([string]$_.Path)
+                }).Count -eq 0
+        }
+        if (-not $owned) {
+            # Only a VM whose files live in this state directory is a disposable test VM.
+            $configPath = if ($vm.Path) { [IO.Path]::GetFullPath([string]$vm.Path) } else { '' }
+            if (-not $configPath.StartsWith(($StateDirectory + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'A VM already uses this name outside the test state directory; refusing to replace it.'
+            }
+            Write-ProgressFile 'Replace the previous test VM'
+            $diskPaths = @()
+            if ($vm.State -ne 'Off') { Stop-VM -Name $vm.Name -TurnOff -Force -Confirm:$false }
+            foreach ($drive in Get-VMHardDiskDrive -VMName $vm.Name) {
+                if ($drive.Path) { $diskPaths += [string]$drive.Path }
+            }
+            Remove-VM -Name $vm.Name -Force -Confirm:$false
+            foreach ($diskPath in $diskPaths) {
+                if ([IO.File]::Exists($diskPath) -and
+                    [IO.Path]::GetFullPath($diskPath).StartsWith(
+                        ($StateDirectory + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+                    [IO.File]::Delete($diskPath)
+                }
+            }
+            $vm = $null
+        }
     }
     if ($Stage -in @('All', 'Create') -and -not $vm) {
         Write-ProgressFile 'Apply Windows image to a new system VHDX'
         $directory = Join-Path $StateDirectory $Name
         $vhd = Join-Path $directory 'system.vhdx'
-        # A disk that is already in this directory is never reformatted, even when Prepare is repeated.
-        if ([IO.File]::Exists($vhd)) { throw 'A system VHDX already exists; refusing to replace it.' }
+        if ([IO.File]::Exists($vhd)) {
+            # The test disk is disposable, but never pull it out from under another VM.
+            $attached = @(Get-VM | ForEach-Object {
+                    $candidate = $_
+                    Get-VMHardDiskDrive -VMName $candidate.Name | Where-Object {
+                        $_.Path -and [IO.Path]::GetFullPath([string]$_.Path) -eq $vhd
+                    } | ForEach-Object { $candidate.Name }
+                })
+            if ($attached.Count) {
+                throw "The system VHDX is attached to another VM: $($attached -join ', ')."
+            }
+            Remove-Item -LiteralPath $vhd -Force
+        }
         $null = [IO.Directory]::CreateDirectory($directory)
         $mounted = $false
         $isoMounted = $false
@@ -363,6 +456,8 @@ try {
         if ($vm.State -eq 'Off') { Start-VM -VM $vm }
         Write-ProgressFile 'Wait for Windows setup and save Clean-Windows'
         $connection = Wait-Guest $credential
+        Write-ProgressFile 'Wait for Windows setup to settle'
+        $connection = Wait-Settled $connection $credential
         Invoke-Command -Session $connection -ScriptBlock {
             $null = [IO.Directory]::CreateDirectory('C:\shell-test')
             foreach ($path in @('C:\Windows\Panther\Unattend.xml', 'C:\Windows\Panther\Unattend\Unattend.xml')) {
@@ -381,6 +476,27 @@ try {
         if ($Stage -ne 'Create' -and
             -not (Get-VMSnapshot -VMName $Name -Name WSL-Ready -ErrorAction SilentlyContinue)) {
             Write-ProgressFile 'Install cached WSL runtime in the test guest'
+            # Complete VirtualMachinePlatform servicing before the MSI creates WSLService.
+            $restartNeeded = Invoke-Command -Session $connection -ScriptBlock {
+                $feature = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
+                if ($feature.State -in @('Enabled', 'EnablePending')) {
+                    return $feature.State -eq 'EnablePending'
+                }
+                $result = Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -All -NoRestart
+                return [bool]$result.RestartNeeded
+            }
+            if ($restartNeeded) {
+                Write-ProgressFile 'Restart the guest after enabling VirtualMachinePlatform'
+                Remove-PSSession $connection; $connection = $null
+                Stop-VM -Name $Name
+                $deadline = [DateTime]::UtcNow.AddMinutes(5)
+                while ((Get-VM -Name $Name).State -ne 'Off') {
+                    if ([DateTime]::UtcNow -gt $deadline) { throw 'The test VM did not shut down cleanly.' }
+                    Start-Sleep -Seconds 2
+                }
+                Start-VM -Name $Name
+                $connection = Wait-Guest $credential
+            }
             $guestRepository = Invoke-Command -Session $connection -ScriptBlock {
                 $path = Join-Path $env:USERPROFILE '.config/shell'
                 $null = [IO.Directory]::CreateDirectory((Join-Path $path 'ansible/bootstrap'))
@@ -408,12 +524,43 @@ try {
             Stop-VM -Name $Name; Start-VM -Name $Name
             $connection = Wait-Guest $credential
             $helloCache = Join-Path $cacheDirectory 'images/hello-world.tar'
+            if ([IO.File]::Exists($helloCache) -and -not (Test-ContainerArchive $helloCache)) {
+                [IO.File]::Delete($helloCache)
+            }
+            if (-not [IO.File]::Exists($helloCache)) {
+                # Let the host pull and save the image so a fresh cache needs no guest network.
+                $hostWslc = Join-Path $env:ProgramFiles 'WSL/wslc.exe'
+                if ([IO.File]::Exists($hostWslc)) {
+                    Write-ProgressFile 'Cache the hello-world container image'
+                    $preference = $ErrorActionPreference
+                    try {
+                        $ErrorActionPreference = 'Continue'
+                        for ($attempt = 1; $attempt -le 3; $attempt++) {
+                            & $hostWslc run --rm hello-world
+                            if ($LASTEXITCODE -eq 0) { break }
+                            Start-Sleep -Seconds (5 * $attempt)
+                        }
+                        if ($LASTEXITCODE -eq 0) {
+                            & $hostWslc image save -o $helloCache hello-world
+                            if ($LASTEXITCODE -ne 0) { [IO.File]::Delete($helloCache) }
+                        }
+                    }
+                    catch {
+                        if ([IO.File]::Exists($helloCache)) { [IO.File]::Delete($helloCache) }
+                    }
+                    finally { $ErrorActionPreference = $preference }
+                    if ([IO.File]::Exists($helloCache) -and -not (Test-ContainerArchive $helloCache)) {
+                        [IO.File]::Delete($helloCache)
+                    }
+                }
+            }
             if ([IO.File]::Exists($helloCache)) {
                 Copy-Item -LiteralPath $helloCache -ToSession $connection -Destination C:\shell-test\hello-world.tar -Force
             }
             Write-ProgressFile 'Verify nested WSL containers'
             Invoke-Command -Session $connection -ScriptBlock {
-                $ErrorActionPreference = 'Stop'
+                # wslc reports progress on stderr; only the exit code decides success.
+                $ErrorActionPreference = 'Continue'
                 $wslc = Join-Path $env:ProgramFiles 'WSL/wslc.exe'
                 & "$env:SystemRoot\System32\wsl.exe" --version
                 if ($LASTEXITCODE -ne 0) { throw 'WSL is not ready after reboot.' }
