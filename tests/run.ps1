@@ -117,7 +117,7 @@ if ((Get-TestNetworkSubnet $network) -ne $networkSubnet) {
 }
 
 $linuxSetup = {
-    param($Name, $Image, $Network, $Repository, $Volumes, $Key, $Reuse, $Log)
+    param($Name, $Image, $Network, $Repository, $StateDirectory, $Volumes, $Key, $Reuse, $Log)
 
     $ErrorActionPreference = 'Stop'
     $PSNativeCommandUseErrorActionPreference = $false
@@ -143,6 +143,7 @@ $linuxSetup = {
         Invoke-Logged (@(
                 'run', '-d', '--name', $container, '--hostname', $Name, '--network', $Network
                 '-v', "${Repository}:/mnt/c/Users/shell/.config/shell:ro"
+                '-v', "${StateDirectory}/bootstrap-ca:/bootstrap-ca:ro"
             ) + $Volumes + @($Image, 'sleep', 'infinity'))
         Invoke-Logged exec $container rm -f /etc/apt/apt.conf.d/docker-clean
     }
@@ -150,7 +151,8 @@ $linuxSetup = {
     # Bootstrap logs package installation on stderr. In a job, Stop would fail the job on that progress.
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
-    $null = & wslc.exe exec $container sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
+    $null = & wslc.exe exec $container env SHELL_BOOTSTRAP_CA=/bootstrap-ca/bundle.pem `
+        sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
         Select-Object -Last 1
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed in $container; see $Log" }
     $alive = 'pid=$(cat /etc/shell-ansible/sshd.pid 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid"'
@@ -166,7 +168,7 @@ foreach ($name in $linux) {
     $log = Join-Path $StateDirectory "setup-$name.log"
     [IO.File]::WriteAllText($log, '')
     $jobs[$name] = Start-Job -ScriptBlock $linuxSetup -ArgumentList @(
-        $name, $images[$name], $network, $repository, $volumes[$name], $key, [bool]$Reuse, $log
+        $name, $images[$name], $network, $repository, $StateDirectory, $volumes[$name], $key, [bool]$Reuse, $log
     )
     $wsl[$name] = [ordered]@{
         ansible_host                 = "shell-test-$name"

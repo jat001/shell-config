@@ -1,0 +1,47 @@
+- name: Check repository bootstrap prerequisites
+  ansible.builtin.raw: |
+    id -u
+    if command -v apt-get >/dev/null 2>&1 && [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+        echo needs-ca
+    fi
+  register: shell_repo_prerequisites
+  changed_when: false
+  check_mode: false
+
+# Use script rather than copy so this also works on custom inventory hosts without Python.
+- name: Configure repositories before installing Python
+  become: "{{ (shell_repo_prerequisites.stdout_lines | default(['0']) | first | trim) != '0' }}"
+  block:
+    - name: Create a temporary directory for the controller CA bundle
+      ansible.builtin.raw: mktemp -d /tmp/shell-ansible-ca.XXXXXX
+      register: shell_repo_ca_directory
+      when:
+        - not ansible_check_mode
+        - "'needs-ca' in shell_repo_prerequisites.stdout_lines"
+      changed_when: false
+
+    - name: Stage controller CA certificates for minimal Debian
+      ansible.builtin.script:
+        cmd: /etc/ssl/certs/ca-certificates.crt {{ (shell_repo_ca_directory.stdout | trim ~ '/bundle.pem') | quote }}
+        executable: install -m 0600 -T
+      when: shell_repo_ca_directory is not skipped
+      changed_when: false
+
+    - name: Upgrade package source URLs
+      ansible.builtin.script:
+        cmd: >-
+          {{ (playbook_dir ~ '/bootstrap/repos-https.sh') | quote }}
+          {{ '--check' if ansible_check_mode else '' }}
+          {{ (shell_repo_ca_directory.stdout | trim ~ '/bundle.pem') | quote if shell_repo_ca_directory is not skipped else '' }}
+        executable: /bin/sh
+      register: shell_repo_https
+      changed_when: "'repos-https-changed' in (shell_repo_https.stdout_lines | default([]))"
+      check_mode: false
+
+  always:
+    - name: Remove the staged controller CA certificates
+      ansible.builtin.raw: |
+        rm -f -- {{ (shell_repo_ca_directory.stdout | trim ~ '/bundle.pem') | quote }}
+        rmdir -- {{ shell_repo_ca_directory.stdout | trim | quote }}
+      when: shell_repo_ca_directory.stdout | default('') | trim is match('^/tmp/shell-ansible-ca\.[A-Za-z0-9]+$')
+      changed_when: false

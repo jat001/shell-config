@@ -14,6 +14,12 @@ $definition = $ast.Find({
     }, $true)
 if (-not $definition) { throw 'The MSYS2 command wrapper is missing.' }
 . ([scriptblock]::Create($definition.Extent.Text))
+$definition = $ast.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-MsysHttpsSources'
+    }, $true)
+if (-not $definition) { throw 'The MSYS2 repository migration is missing.' }
+. ([scriptblock]::Create($definition.Extent.Text))
 
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('shell-msys-update-' + [guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($temporary)
@@ -47,7 +53,27 @@ try {
         }
         if (-not $rejected) { throw 'An unexpected command failure was hidden.' }
     }
-    "PowerShell $($PSVersionTable.PSVersion): core restart and ordinary MSYS2 command failure checks passed."
+    $Root = $temporary
+    $null = [IO.Directory]::CreateDirectory((Join-Path $Root 'etc/pacman.d'))
+    $mirrorlist = Join-Path $Root 'etc/pacman.d/mirrorlist.mingw'
+    $before = "# Server = http://comment.example/`nServer = http://mirror.example/`nServer = https://fallback.example/`n"
+    $after = $before.Replace('http://mirror.example/', 'https://mirror.example/')
+    [IO.File]::WriteAllText($mirrorlist, $before)
+    $Ansible = [pscustomobject]@{ Changed = $false; CheckMode = $true }
+    Set-MsysHttpsSources
+    if (-not $Ansible.Changed -or [IO.File]::ReadAllText($mirrorlist) -cne $before) {
+        throw 'Preview did not report the mirror change without writing it.'
+    }
+    $Ansible.CheckMode = $false
+    $Ansible.Changed = $false
+    Set-MsysHttpsSources
+    if (-not $Ansible.Changed -or [IO.File]::ReadAllText($mirrorlist) -cne $after) {
+        throw 'The mirror migration did not preserve comments and existing HTTPS URLs.'
+    }
+    $Ansible.Changed = $false
+    Set-MsysHttpsSources
+    if ($Ansible.Changed) { throw 'The mirror migration changed an already migrated file.' }
+    "PowerShell $($PSVersionTable.PSVersion): MSYS2 update and HTTPS mirror checks passed."
 }
 finally {
     $env:SHELL_MSYS_TEST_STATUS = $savedStatus

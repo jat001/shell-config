@@ -23,7 +23,9 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-if [ "${SHELL_DEBIAN_TESTING:-0}" = 1 ] && command -v apt-get >/dev/null 2>&1 && [ -f /etc/debian_version ]; then
+debian_testing_upgrade=false
+if [ "${SHELL_REPOS_CHECK:-0}" != 1 ] && [ "${SHELL_DEBIAN_TESTING:-0}" = 1 ] &&
+    command -v apt-get >/dev/null 2>&1 && [ -f /etc/debian_version ]; then
     source=/etc/apt/sources.list.d/debian.sources
     marker=$directory/debian-testing-complete
     if [ ! -f "$marker" ] || ! grep -q '^Suites: testing testing-updates$' "$source" 2>/dev/null; then
@@ -39,22 +41,30 @@ if [ "${SHELL_DEBIAN_TESTING:-0}" = 1 ] && command -v apt-get >/dev/null 2>&1 &&
         done
         cat >"$source.tmp" <<'EOF'
 Types: deb
-URIs: http://deb.debian.org/debian
+URIs: https://deb.debian.org/debian
 Suites: testing testing-updates
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 
 Types: deb
-URIs: http://deb.debian.org/debian-security
+URIs: https://deb.debian.org/debian-security
 Suites: testing-security
 Components: main
 Signed-By: /usr/share/keyrings/debian-archive-keyring.pgp
 EOF
         mv "$source.tmp" "$source"
-        retry apt-get update >&2
-        DEBIAN_FRONTEND=noninteractive retry apt-get full-upgrade -y >&2
-        touch "$marker"
+        debian_testing_upgrade=true
     fi
+fi
+
+if [ "${SHELL_REPOS_CHECK:-0}" != 1 ]; then
+    sh "$(dirname -- "$0")/repos-https.sh" >&2
+fi
+
+if "$debian_testing_upgrade"; then
+    retry apt-get update >&2
+    DEBIAN_FRONTEND=noninteractive retry apt-get full-upgrade -y >&2
+    touch "$marker"
 fi
 
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.

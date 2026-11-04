@@ -13,6 +13,8 @@ Fedora 45 的 WSL 镜像还没有进入 Microsoft 的发行版索引 `Distributi
 Fedora 45 默认 Python 3.15，当前 ansible-core 2.22 直接支持，不需要另装解释器。
 MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用户环境变量 `DEV_DRIVE`。
 
+部署在刷新软件包索引前，将 APT、pacman（含 MSYS2）、Zypper 和 DNF 源里的 HTTP 地址切换为 HTTPS。Fedora 官方 metalink 也只请求 HTTPS 镜像。精简 Debian 缺少 CA 证书包时，首次 APT 刷新临时使用控制容器的 CA 证书。
+
 ## 安装和更新
 
 ```powershell

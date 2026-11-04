@@ -51,6 +51,26 @@ function Update-System {
     if ((Invoke-Msys 'pacman -Q').Output -ne $before) { $Ansible.Changed = $true }
 }
 
+function Set-MsysHttpsSources {
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    foreach ($name in 'etc/pacman.conf', 'etc/pacman.d/mirrorlist.msys', 'etc/pacman.d/mirrorlist.mingw') {
+        $file = Join-Path $Root $name
+        if (-not [IO.File]::Exists($file)) { continue }
+        $original = [IO.File]::ReadAllText($file, $utf8)
+        $updated = $original -creplace '(?m)^([ \t]*(?:Server|CacheServer)[ \t]*=[ \t]*)http://', '${1}https://'
+        if ($updated -ceq $original) { continue }
+        $Ansible.Changed = $true
+        if ($Ansible.CheckMode) { continue }
+
+        $temporary = $file + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+        try {
+            [IO.File]::WriteAllText($temporary, $updated, $utf8)
+            [IO.File]::Replace($temporary, $file, [NullString]::Value)
+        }
+        finally { [IO.File]::Delete($temporary) }
+    }
+}
+
 if ($Ansible.CheckMode) {
     if (-not [IO.File]::Exists($bash)) {
         $Ansible.Changed = $Mode -ne 'update'
@@ -58,10 +78,12 @@ if ($Ansible.CheckMode) {
     elseif ($Mode -ne 'update') {
         $Ansible.Changed = (Invoke-Msys ('pacman -T ' + ($Packages -join ' ')) @(0, 127)).Code -eq 127
     }
+    Set-MsysHttpsSources
     return
 }
 
-if (-not [IO.File]::Exists($bash)) {
+$freshInstall = -not [IO.File]::Exists($bash)
+if ($freshInstall) {
     if ($Mode -eq 'update') { throw "MSYS2 is not installed at $Root; run the init mode first." }
 
     $parent = Split-Path $Root
@@ -81,7 +103,10 @@ if (-not [IO.File]::Exists($bash)) {
     $process = Start-Process -FilePath $archive -ArgumentList '-y', "-o$parent" -Wait -PassThru -WindowStyle Hidden
     if ($process.ExitCode -ne 0) { throw "MSYS2 archive extraction failed ($($process.ExitCode))." }
     if ($leaf -ne 'msys64') { Rename-Item -LiteralPath $extracted -NewName $leaf }
+}
 
+Set-MsysHttpsSources
+if ($freshInstall) {
     $null = Invoke-Msys 'true'
     $null = Invoke-Msys 'pacman-key --init && pacman-key --populate msys2'
     Update-System

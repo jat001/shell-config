@@ -28,6 +28,13 @@
       .config/systemd/user/wsl2-ssh-agent.service: "{{ windows_home }}/.config/shell/systemd/wsl2-ssh-agent.service"
       .config/systemd/user/wsl-dev-drive.service: "{{ windows_home }}/.config/shell/systemd/wsl-dev-drive.service"
   tasks:
+    - name: Check that package sources already use HTTPS
+      ansible.builtin.command:
+        argv: [sh, "{{ windows_home }}/.config/shell/ansible/bootstrap/repos-https.sh", --check]
+      register: repo_https
+      changed_when: false
+      failed_when: repo_https.rc != 0 or 'repos-https-changed' in repo_https.stdout_lines
+
     - name: Inspect links
       ansible.builtin.stat:
         path: "{{ home }}/{{ item.key }}"

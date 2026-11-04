@@ -1,3 +1,8 @@
+- name: Switch Linux package sources to HTTPS
+  ansible.builtin.import_tasks: repos_https.yml
+  when: not (shell_regional_only | default(false) | bool)
+  tags: [always]
+
 - name: Install Python for Ansible
   ansible.builtin.raw: |
     set -e

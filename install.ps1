@@ -317,10 +317,18 @@ if (-not [IO.File]::Exists($imageArchive)) { Export-ControllerImage }
 
 $null = [IO.Directory]::CreateDirectory($StateDirectory)
 [IO.File]::WriteAllText((Join-Path $StateDirectory 'controller-image.txt'), $image + [char]10, $utf8)
-if (-not [IO.File]::Exists((Join-Path $StateDirectory 'id_ed25519'))) {
-    Invoke-Wslc run --rm -v "${StateDirectory}:/state" $image sh -c `
-        "ssh-keygen -q -t ed25519 -N '' -C shell-ansible -f /state/id_ed25519"
-}
+$bootstrapCaDirectory = Join-Path $StateDirectory 'bootstrap-ca'
+$null = [IO.Directory]::CreateDirectory($bootstrapCaDirectory)
+$bootstrapCa = Join-Path $bootstrapCaDirectory 'bundle.pem'
+Invoke-Wslc run --rm -v "${StateDirectory}:/state" $image sh -ec @'
+temporary=$(mktemp /state/bootstrap-ca/.bundle.XXXXXX)
+trap 'rm -f $temporary' EXIT
+install -m 644 /etc/ssl/certs/ca-certificates.crt $temporary
+mv -f $temporary /state/bootstrap-ca/bundle.pem
+if [ ! -f /state/id_ed25519 ]; then
+    ssh-keygen -q -t ed25519 -N '' -C shell-ansible -f /state/id_ed25519
+fi
+'@
 if ($PrepareOnly) { return $image }
 
 $servers = [Collections.Generic.List[object]]::new()
@@ -431,8 +439,12 @@ try {
                         ) | Where-Object { $null -ne $_ }) -join ';')
                 )
             }
-            if ($TestDebianTesting) { $bootstrap = @('env', 'SHELL_DEBIAN_TESTING=1') + $bootstrap }
-            $sshd = ((Invoke-Wsl $distribution $bootstrap -Root) -split "`n" | Select-Object -Last 1).Trim()
+            $caPath = Invoke-Wsl $distribution @('wslpath', '-a', '-u', $bootstrapCa)
+            $bootstrapEnvironment = @('env', "SHELL_BOOTSTRAP_CA=$caPath")
+            if ($TestDebianTesting) { $bootstrapEnvironment += 'SHELL_DEBIAN_TESTING=1' }
+            if ($WhatIfPreference) { $bootstrapEnvironment += 'SHELL_REPOS_CHECK=1' }
+            $sshd = ((Invoke-Wsl $distribution ($bootstrapEnvironment + $bootstrap) -Root) -split "`n" |
+                    Select-Object -Last 1).Trim()
             if ($sshd -notmatch '^/[\w./+-]+$') { throw "Unexpected sshd path: $sshd" }
             # wsl.exe splits a multi-word --exec command, so the launcher is a file with no arguments.
             $serverLog = Join-Path $StateDirectory ('sshd-' + ($distribution -replace '[^A-Za-z0-9_-]', '-') + '.log')
