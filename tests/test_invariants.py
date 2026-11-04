@@ -102,7 +102,11 @@ class InvariantTests(unittest.TestCase):
         guest = (root / "tests/hyperv_guest.ps1").read_text(encoding="utf-8")
         runner = collapsed((root / "tests/run.ps1").read_text(encoding="utf-8"))
         self.assertIn("[switch]$TestDebianTesting", installer)
-        self.assertIn("@('env', 'SHELL_DEBIAN_TESTING=1')", installer)
+        self.assertIn(
+            "if ($TestDebianTesting) { $bootstrapEnvironment += 'SHELL_DEBIAN_TESTING=1' }",
+            installer,
+        )
+        self.assertIn("($bootstrapEnvironment + $bootstrap) -Root", installer)
         self.assertIn("ContainsKey('CacheDirectory') -and -not $Inventory", installer)
         self.assertIn("SHELL_DEBIAN_TESTING:-0", bootstrap)
         self.assertIn("apt-get full-upgrade -y", bootstrap)

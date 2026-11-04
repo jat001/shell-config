@@ -469,6 +469,7 @@
       failed_when: "'interactive injection passed.' not in (clink_verification.output | join(' '))"
       tags: [clink]
 
+    # MSYS2 derives LC_ALL from the guest Windows locale, independently of the installer process.
     - name: Check MSYS2 shells
       ansible.windows.win_command:
         argv:
@@ -477,7 +478,8 @@
           - >-
             whence -p oh-my-posh jq git fish &&
             test "$LANG" = '{{ shell_host_locale }}' &&
-            test "$LC_ALL" = '{{ shell_host_lc_all }}' &&
+            test -n "$LC_ALL" &&
+            test "$LC_ALL" = "$(locale -uU)" &&
             test "$(locale charmap)" = UTF-8 &&
             date +%z
       environment:
