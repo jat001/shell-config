@@ -18,9 +18,11 @@ source ($nu.default-config-dir | path join 'common-aliases.nu')
 
 source ($nu.default-config-dir | path join 'oh-my-posh.nu')
 
-let previous_completer = $env.config.completions.external.completer
+$env.config = ($env.config? | default {})
+let previous_completer = ($env.config | get -i completions.external.completer)
 $env.config.completions.external.completer = {|place|
-    let command = $place.command.0
+    let spans = if ($place | describe | str starts-with 'record') { $place.command } else { $place }
+    let command = $spans.0
     if (($command | path basename) not-in ['docker' 'docker.exe']) {
         if $previous_completer != null {
             do $previous_completer $place
@@ -29,7 +31,7 @@ $env.config.completions.external.completer = {|place|
         }
     } else {
         let response = (try {
-            run-external $command '__complete' ...($place.command | skip 1)
+            run-external $command '__complete' ...($spans | skip 1)
                 | complete
         } catch { null })
         if $response == null or $response.exit_code != 0 {
@@ -44,7 +46,7 @@ $env.config.completions.external.completer = {|place|
         if ($directive bit-and 24) != 0 {
             return null
         }
-        let current = ($place.command | last)
+        let current = ($spans | last)
         let value_prefix = if ($current starts-with '--') and ($current | str contains '=') {
             ($current | split row '=' | first) + '='
         } else { '' }

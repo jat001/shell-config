@@ -61,8 +61,14 @@ load-env $shared.environment
 
 # The init script names this system's oh-my-posh binary, so it is kept with the configuration rather than in
 # the data directory, which WSL distributions share.
-(
+let job_list_available = ((scope commands | where name == 'job list' | length) > 0)
+mut oh_my_posh_init = (
     ^oh-my-posh init nu --print --config ($env.HOME | path join '.config' 'oh-my-posh' 'config.omp.jsonc')
     | str replace --all "\r\n" "\n"
-    | save --force ($nu.default-config-dir | path join 'oh-my-posh.nu')
 )
+# Nushell 0.99, still shipped by Fedora 45, has no job commands; oh-my-posh's generated init expects them.
+if not $job_list_available {
+    $oh_my_posh_init = ($oh_my_posh_init
+        | str replace --all '--job-count=(job list | length)' '--job-count=0')
+}
+$oh_my_posh_init | save --force ($nu.default-config-dir | path join 'oh-my-posh.nu')

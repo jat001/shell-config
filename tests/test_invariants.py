@@ -136,6 +136,10 @@ class InvariantTests(unittest.TestCase):
         self.assertNotIn("ansible_python_interpreter = '/usr/bin/python3.14'", installer)
         packages = (root / "ansible/roles/linux/tasks/packages_redhat.yml").read_text(encoding="utf-8")
         self.assertIn("ansible.builtin.dnf5", packages)
+        # The Fedora WSL Base image ships no awk; ble.sh cancels its load without it.
+        definitions = (root / "ansible/group_vars/all/packages.yml").read_text(encoding="utf-8")
+        self.assertGreaterEqual(definitions.count("  - gawk\n"), 2)
+        self.assertIn("  - procps-ng\n", definitions)
         regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
         self.assertIn("glibc-langpack-", regional)
         self.assertIn("Require host locale support on Fedora", regional)
@@ -145,6 +149,17 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("fedora = 'fedora:45'", runner)
         filter_plugin = (root / "ansible/filter_plugins/shell.py").read_text(encoding="utf-8")
         self.assertIn("/usr/share/rootfiles", filter_plugin)
+
+    def test_nushell_handles_explicit_configs_and_pre_job_versions(self):
+        common = (root / "common.nu").read_text(encoding="utf-8")
+        self.assertIn("$env.config = ($env.config? | default {})", common)
+        environment = (root / "common-env.nu").read_text(encoding="utf-8")
+        self.assertIn("job_list_available", environment)
+        self.assertIn("--job-count=0", environment)
+        verify = (root / "tests/verify.yml").read_text(encoding="utf-8")
+        self.assertEqual(verify.count("shell_startup.py"), 2)
+        self.assertIn("Exercise interactive root shells", verify)
+        self.assertIn("Exercise interactive shells as the WSL user", verify)
 
 
 if __name__ == "__main__":

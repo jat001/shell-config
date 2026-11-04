@@ -99,6 +99,7 @@ shell_zypper_packages:
   - bash-completion
   - ca-certificates
   - fish
+  - gawk
   - git
   - glibc-locale
   - gzip
@@ -117,6 +118,7 @@ shell_zypper_packages:
 shell_redhat_packages:
   - bash-completion
   - fish
+  - gawk
   - git
   - gzip
   - jq
@@ -124,6 +126,7 @@ shell_redhat_packages:
   - nushell
   - openssl-libs
   - openssl3-libs
+  - procps-ng
   - sudo
   - tar
   - tzdata

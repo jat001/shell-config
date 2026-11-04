@@ -103,6 +103,24 @@
       loop_control:
         label: "{{ item.item.name }}"
 
+    - name: Exercise interactive root shells
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ home }}/.config/shell/tests/shell_startup.py"
+          - "{{ item }}"
+          - --home
+          - "{{ home }}"
+          - --expect
+          - "{{ home }}/.local/share/pnpm"
+          - --timeout
+          - "30"
+      environment: "{{ shell_environment }}"
+      loop: [bash, zsh, fish, pwsh, nu]
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
+
     - name: Resolve XDG directories with and without the development drive
       ansible.builtin.command:
         argv: [jq, -c, --arg, platform, wsl, --arg, home, "{{ home }}", --arg, windows_home, "{{ windows_home }}",
@@ -281,6 +299,20 @@
       loop: "{{ user_shells.results }}"
       loop_control:
         label: "{{ item.item.name }}"
+
+    - name: Exercise interactive shells as the WSL user
+      ansible.builtin.command:
+        argv:
+          - su
+          - shell
+          - -c
+          - "cd && python3 /home/shell/.config/shell/tests/shell_startup.py {{ item }} --home /home/shell
+            --expect /home/shell/.local/share/pnpm --timeout 30"
+      environment: "{{ shell_environment }}"
+      loop: [bash, zsh, fish, pwsh, nu]
+      loop_control:
+        label: "{{ item }}"
+      changed_when: false
 
     - name: Load PowerShell modules for root and the WSL user
       ansible.builtin.command:

@@ -45,4 +45,8 @@
     dest: /usr/local/share/antidote
     depth: 1
     update: "{{ shell_mode == 'update' }}"
+  register: shell_antidote_result
+  until: shell_antidote_result is succeeded
+  retries: 3
+  delay: 10
   when: "'zsh-antidote' not in shell_package_available"

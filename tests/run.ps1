@@ -73,7 +73,7 @@ $image = & $installer -PrepareOnly -StateDirectory $StateDirectory -CacheDirecto
     Select-Object -Last 1
 foreach ($test in @(
         'test_terminal_settings.py', 'test_release_update.py', 'test_shell_paths.py',
-        'test_nushell_defaults.py', 'test_locale_gen.py', 'test_invariants.py'
+        'test_nushell_defaults.py', 'test_locale_gen.py', 'test_invariants.py', 'test_shell_startup.py'
     )) {
     Invoke-Native wslc.exe @(
         'run', '--rm', '-v', "${repository}:/work:ro", $image,

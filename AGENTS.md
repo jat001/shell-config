@@ -85,6 +85,7 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 - `tests/test_nushell_defaults.py`
 - `tests/test_locale_gen.py`
 - `tests/test_invariants.py`
+- `tests/test_shell_startup.py`
 
 可以单独跑、也不碰现网的：
 
@@ -96,6 +97,8 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 - `tests/wsl_cache.ps1 -CacheDirectory <临时目录>`：下载并复用 WSL 缓存，不安装 WSL。
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
 - `tests/download_metrics.ps1`：用临时 `file://` 文件检查缓存命中和下载记录，脚本只返回路径，不访问网络。
+
+`tests/verify.yml` 还会对 root 和 WSL 用户分别调用 `tests/shell_startup.py`，在伪终端里启动 bash、zsh、fish、pwsh、nu，检查初始化、提示符和补全器。测试清掉继承的配置变量，明确断言 ble.sh 已加载，不能只看退出码或环境变量。
 
 不要在现网上跑：
 
@@ -179,5 +182,7 @@ Nushell 的 scaffold 用目标上的 `nu -c 'config reset -w'` 现生成。配�
 Fedora 没有 `/etc/locale.gen` 和 `locale-gen`，locale 由 `glibc-langpack-<语言>` 提供。区域任务按语言安装语言包，再从 `locale -a` 确认，不写 locale 定义文件。
 Fedora 45 默认 Python 3.15 和 DNF5，ansible-core 2.22 已支持目标端 3.15。`wsl.sh` 和 `main.yml` 装 `python3-libdnf5`，`packages_redhat.yml` 和区域任务用 `ansible.builtin.dnf5`。`blesh` 和 `zsh-antidote` 不在 Fedora 仓库，走 `fallbacks.yml`。
 Fedora 45 默认 OpenSSL 4，PowerShell/.NET 仍要找 `libssl.so.3`；`shell_redhat_packages` 同时装 `openssl3-libs`，否则 `Save-PSResource` 报 `No usable version of libssl was found`。
+官方 Fedora WSL Base 镜像不带 `awk`（`fedora:45` 容器镜像带），ble.sh 启动时会报 insane environment 并取消加载；`fedora:45` 容器镜像还缺 `ps`。`shell_redhat_packages` 里要有 `gawk` 和 `procps-ng`。openSUSE Tumbleweed 也没有 `awk`，`shell_zypper_packages` 里同样要有 `gawk`。
+Fedora 45 的 nushell 0.99 没有 `job list`，而 oh-my-posh 生成的 nu init 会无条件引用它。`common-env.nu` 按 `scope commands` 将不支持的 `--job-count` 表达式替换为 0。0.99 的 `$env.config` 可能不存在，安装补全前要初始化空记录；补全器同时接受旧版的参数列表和新版的 `command` 记录。
 
 链接和发布包更新先检查，失败要能恢复。不要改成递归删除或覆盖用户文件。
