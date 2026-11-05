@@ -9,6 +9,7 @@ param(
     [switch]$SkipWsl,
     [switch]$TestDebianTesting,
     [switch]$WslDevDriveOnly,
+    [switch]$WslStartMenuOnly,
     [string]$Inventory,
     [string]$StateDirectory = (Join-Path $env:LOCALAPPDATA 'shell-ansible'),
     [string]$CacheDirectory,
@@ -211,10 +212,80 @@ function Get-CachedDistribution {
     $path
 }
 
-function Set-WslStartMenuShortcut {
-    param([string]$Name, [object]$Registration)
+function Set-WslStartMenuFolderNames {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string]$Programs, [System.Collections.IDictionary]$Names)
 
-    $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $plans = [Collections.Generic.List[object]]::new()
+    foreach ($name in $Names.Keys) {
+        if (-not $name -or $name -ne [IO.Path]::GetFileName($name) -or $name -in @('.', '..') -or
+            $name.TrimEnd(' ', '.') -cne $name -or
+            $name.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+            throw "Invalid WSL Start Menu directory name: $name"
+        }
+        $display = [string]$Names[$name]
+        if (-not $display -or $display -match '[\r\n]') { throw "Invalid WSL display name: $name" }
+        $path = Join-Path $Programs $name
+        $directory = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        if ($directory -and (-not $directory.PSIsContainer -or
+                ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint))) {
+            throw "A file or link occupies the WSL Start Menu directory: $path"
+        }
+        $ini = Join-Path $path 'desktop.ini'
+        $content = "[.ShellClassInfo]`nLocalizedResourceName=$display`n"
+        $file = Get-Item -LiteralPath $ini -Force -ErrorAction SilentlyContinue
+        if ($file -and ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                $utf8.GetString([IO.File]::ReadAllBytes($ini)) -cne $content)) {
+            throw "A different desktop.ini occupies the WSL Start Menu directory: $ini"
+        }
+        $attributes = [IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System
+        $changed = -not $file -or -not ($directory.Attributes -band [IO.FileAttributes]::ReadOnly) -or
+        ($file.Attributes -band $attributes) -ne $attributes
+        $plans.Add(@{ Path = $path; Ini = $ini; Content = $content; Create = -not $file; Changed = $changed })
+    }
+
+    # WSLg keeps using the registered directory name. Only the Windows Shell display name changes.
+    # Validate every directory first; a foreign desktop.ini or link leaves the entire group untouched.
+    foreach ($plan in $plans) {
+        if (-not $plan.Changed -or -not $PSCmdlet.ShouldProcess($plan.Path, 'Set WSLg folder display name')) { continue }
+        $null = [IO.Directory]::CreateDirectory($plan.Path)
+        if ($plan.Create) {
+            $temporary = Join-Path $plan.Path ('.desktop-' + [guid]::NewGuid().ToString('N') + '.tmp')
+            try {
+                [IO.File]::WriteAllText($temporary, $plan.Content, $utf8)
+                [IO.File]::Move($temporary, $plan.Ini)
+            }
+            finally {
+                if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+            }
+        }
+        [IO.File]::SetAttributes($plan.Ini, ([IO.File]::GetAttributes($plan.Ini) -bor $attributes))
+        [IO.File]::SetAttributes($plan.Path,
+            ([IO.File]::GetAttributes($plan.Path) -bor [IO.FileAttributes]::ReadOnly))
+        if (-not ('ShellStartMenuNotifications' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ShellStartMenuNotifications {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern void SHChangeNotify(uint eventId, uint flags, string path, IntPtr item);
+}
+'@
+        }
+        [ShellStartMenuNotifications]::SHChangeNotify(0x2000, 0x1005, $plan.Path, [IntPtr]::Zero)
+        [ShellStartMenuNotifications]::SHChangeNotify(0x1000, 0x1005, $Programs, [IntPtr]::Zero)
+    }
+    @($plans | Where-Object { $_.Changed }).Count -gt 0
+}
+
+function Set-WslStartMenuShortcut {
+    param(
+        [string]$Name,
+        [object]$Registration,
+        [string]$Programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    )
+
     $guid = $Registration.PSChildName
     if (-not $programs -or -not $guid) { return }
     $launcher = Join-Path $env:ProgramFiles 'WSL/wsl.exe'
@@ -246,8 +317,37 @@ function Set-WslStartMenuShortcut {
     $shortcut.Save()
 }
 
+function Set-WslStartMenu {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string[]]$Distribution)
+
+    $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    $registrations = @(Get-WslRegistration)
+    $names = [ordered]@{}
+    foreach ($name in $Distribution) {
+        if ($registrations.DistributionName -contains $name) { $names[$name] = Get-WslDisplayName $name }
+    }
+    $null = Set-WslStartMenuFolderNames -Programs $programs -Names $names
+    foreach ($name in $names.Keys) {
+        $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
+        $display = $names[$name]
+        if ($PSCmdlet.ShouldProcess($display, 'Create Start Menu shortcut')) {
+            Set-WslStartMenuShortcut -Name $name -Registration $registration -Programs $programs
+        }
+    }
+}
+
 $configuration = [IO.File]::ReadAllText((Join-Path $repository 'common.json')) | ConvertFrom-Json
 $distributions = @($configuration.environments.wsl.distributions | Where-Object { $_ })
+
+if ($WslStartMenuOnly) {
+    if ($SkipWsl -or $Inventory -or $WslDevDriveOnly -or $PrepareOnly) {
+        throw '-WslStartMenuOnly cannot be combined with -SkipWsl, -Inventory, -WslDevDriveOnly or -PrepareOnly.'
+    }
+    if (-not $WslDistribution) { $WslDistribution = $distributions }
+    Set-WslStartMenu -Distribution $WslDistribution
+    return
+}
 
 # Ansible runs in a WSL container, so WSL itself is installed before anything else.
 if (-not (Test-Wsl)) {
@@ -389,16 +489,7 @@ try {
 
         # WSL writes its shortcut at the Start Menu root; All apps only enumerates Programs.
         if (-not $SkipWsl) {
-            $registrations = Get-WslRegistration
-            foreach ($name in $WslDistribution) {
-                $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
-                if (-not $registration) { continue }
-                $display = Get-WslDisplayName $name
-                if ($PSCmdlet.ShouldProcess($display, 'Create Start Menu shortcut')) {
-                    try { Set-WslStartMenuShortcut -Name $name -Registration $registration }
-                    catch { Write-Warning "Could not create the Start Menu shortcut for ${display}: $($_.Exception.Message)" }
-                }
-            }
+            Set-WslStartMenu -Distribution $WslDistribution
         }
 
         $profileHome = if ($WindowsHome) { [IO.Path]::GetFullPath($WindowsHome) } else {
