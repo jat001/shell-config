@@ -191,7 +191,7 @@
         database: "{{ item }}"
       loop: [passwd, group]
 
-    - name: Check Debian testing sources
+    - name: Check Debian Testing sources
       ansible.builtin.shell: |
         set -e
         grep -q '/sid' /etc/debian_version

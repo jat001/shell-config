@@ -17,7 +17,7 @@ check_mount() {
     actual=$(findmnt -rn -M "$mountpoint" -o UUID,FSTYPE) || return 1
     actual_uuid=${actual%% *}
     actual_filesystem=${actual#* }
-    # openSUSE hides device UUIDs from unprivileged users; the WSL account has passwordless sudo.
+    # openSUSE Tumbleweed hides device UUIDs from unprivileged users; the WSL account has passwordless sudo.
     if [ -z "$actual_uuid" ]; then
         device=$(findmnt -rn -M "$mountpoint" -o SOURCE) || return 1
         actual_uuid=$(sudo -n blkid -s UUID -o value "$device" 2>/dev/null || true)

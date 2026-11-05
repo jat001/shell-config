@@ -49,9 +49,9 @@
     group: "{{ shell_user }}"
     create_home: "{{ ansible_facts.os_family != 'Suse' }}"
 
-# openSUSE's useradd also copies /usr/etc/skel, whose samples are 0640 root:root.
+# openSUSE Tumbleweed's useradd also copies /usr/etc/skel, whose samples are 0640 root:root.
 # The managed entries could not compare against them as the new account, so the home is created here instead.
-- name: Create SUSE WSL user home
+- name: Create openSUSE Tumbleweed WSL user home
   ansible.builtin.file:
     path: "/home/{{ shell_user }}"
     state: directory

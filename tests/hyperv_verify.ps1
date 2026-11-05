@@ -184,7 +184,7 @@ if [ "${locale_name#en_}" = "$locale_name" ]; then
     fi
     LC_ALL=en_US.UTF-8 locale charmap | grep -qx UTF-8
 fi
-# openSUSE's lang.sh removes LC_ALL when it equals LANG; the interactive shell probe checks LC_ALL there.
+# openSUSE Tumbleweed's lang.sh removes LC_ALL when it equals LANG; the interactive shell probe checks LC_ALL there.
 if [ -f /etc/locale.gen ]; then
     env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
         su - "$user" -c "test \"\$LANG\" = \"$locale_name\" && test \"\$LC_ALL\" = \"$lc_all\" && test \"\$(locale charmap)\" = UTF-8"

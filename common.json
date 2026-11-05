@@ -22,6 +22,12 @@
     },
     "wsl": {
       "distributions": ["archlinux", "Debian", "FedoraLinux-45", "openSUSE-Tumbleweed"],
+      "distribution_names": {
+        "archlinux": "Arch Linux",
+        "Debian": "Debian Testing",
+        "FedoraLinux-45": "Fedora Linux",
+        "openSUSE-Tumbleweed": "openSUSE Tumbleweed"
+      },
       "wsl_conf": {
         "boot": {
           "systemd": "true"

@@ -1,4 +1,4 @@
-- name: Refresh SUSE package metadata
+- name: Refresh openSUSE Tumbleweed package metadata
   ansible.builtin.command:
     argv: [zypper, --non-interactive, refresh]
   register: shell_zypper_refresh
@@ -8,13 +8,13 @@
   retries: 3
   delay: 10
 
-- name: Resolve SUSE package probe
+- name: Resolve openSUSE Tumbleweed package probe
   ansible.builtin.set_fact:
     shell_zypper_probe: "{{ (shell_zypper_packages + (shell_releases | map(attribute='name') | list)
       + ['ble.sh', 'zsh-antidote']) | unique }}"
 
 # zypper prints nothing and exits 104 for a name it does not know, which is what selects the archive or release fallback.
-- name: Inspect available SUSE packages
+- name: Inspect available openSUSE Tumbleweed packages
   ansible.builtin.command:
     argv: "{{ ['zypper', '--non-interactive', 'info', item] }}"
   loop: "{{ shell_zypper_probe }}"
@@ -25,7 +25,7 @@
   check_mode: false
   failed_when: shell_zypper_probe_result.rc not in [0, 104]
 
-- name: Resolve available SUSE packages
+- name: Resolve available openSUSE Tumbleweed packages
   ansible.builtin.set_fact:
     shell_package_available: "{{ shell_zypper_probe_result.results
       | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
@@ -33,7 +33,7 @@
       | rejectattr('name', 'in', shell_zypper_probe_result.results
         | selectattr('rc', 'equalto', 0) | map(attribute='item') | list) | list }}"
 
-- name: Require nonoptional SUSE packages
+- name: Require nonoptional openSUSE Tumbleweed packages
   ansible.builtin.assert:
     that: shell_zypper_packages | difference(shell_package_available)
       | difference(['ble.sh', 'zsh-antidote'])
@@ -41,7 +41,7 @@
     fail_msg: "Packages unavailable: {{ shell_zypper_packages | difference(shell_package_available) }}"
     quiet: true
 
-- name: Install or update SUSE packages
+- name: Install or update openSUSE Tumbleweed packages
   community.general.zypper:
     name: "{{ shell_package_available }}"
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
@@ -55,5 +55,5 @@
 - name: Manage remaining release packages and their update timer
   ansible.builtin.import_tasks: release_updates.yml
 
-- name: Install unavailable SUSE shell dependencies
+- name: Install unavailable openSUSE Tumbleweed shell dependencies
   ansible.builtin.import_tasks: fallbacks.yml

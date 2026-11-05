@@ -28,7 +28,7 @@
     label: "{{ item }}"
   when: ansible_facts.os_family not in ['RedHat', 'Suse']
 
-- name: Inspect Arch locale sources
+- name: Inspect Arch Linux locale sources
   ansible.builtin.stat:
     path: "/usr/share/i18n/locales/{{ item.split('.')[0] }}"
   register: shell_locale_source
@@ -37,13 +37,13 @@
     label: "{{ item }}"
   when: ansible_facts.os_family == 'Archlinux'
 
-- name: Resolve missing Arch locale sources
+- name: Resolve missing Arch Linux locale sources
   ansible.builtin.set_fact:
     shell_missing_locale_sources: "{{ shell_locale_source.results |
       selectattr('stat.exists', 'equalto', false) | map(attribute='item') | list }}"
   when: ansible_facts.os_family == 'Archlinux'
 
-- name: Read Arch package extraction rules
+- name: Read Arch Linux package extraction rules
   ansible.builtin.slurp:
     path: /etc/pacman.conf
   register: shell_pacman_configuration
@@ -51,7 +51,7 @@
     - ansible_facts.os_family == 'Archlinux'
     - shell_missing_locale_sources | length > 0
 
-- name: Require restorable Arch locale source
+- name: Require restorable Arch Linux locale source
   ansible.builtin.assert:
     that: (shell_pacman_configuration.content | b64decode) is search('(?m)^NoExtract\s*=')
     fail_msg: "Cannot place the locale extraction rule in the pacman options section."
@@ -73,7 +73,7 @@
     - ansible_facts.os_family == 'Archlinux'
     - shell_missing_locale_sources | length > 0
 
-- name: Restore Arch locale source
+- name: Restore Arch Linux locale source
   ansible.builtin.command:
     argv: [pacman, -S, --noconfirm, glibc]
   register: shell_network_result
@@ -102,7 +102,7 @@
     state: link
     force: true
 
-- name: Set Debian time zone name
+- name: Set Debian Testing time zone name
   ansible.builtin.copy:
     dest: /etc/timezone
     content: "{{ shell_host_timezone_iana }}\n"
@@ -111,15 +111,15 @@
     mode: '0644'
   when: ansible_facts.os_family == 'Debian'
 
-# Fedora has no /etc/locale.gen; each language comes from a glibc-langpack RPM.
-- name: Resolve Fedora locale packages
+# Fedora Linux has no /etc/locale.gen; each language comes from a glibc-langpack RPM.
+- name: Resolve Fedora Linux locale packages
   ansible.builtin.set_fact:
     shell_fedora_langpacks: "{{ shell_required_locales | select('match', '^[A-Za-z]+_')
       | map('regex_replace', '_.*$', '') | map('lower') | unique
       | map('regex_replace', '^', 'glibc-langpack-') | list }}"
   when: ansible_facts.os_family == 'RedHat'
 
-- name: Install Fedora locale packages
+- name: Install Fedora Linux locale packages
   ansible.builtin.dnf5:
     name: "{{ shell_fedora_langpacks }}"
     state: present
@@ -149,7 +149,7 @@
   when: not ansible_check_mode
 
 # glibc-langpack RPMs provide compiled locales; there is no locale.gen and no locale-gen to run.
-- name: Require host locale support on Fedora
+- name: Require host locale support on Fedora Linux
   ansible.builtin.assert:
     that: (item | lower | replace('-', '')) in (shell_available_locales.stdout_lines
       | map('lower') | map('replace', '-', '') | list)
@@ -164,7 +164,7 @@
     - shell_available_locales.rc == 0
 
 # glibc-locale ships compiled locales; there is no locale.gen and no locale-gen to run.
-- name: Require host locale support on SUSE
+- name: Require host locale support on openSUSE Tumbleweed
   ansible.builtin.assert:
     that: (item | lower | replace('-', '')) in (shell_available_locales.stdout_lines
       | map('lower') | map('replace', '-', '') | list)
@@ -213,7 +213,7 @@
     regexp: '^LC_ALL='
     line: "LC_ALL={{ shell_host_lc_all }}"
 
-- name: Set Debian session locale
+- name: Set Debian Testing session locale
   ansible.builtin.lineinfile:
     path: /etc/default/locale
     regexp: '^LANG='
@@ -224,7 +224,7 @@
     mode: '0644'
   when: ansible_facts.os_family == 'Debian'
 
-- name: Set Debian session locale override
+- name: Set Debian Testing session locale override
   ansible.builtin.lineinfile:
     path: /etc/default/locale
     regexp: '^LC_ALL='

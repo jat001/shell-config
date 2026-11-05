@@ -1,13 +1,13 @@
 - name: Configure target-only third-party repositories
   ansible.builtin.import_tasks: apt_sources.yml
 
-- name: Refresh Debian package metadata
+- name: Refresh Debian Testing package metadata
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: "{{ 0 if shell_apt_keys is changed or shell_apt_source_files is changed else 3600 }}"
   when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
-- name: Inspect available Debian packages
+- name: Inspect available Debian Testing packages
   ansible.builtin.shell: |
     python3 - <<'PY'
     import apt, json, os
@@ -22,20 +22,20 @@
   check_mode: false
 
 # A name that apt does not have becomes a GitHub release instead. ble.sh and antidote may instead use the archive fallback.
-- name: Resolve available Debian packages
+- name: Resolve available Debian Testing packages
   ansible.builtin.set_fact:
     shell_package_available: "{{ shell_apt_probe.stdout | from_json }}"
     shell_fallback_releases: "{{ shell_releases
       | rejectattr('name', 'in', shell_apt_probe.stdout | from_json) | list }}"
 
-- name: Require nonoptional Debian packages
+- name: Require nonoptional Debian Testing packages
   ansible.builtin.assert:
     that: shell_debian_apt_packages | difference(shell_package_available) | difference(['ble.sh', 'zsh-antidote']) | length == 0
     fail_msg: "Packages unavailable: {{ shell_debian_apt_packages | difference(shell_package_available) }}"
     quiet: true
   when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
-- name: Install or update Debian packages
+- name: Install or update Debian Testing packages
   ansible.builtin.apt:
     name: "{{ shell_package_available }}"
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
@@ -98,5 +98,5 @@
 - name: Manage remaining release packages and their update timer
   ansible.builtin.import_tasks: release_updates.yml
 
-- name: Install unavailable Debian shell dependencies
+- name: Install unavailable Debian Testing shell dependencies
   ansible.builtin.import_tasks: fallbacks.yml

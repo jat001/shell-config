@@ -91,10 +91,10 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("printf '%s\\n' \\$\\$ > $directory/sshd.pid", bootstrap)
         user = (root / "ansible/roles/linux/tasks/user.yml").read_text(encoding="utf-8")
         self.assertIn("create_home: \"{{ ansible_facts.os_family != 'Suse' }}\"", user)
-        self.assertIn("Create SUSE WSL user home", user)
+        self.assertIn("Create openSUSE Tumbleweed WSL user home", user)
         regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
         self.assertIn("ansible_facts.os_family not in ['RedHat', 'Suse']", regional)
-        self.assertIn("Require host locale support on SUSE", regional)
+        self.assertIn("Require host locale support on openSUSE Tumbleweed", regional)
 
     def test_debian_testing_is_test_only_and_sandbox_cache_stays_in_guest(self):
         installer = (root / "install.ps1").read_text(encoding="utf-8")
@@ -127,13 +127,13 @@ class InvariantTests(unittest.TestCase):
         self.assertNotIn("ansible_python_interpreter = '/usr/bin/python3.14'", installer)
         packages = (root / "ansible/roles/linux/tasks/packages_redhat.yml").read_text(encoding="utf-8")
         self.assertIn("ansible.builtin.dnf5", packages)
-        # The Fedora WSL Base image ships no awk; ble.sh cancels its load without it.
+        # The Fedora Linux WSL Base image ships no awk; ble.sh cancels its load without it.
         definitions = (root / "ansible/group_vars/all/packages.yml").read_text(encoding="utf-8")
         self.assertGreaterEqual(definitions.count("  - gawk\n"), 2)
         self.assertIn("  - procps-ng\n", definitions)
         regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
         self.assertIn("glibc-langpack-", regional)
-        self.assertIn("Require host locale support on Fedora", regional)
+        self.assertIn("Require host locale support on Fedora Linux", regional)
         self.assertIn("ansible.builtin.dnf5", regional)
         runner = (root / "tests/run.ps1").read_text(encoding="utf-8")
         self.assertNotIn("python3.14", runner)

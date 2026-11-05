@@ -71,10 +71,10 @@ def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys
             "type": "file",
             "content": entry["content"],
         }
-        # Only a top-level name exists in /etc/skel or base-files. The Debian Nushell package
+        # Only a top-level name exists in /etc/skel or base-files. The Debian Testing Nushell package
         # writes a scaffold under .config/nushell; those two files are defaults only when a
         # capture from this nu was supplied. Any other content still conflicts.
-        # Fedora ships root's dotfiles unchanged in /usr/share/rootfiles.
+        # Fedora Linux ships root's dotfiles unchanged in /usr/share/rootfiles.
         if nushell_defaults and unix in (".config/nushell/env.nu", ".config/nushell/config.nu"):
             item["defaults"] = [_join(nushell_defaults, unix.rsplit("/", 1)[-1])]
         elif "/" not in unix:

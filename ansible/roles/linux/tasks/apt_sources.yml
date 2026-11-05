@@ -1,4 +1,4 @@
-- name: Select available Debian package repositories
+- name: Select available Debian Testing package repositories
   ansible.builtin.set_fact:
     shell_selected_apt_sources: "{{ shell_debian_apt_sources | selectattr('uri') | list }}"
 
@@ -40,7 +40,7 @@
     label: "{{ item.name }}"
   register: shell_apt_source_files
 
-# Priority -1 keeps every other package on Debian's own mirrors, including libraries these packages link against.
+# Priority -1 keeps every other package on Debian Testing's own mirrors, including libraries these packages link against.
 - name: Restrict each third-party repository to its managed packages
   ansible.builtin.copy:
     dest: "/etc/apt/preferences.d/shell-{{ item.name }}"

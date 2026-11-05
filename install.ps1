@@ -77,6 +77,14 @@ function Invoke-ControllerBuild {
     }
 }
 
+function Get-WslDisplayName {
+    param([string]$Name)
+
+    $display = $configuration.environments.wsl.distribution_names.$Name
+    if ($display) { return $display }
+    $Name
+}
+
 function Invoke-Wsl {
     param([string]$Distribution, [string[]]$Arguments, [switch]$Root)
 
@@ -85,7 +93,7 @@ function Invoke-Wsl {
     $ErrorActionPreference = 'Continue'
     $output = & $wsl -d $Distribution @user --exec @Arguments 2>&1 | ForEach-Object { $_.ToString() }
     if ($LASTEXITCODE -ne 0) {
-        throw "WSL command failed in $Distribution ($LASTEXITCODE): $($Arguments -join ' ')"
+        throw "WSL command failed in $(Get-WslDisplayName $Distribution) ($LASTEXITCODE): $($Arguments -join ' ')"
     }
     ($output -join [char]10).Replace([string][char]0, '').Trim()
 }
@@ -120,13 +128,14 @@ function Wait-Port {
         [string]$Log
     )
 
+    $display = Get-WslDisplayName $Distribution
     # A distribution started after wsl --shutdown can take longer than a warm one to accept connections.
     $deadline = (Get-Date).AddSeconds(60)
     do {
         if ($Process -and $Process.HasExited) {
             $detail = ''
             if ($Log -and [IO.File]::Exists($Log)) { $detail = ([IO.File]::ReadAllText($Log)).Trim() }
-            throw "The WSL SSH server for $Distribution exited ($($Process.ExitCode)) before listening on port ${Port}. $detail"
+            throw "The WSL SSH server for $display exited ($($Process.ExitCode)) before listening on port ${Port}. $detail"
         }
         $client = [Net.Sockets.TcpClient]::new()
         try {
@@ -140,7 +149,7 @@ function Wait-Port {
             $client.Dispose()
         }
     } while ((Get-Date) -lt $deadline)
-    throw "The WSL SSH server for $Distribution did not start on port $Port."
+    throw "The WSL SSH server for $display did not start on port $Port."
 }
 
 function Test-Wsl {
@@ -159,6 +168,7 @@ function Get-WslRegistration {
 function Get-CachedDistribution {
     param([string]$Name)
 
+    $display = Get-WslDisplayName $Name
     $downloader = Join-Path $repository 'ansible/roles/windows/files/download.ps1'
     $metadataPath = & $downloader -Cache (Join-Path $CacheDirectory 'wsl/metadata') `
         -Url 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
@@ -174,7 +184,7 @@ function Get-CachedDistribution {
     if (-not $field -or -not $distribution.$field) { return }
     $asset = $distribution.$field
     $expected = $asset.Sha256 -replace '^0x', ''
-    if ($expected -notmatch '^[0-9a-fA-F]{64}$') { throw "Invalid published SHA256 for $Name." }
+    if ($expected -notmatch '^[0-9a-fA-F]{64}$') { throw "Invalid published SHA256 for $display." }
     $directory = Join-Path $CacheDirectory 'wsl/packages'
     $null = [IO.Directory]::CreateDirectory($directory)
     $name = [IO.Path]::GetFileName(([uri]$asset.Url).AbsolutePath) -replace '[^A-Za-z0-9._-]', '_'
@@ -185,9 +195,9 @@ function Get-CachedDistribution {
             $nativeDownloader = Join-Path $repository 'ansible/bootstrap/download-wsl.ps1'
             & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File $nativeDownloader `
                 -Url $asset.Url -Path $partial | Out-Host
-            if ($LASTEXITCODE -ne 0) { throw "Downloading $Name failed ($LASTEXITCODE)." }
+            if ($LASTEXITCODE -ne 0) { throw "Downloading $display failed ($LASTEXITCODE)." }
             if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $expected) {
-                throw "The downloaded $Name image does not match its published SHA256; no package was cached."
+                throw "The downloaded $display image does not match its published SHA256; no package was cached."
             }
             [IO.File]::Move($partial, $path)
         }
@@ -196,7 +206,7 @@ function Get-CachedDistribution {
         }
     }
     if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $expected) {
-        throw "The cached $Name image does not match its published SHA256: $path"
+        throw "The cached $display image does not match its published SHA256: $path"
     }
     $path
 }
@@ -211,20 +221,16 @@ function Set-WslStartMenuShortcut {
     if (-not [IO.File]::Exists($launcher)) { $launcher = $wsl }
     $arguments = "--distribution-id $guid --cd ~"
     $shell = New-Object -ComObject WScript.Shell
-    foreach ($file in Get-ChildItem $programs -Filter *.lnk -ErrorAction SilentlyContinue) {
-        if ($shell.CreateShortcut($file.FullName).Arguments -eq $arguments) { return }
-    }
-    $source = $Registration.ShortcutPath
-    $display = $Name
-    if ($source -and [IO.File]::Exists($source)) {
-        $display = [IO.Path]::GetFileNameWithoutExtension($source)
-    }
+    $display = Get-WslDisplayName $Name
     $target = Join-Path $programs ($display + '.lnk')
-    if ([IO.File]::Exists($target)) {
-        $display = $Name
-        $target = Join-Path $programs ($display + '.lnk')
-        if ([IO.File]::Exists($target)) { return }
+    $source = $Registration.ShortcutPath
+    foreach ($file in Get-ChildItem $programs -Filter *.lnk -ErrorAction SilentlyContinue) {
+        if ($shell.CreateShortcut($file.FullName).Arguments -eq $arguments) {
+            if ([IO.Path]::GetFullPath($file.FullName) -eq [IO.Path]::GetFullPath($target)) { return }
+            $source = $file.FullName
+        }
     }
+    if ([IO.File]::Exists($target)) { return }
     if ($source -and [IO.File]::Exists($source)) {
         if ([IO.Path]::GetFullPath($source) -eq [IO.Path]::GetFullPath($target)) { return }
         [IO.File]::Move($source, $target)
@@ -335,7 +341,8 @@ try {
         if (-not $SkipWsl -and -not $WslDistribution) {
             foreach ($name in $distributions) {
                 if ($registered -contains $name) { continue }
-                if (-not $PSCmdlet.ShouldProcess($name, 'Install WSL distribution')) { continue }
+                $display = Get-WslDisplayName $name
+                if (-not $PSCmdlet.ShouldProcess($display, 'Install WSL distribution')) { continue }
                 $global:LASTEXITCODE = 0
                 $package = Get-CachedDistribution $name
                 $installArguments = if ($package) {
@@ -348,7 +355,7 @@ try {
                     & $wsl @installArguments 2>&1 | ForEach-Object { $_.ToString() }
                 }
                 finally { $ErrorActionPreference = $preference }
-                if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $name failed ($LASTEXITCODE)." }
+                if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $display failed ($LASTEXITCODE)." }
                 # The playbook prepares accounts and packages, so the distribution's first-run setup is skipped.
                 Get-WslRegistration | Where-Object { $_.DistributionName -eq $name } |
                     ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name RunOOBE -Value 0 }
@@ -358,7 +365,7 @@ try {
                 $default = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultDistribution
                 $current = (Get-WslRegistration | Where-Object { $_.PSChildName -eq $default }).DistributionName
                 if ($current -ne $distributions[0] -and
-                    $PSCmdlet.ShouldProcess($distributions[0], 'Set the default WSL distribution')) {
+                    $PSCmdlet.ShouldProcess((Get-WslDisplayName $distributions[0]), 'Set the default WSL distribution')) {
                     $global:LASTEXITCODE = 0
                     & $wsl --set-default $distributions[0]
                     if ($LASTEXITCODE -ne 0) { throw "Setting the default WSL distribution failed ($LASTEXITCODE)." }
@@ -386,9 +393,10 @@ try {
             foreach ($name in $WslDistribution) {
                 $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
                 if (-not $registration) { continue }
-                if ($PSCmdlet.ShouldProcess($name, 'Create Start Menu shortcut')) {
+                $display = Get-WslDisplayName $name
+                if ($PSCmdlet.ShouldProcess($display, 'Create Start Menu shortcut')) {
                     try { Set-WslStartMenuShortcut -Name $name -Registration $registration }
-                    catch { Write-Warning "Could not create the Start Menu shortcut for ${name}: $($_.Exception.Message)" }
+                    catch { Write-Warning "Could not create the Start Menu shortcut for ${display}: $($_.Exception.Message)" }
                 }
             }
         }

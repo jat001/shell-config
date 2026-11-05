@@ -16,12 +16,15 @@ Playbook 用 `strategy: free`，Windows/MSYS2 和各 Linux 主机一起配。
 
 ## 守住这些
 
+WSL 发行版和对应代码按 Arch Linux、Debian Testing、Fedora Linux、openSUSE Tumbleweed 排序。
+注释、文档和用户展示使用这些友好名称；注册名、镜像名和系统识别值保留实际标识。
+
 入口和链接先检查再改。相同的留下。内容和入口不同的普通文件，或非空目录，整组失败，原文件留着。
 模块不递归删目录，也不做备份。能换掉的只有：和入口内容相同的文件、空目录、指向别处的链接、和发行版模板完全相同的默认 dotfile。
 
-和 `/etc/skel`、Debian `dot.*`、Fedora `/usr/share/rootfiles`、openSUSE `/usr/etc/skel`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。读不到的默认文件按不匹配处理。路径里有 `/` 的不比。
-openSUSE 的 `/usr/etc/skel` 是 `0640 root:root`。新建 WSL 账户时由 playbook 建空主目录，`useradd` 不复制模板，否则新账户读不到这些模板也无法比较。
-Debian 的 Nushell 包在 postinst 里跑 `config reset -w`，留下 `/root/.config/nushell/env.nu` 和 `config.nu`。
+和 `/etc/skel`、Debian Testing `dot.*`、Fedora Linux `/usr/share/rootfiles`、openSUSE Tumbleweed `/usr/etc/skel`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。读不到的默认文件按不匹配处理。路径里有 `/` 的不比。
+openSUSE Tumbleweed 的 `/usr/etc/skel` 是 `0640 root:root`。新建 WSL 账户时由 playbook 建空主目录，`useradd` 不复制模板，否则新账户读不到这些模板也无法比较。
+Debian Testing 的 Nushell 包在 postinst 里跑 `config reset -w`，留下 `/root/.config/nushell/env.nu` 和 `config.nu`。
 部署前用同一支 `nu`，在临时家目录生成 scaffold，内容完全一致才按 `defaults` 换。这两个文件不能无条件覆盖。
 `config nu --default` 是另一份内置文件，不能拿来比。`config reset -w` 在配置目录不存在时退出 0 但不写文件，`--no-config-file` 也不写。生成时若改动了账户自己的 `env.nu` 或 `config.nu`，这次捕获要失败。
 
@@ -51,11 +54,11 @@ winget 退出码 `0` 和 `-1978335189`（没有可升级的版本）算成功。
 每次调用通用 `download.ps1`，都会在缓存的 `records` 里留一份 JSON。能看出有没有命中缓存、文件多大、成功下载了多少字节、试了几次、花了多久。命中时 `networkBytes=0`，不算平均速度；失败那几次收了多少没法确定，就不填。URL 的查询参数不进日志，日志写不进去也不影响下载。
 这里只记 `download.ps1` 自己看到的流量。WSL 专用下载器、Docker、apt、pip、Galaxy 和别的包管理器都不算在内，别拿它当总下载量。
 
-部署从运行安装器的宿主机读取 Windows 时区和当前用户 Culture。Windows 时区走 `system_setup.ps1` 的计划/提权流程，Culture 只改当前账户。Linux/WSL 用仓库里的 CLDR 默认映射转换时区，生成对应 UTF-8 locale，并设置系统 `LANG` 和 `LC_ALL`；不改显示语言、输入法或非 Unicode 系统区域。非英语环境额外启用并生成 `en_US.UTF-8`，默认 `LANG` 不变。`locale.gen` 固定启用第一处匹配，重复启用项去掉，Debian postinst 在末尾补的注释不误启用，其他 locale 不动。MSYS2 的时区和 `LANG` 自动继承 Windows，`LC_ALL` 也在 common shell 里通过 `locale -uU` 自动设置，不维护单独的 locale profile。宿主机进程显式设置 `LC_ALL` 时优先沿用，否则使用 Culture 对应的 UTF-8 locale。未知时区、非具体语言-地区 Culture 要失败，不能猜测。
+部署从运行安装器的宿主机读取 Windows 时区和当前用户 Culture。Windows 时区走 `system_setup.ps1` 的计划/提权流程，Culture 只改当前账户。Linux/WSL 用仓库里的 CLDR 默认映射转换时区，生成对应 UTF-8 locale，并设置系统 `LANG` 和 `LC_ALL`；不改显示语言、输入法或非 Unicode 系统区域。非英语环境额外启用并生成 `en_US.UTF-8`，默认 `LANG` 不变。`locale.gen` 固定启用第一处匹配，重复启用项去掉，Debian Testing postinst 在末尾补的注释不误启用，其他 locale 不动。MSYS2 的时区和 `LANG` 自动继承 Windows，`LC_ALL` 也在 common shell 里通过 `locale -uU` 自动设置，不维护单独的 locale profile。宿主机进程显式设置 `LC_ALL` 时优先沿用，否则使用 Culture 对应的 UTF-8 locale。未知时区、非具体语言-地区 Culture 要失败，不能猜测。
 MSYS2 进程若没有 `USERPROFILE`，common shell 用 Windows API 查询用户目录，再经 `cygpath` 转成 `WINDOWS_HOME` 展开值；不能展开成空路径。`LOCALAPPDATA` 从 `WINDOWS_HOME` 展开，供 antidote 使用。
 WSL 不只写系统 locale 文件。common shell 要从 `/etc/locale.conf` 或 `/etc/default/locale` 读取并显式导出 `LC_ALL`，覆盖直接 `wsl.exe`、Bash、zsh、fish、PowerShell 和 Nushell；`su -` 的 PAM 检查不能代替这些入口。
 只跑区域设置用 `--tags regional -e shell_regional_only=true`；这个开关同时跳过 `always` 的软件引导、仓库准备和账户入口任务。正常部署不要传它。
-Arch 官方容器的 `NoExtract` 排除了非英文 locale 源文件。缺目标源文件时，在 options 的提取规则末尾加目标例外并重装 `glibc`；不能只跑 `locale-gen`，它可能返回 0 但没有生成 locale。
+Arch Linux 官方容器的 `NoExtract` 排除了非英文 locale 源文件。缺目标源文件时，在 options 的提取规则末尾加目标例外并重装 `glibc`；不能只跑 `locale-gen`，它可能返回 0 但没有生成 locale。
 openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc/locale.gen` 和 `locale-gen`。部署只检查 `locale -a`，不写 locale 定义文件。`/usr/etc/profile.d/lang.sh` 在 `LC_ALL` 等于 `LANG` 时会 unset `LC_ALL`；common shell 仍从 `/etc/locale.conf` 显式导出。
 
 ## 测试
@@ -113,13 +116,13 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 `wsb exec -c` 会把命令字符串里的 PowerShell 开关当成自己的参数。启动命令放进映射进去的 `launch.cmd`，传给 `wsb` 的只是这个文件的路径。
 普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
-容器和沙盒（`-Target arch,debian,fedora,suse,sandbox`，沙盒用完已停）：Arch、Debian、Fedora、openSUSE、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
+容器和沙盒（`-Target arch,debian,fedora,suse,sandbox`，沙盒用完已停）：Arch Linux、Debian Testing、Fedora Linux、openSUSE Tumbleweed、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
 无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME、Culture 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
-Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
+Debian Testing 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 
 虚拟机用状态目录里已有的 `ShellConfig-Test`。从 `WSL-Ready` 恢复，同步仓库，再跑 `init,full,full,update`。不要另建同名虚拟机，测完也不要删。
-VM 里的 Debian 必须和容器一样跑 testing。`hyperv_guest.ps1` 给安装器加 `-TestDebianTesting`，bootstrap 只替换 Debian 官方源并做 `full-upgrade`，`shell-*` 第三方源不动。普通安装不传这个开关，仍用 stable。
-`init`、连续两次 `full`、`update` 已回归，Windows 和 archlinux、Debian、openSUSE 都是 failed=0，重复 `full` 都是 `changed=0`。更新后的断电冷启动验证通过（20 项检查），自动登录产生交互会话，AtLogOn 任务运行并在结束时清理凭据。
+VM 里的 Debian Testing 必须和容器一样跑 testing。`hyperv_guest.ps1` 给安装器加 `-TestDebianTesting`，bootstrap 只替换 Debian Testing 官方源并做 `full-upgrade`，`shell-*` 第三方源不动。普通安装不传这个开关，仍用 stable。
+`init`、连续两次 `full`、`update` 已回归，Windows 和 Arch Linux、Debian Testing、openSUSE Tumbleweed 都是 failed=0，重复 `full` 都是 `changed=0`。更新后的断电冷启动验证通过（20 项检查），自动登录产生交互会话，AtLogOn 任务运行并在结束时清理凭据。
 冷启动前要对 Winlogon 键本身调用 `RegFlushKey`；只 flush `HKLM\SOFTWARE` 会在强制断电时丢掉 `AutoAdminLogon` 和 `DefaultPassword`，自动登录不会发生，计划任务也不会触发。
 MSYS2 的 `LC_ALL` 只在交互 shell 里由 `locale -uU` 设置；`verify-msys2.sh` 要在 `bash/zsh/fish -ic` 里断言，父 shell 看不到。
 断电冷启动后的 16 项检查包括开发盘、启动设置、各 shell、Clink、WSL 用户和 Terminal GUI。临时自动登录及凭据必须清理，无提权 Windows 账户矩阵留在 Sandbox，不在 VM 里重复。
@@ -161,13 +164,13 @@ NAT 只转发默认发行版的 `127.0.0.1`，每个 sshd 都听在这个地址�
 
 干净的 `debian:testing` 没有 `ca-certificates`。`ansible/bootstrap/wsl.sh` 得在 Ansible 用 Python 下 HTTPS 密钥之前装上。只装 Python 不够。
 干净的 `opensuse/tumbleweed` 没有 Python、sshd 和 btrfs 工具。`wsl.sh` 用 zypper 先刷新再装 `ca-certificates openssh python3 btrfsprogs`。
-openSUSE 的 `sshd` 10.6 在 `-D` 模式下不写 `PidFile`。`start-sshd.sh` 在 `exec` 前把自己的进程号写进 `sshd.pid`，停止和测试都读这个文件。
-openSUSE 的 WSL 镜像还缺 `tar`、`gzip` 和 `findmnt`。`packages_suse` 要装 `tar`、`gzip`、`util-linux-systemd`；少了前两个，`ble.sh` 的 `.tar.xz` 不能解压，少了 `findmnt`，`wsl-dev-drive.service` 会等满 60 秒后失败。
-openSUSE 的普通用户读不到块设备 UUID，`findmnt -o UUID` 为空。`wsl-dev-drive.sh` 在 UUID 为空时用 `sudo -n blkid` 补查；WSL 账户有免密 sudo。
-openSUSE 的 `/etc/profile` 对登录 bash 先 source `~/.bashrc`，随后 bash 再读 `~/.bash_profile`，`common.bash` 会执行两次。用 `_shell_bash_loaded` 防重入；否则 ble.sh 会打印 `[ble: reload]` 并重建缓存。
+openSUSE Tumbleweed 的 `sshd` 10.6 在 `-D` 模式下不写 `PidFile`。`start-sshd.sh` 在 `exec` 前把自己的进程号写进 `sshd.pid`，停止和测试都读这个文件。
+openSUSE Tumbleweed 的 WSL 镜像还缺 `tar`、`gzip` 和 `findmnt`。`packages_suse` 要装 `tar`、`gzip`、`util-linux-systemd`；少了前两个，`ble.sh` 的 `.tar.xz` 不能解压，少了 `findmnt`，`wsl-dev-drive.service` 会等满 60 秒后失败。
+openSUSE Tumbleweed 的普通用户读不到块设备 UUID，`findmnt -o UUID` 为空。`wsl-dev-drive.sh` 在 UUID 为空时用 `sudo -n blkid` 补查；WSL 账户有免密 sudo。
+openSUSE Tumbleweed 的 `/etc/profile` 对登录 bash 先 source `~/.bashrc`，随后 bash 再读 `~/.bash_profile`，`common.bash` 会执行两次。用 `_shell_bash_loaded` 防重入；否则 ble.sh 会打印 `[ble: reload]` 并重建缓存。
 WSL 把发行版快捷方式写在 `%APPDATA%\Microsoft\Windows\Start Menu\<名>.lnk` 根目录；Windows 的 All apps 只枚举 `Programs`。`install.ps1` 对每个已注册发行版把它移到 `Programs`，按 `--distribution-id` 去重，不覆盖指向其他发行版的同名文件。
 
-Arch 的 `farseerfc` 在官方 keyring 里，但 `pacman-key --init` 不导入它。先 `pacman-key --populate archlinux`，再 `--lsign-key`，然后才能同步带 archlinuxcn 的库。
+Arch Linux 的 `farseerfc` 在官方 keyring 里，但 `pacman-key --init` 不导入它。先 `pacman-key --populate archlinux`，再 `--lsign-key`，然后才能同步带 archlinuxcn 的库。
 
 Windows PowerShell 在 `ErrorActionPreference = Stop` 时，输出被重定向或放进 `Start-Job`，本机程序的 stderr 会变成终止错误。
 `wslc` 的进度、找不到的网络或容器、Python unittest 的点都在 stderr。探测和日志在本地把 `ErrorActionPreference` 设为 `Continue`，只看退出码。`install.ps1` 的 `Invoke-Wslc` 就是这样。
@@ -179,10 +182,10 @@ Windows PowerShell 在 `ErrorActionPreference = Stop` 时，输出被重定向�
 Nushell 的 scaffold 用目标上的 `nu -c 'config reset -w'` 现生成。配置目录要先建好。
 
 `FedoraLinux-45` 从 Microsoft 的 `DistributionInfo.json` 读取对应架构的镜像 URL 和 SHA256，校验后用 `--from-file` 注册。
-Fedora 没有 `/etc/locale.gen` 和 `locale-gen`，locale 由 `glibc-langpack-<语言>` 提供。区域任务按语言安装语言包，再从 `locale -a` 确认，不写 locale 定义文件。
-Fedora 45 默认 Python 3.15 和 DNF5，ansible-core 2.22 已支持目标端 3.15。`wsl.sh` 和 `main.yml` 装 `python3-libdnf5`，`packages_redhat.yml` 和区域任务用 `ansible.builtin.dnf5`。`blesh` 和 `zsh-antidote` 不在 Fedora 仓库，走 `fallbacks.yml`。
-Fedora 45 默认 OpenSSL 4，PowerShell/.NET 仍要找 `libssl.so.3`；`shell_redhat_packages` 同时装 `openssl3-libs`，否则 `Save-PSResource` 报 `No usable version of libssl was found`。
-官方 Fedora WSL Base 镜像不带 `awk`（`fedora:45` 容器镜像带），ble.sh 启动时会报 insane environment 并取消加载；`fedora:45` 容器镜像还缺 `ps`。`shell_redhat_packages` 里要有 `gawk` 和 `procps-ng`。openSUSE Tumbleweed 也没有 `awk`，`shell_zypper_packages` 里同样要有 `gawk`。
-Fedora 45 的 nushell 0.99 没有 `job list`，而 oh-my-posh 生成的 nu init 会无条件引用它。`common-env.nu` 按 `scope commands` 将不支持的 `--job-count` 表达式替换为 0。0.99 的 `$env.config` 可能不存在，安装补全前要初始化空记录；补全器同时接受旧版的参数列表和新版的 `command` 记录。
+Fedora Linux 没有 `/etc/locale.gen` 和 `locale-gen`，locale 由 `glibc-langpack-<语言>` 提供。区域任务按语言安装语言包，再从 `locale -a` 确认，不写 locale 定义文件。
+Fedora Linux 45 默认 Python 3.15 和 DNF5，ansible-core 2.22 已支持目标端 3.15。`wsl.sh` 和 `main.yml` 装 `python3-libdnf5`，`packages_redhat.yml` 和区域任务用 `ansible.builtin.dnf5`。`blesh` 和 `zsh-antidote` 不在 Fedora Linux 仓库，走 `fallbacks.yml`。
+Fedora Linux 45 默认 OpenSSL 4，PowerShell/.NET 仍要找 `libssl.so.3`；`shell_redhat_packages` 同时装 `openssl3-libs`，否则 `Save-PSResource` 报 `No usable version of libssl was found`。
+官方 Fedora Linux WSL Base 镜像不带 `awk`（`fedora:45` 容器镜像带），ble.sh 启动时会报 insane environment 并取消加载；`fedora:45` 容器镜像还缺 `ps`。`shell_redhat_packages` 里要有 `gawk` 和 `procps-ng`。openSUSE Tumbleweed 也没有 `awk`，`shell_zypper_packages` 里同样要有 `gawk`。
+Fedora Linux 45 的 nushell 0.99 没有 `job list`，而 oh-my-posh 生成的 nu init 会无条件引用它。`common-env.nu` 按 `scope commands` 将不支持的 `--job-count` 表达式替换为 0。0.99 的 `$env.config` 可能不存在，安装补全前要初始化空记录；补全器同时接受旧版的参数列表和新版的 `command` 记录。
 
 链接和发布包更新先检查，失败要能恢复。不要改成递归删除或覆盖用户文件。

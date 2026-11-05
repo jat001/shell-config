@@ -42,7 +42,7 @@
     argv: [pacman-key, --lsign-key, farseerfc@archlinux.org]
   when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
 
-# The whole system is upgraded before individual packages. Arch does not support installing from a half-updated set.
+# The whole system is upgraded before individual packages. Arch Linux does not support installing from a half-updated set.
 - name: Upgrade Arch Linux
   community.general.pacman:
     update_cache: true

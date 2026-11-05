@@ -66,7 +66,7 @@ mut oh_my_posh_init = (
     ^oh-my-posh init nu --print --config ($env.HOME | path join '.config' 'oh-my-posh' 'config.omp.jsonc')
     | str replace --all "\r\n" "\n"
 )
-# Nushell 0.99, still shipped by Fedora 45, has no job commands; oh-my-posh's generated init expects them.
+# Nushell 0.99, still shipped by Fedora Linux 45, has no job commands; oh-my-posh's generated init expects them.
 if not $job_list_available {
     $oh_my_posh_init = ($oh_my_posh_init
         | str replace --all '--job-count=(job list | length)' '--job-count=0')

@@ -23,7 +23,7 @@ rewrite() {
             temporary=$(mktemp "${file%/*}/.shell-https.XXXXXX")
         fi
         sed -E "$expression" "$file" >"$temporary"
-        # Minimal Tumbleweed has coreutils, but does not ship cmp from diffutils.
+        # Minimal openSUSE Tumbleweed has coreutils, but does not ship cmp from diffutils.
         original_hash=$(sha256sum <"$file")
         updated_hash=$(sha256sum <"$temporary")
         if [ "$original_hash" != "$updated_hash" ]; then

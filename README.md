@@ -8,12 +8,14 @@ Windows、WSL 和 MSYS2 用同一套配置。
 在 Windows 上运行安装器。
 需要能提供 `wslc.exe` 的 WSL。Ansible 跑在 WSL 容器里，连 Windows 也走第一个发行版，所以不能一个发行版都不留。
 要开开发人员模式，否则普通权限建不了符号链接。
-发行版列表在 `common.json`，当前是 `archlinux`、`Debian`、`FedoraLinux-45` 和 `openSUSE-Tumbleweed`。第一项会设成默认发行版。
-安装器从 Microsoft 的 WSL 发行版索引 `DistributionInfo.json` 获取 Fedora 45 的镜像地址和 SHA256。
-Fedora 45 默认 Python 3.15，当前 ansible-core 2.22 直接支持，不需要另装解释器。
+发行版列表在 `common.json`，按字母序为 Arch Linux、Debian Testing、Fedora Linux 和 openSUSE Tumbleweed。第一项会设成默认发行版。
+对应的 WSL 注册名是 `archlinux`、`Debian`、`FedoraLinux-45` 和 `openSUSE-Tumbleweed`；友好名称单独配置在 `distribution_names`。
+Debian Testing 是展示名称；普通安装仍使用 `Debian` 镜像的 stable，隔离回归使用 testing。
+安装器从 Microsoft 的 WSL 发行版索引 `DistributionInfo.json` 获取 Fedora Linux 45 的镜像地址和 SHA256。
+Fedora Linux 45 默认 Python 3.15，当前 ansible-core 2.22 直接支持，不需要另装解释器。
 MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用户环境变量 `DEV_DRIVE`。
 
-部署在刷新软件包索引前，将 APT、pacman（含 MSYS2）、Zypper 和 DNF 源里的 HTTP 地址切换为 HTTPS。Fedora 官方 metalink 也只请求 HTTPS 镜像。精简 Debian 缺少 CA 证书包时，首次 APT 刷新临时使用控制容器的 CA 证书。
+部署在刷新软件包索引前，将 APT、pacman（含 MSYS2）、Zypper 和 DNF 源里的 HTTP 地址切换为 HTTPS。Fedora Linux 官方 metalink 也只请求 HTTPS 镜像。精简 Debian Testing 缺少 CA 证书包时，首次 APT 刷新临时使用控制容器的 CA 证书。
 
 ## 安装和更新
 
@@ -50,16 +52,16 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 安装 WSL、打开开发人员模式、创建或附加开发盘、注册开发盘任务、调整不同的系统时区时，会申请一次管理员权限。
 Scoop、MSYS2 和用户配置在普通权限下进行。安装器不重启电脑。
 
-部署读取运行安装器的 Windows 宿主机时区和当前用户区域格式。Windows 目标同步这两项；Arch、Debian、openSUSE 和 WSL 使用对应的 IANA 时区，生成并启用对应的 UTF-8 `LANG`。MSYS2 沿用 Windows 设置。
+部署读取运行安装器的 Windows 宿主机时区和当前用户区域格式。Windows 目标同步这两项；各 WSL 目标使用对应的 IANA 时区，生成并启用对应的 UTF-8 `LANG`。MSYS2 沿用 Windows 设置。
 非英语环境还会在 `/etc/locale.gen` 启用并生成 `en_US.UTF-8`，但默认 `LANG` 仍是宿主机 locale。
-Debian 的 locales postinst 可能把缺失的官方 locale 以注释补到文件末尾；部署固定启用第一处匹配，不会误启用这些末尾注释，重复启用项只保留一条。
-Fedora 的 locale 由 `glibc-langpack-*` 提供，同样没有 `/etc/locale.gen`；部署按语言安装对应语言包，并检查目标 locale 已在 `locale -a` 中。
+Debian Testing 的 locales postinst 可能把缺失的官方 locale 以注释补到文件末尾；部署固定启用第一处匹配，不会误启用这些末尾注释，重复启用项只保留一条。
+Fedora Linux 的 locale 由 `glibc-langpack-*` 提供，同样没有 `/etc/locale.gen`；部署按语言安装对应语言包，并检查目标 locale 已在 `locale -a` 中。
 openSUSE Tumbleweed 的 locale 由 `glibc-locale` 预先编译，没有 `/etc/locale.gen`，也不运行 `locale-gen`；部署检查目标 locale 已在 `locale -a` 中。
 MSYS2 的时区和 `LANG` 由现有 profile 自动继承 Windows；`LC_ALL` 也通过同一套 `locale -uU` 结果自动设置，不维护单独的 locale profile。宿主机进程已显式设置 `LC_ALL` 时优先沿用，否则使用 Windows Culture 对应的 UTF-8 locale。
 WSL 除写入系统 locale 文件外，还在 common shell 中显式导出 `LC_ALL`，确保直接运行 `wsl.exe`、登录 shell、fish、PowerShell 和 Nushell 都能取得它。
 这里不同步 Windows 显示语言、输入法列表或非 Unicode 程序的系统区域，也不删除目标上已有的其他 locale。为其他 `-WindowsHome` 部署时不修改当前账户的区域格式。
 Windows 时区名通过仓库内的 CLDR 映射转换；未收录的时区或不能明确转换的 Culture 会在部署前报错。
-Arch 官方容器若排除了目标 locale 的源文件，部署会添加对应的 pacman 提取例外并重装 `glibc` 恢复它；源文件已存在时不重装。
+Arch Linux 官方容器若排除了目标 locale 的源文件，部署会添加对应的 pacman 提取例外并重装 `glibc` 恢复它；源文件已存在时不重装。
 
 安装前先检查一整组入口和链接。
 相同的留下。内容和入口不同的普通文件，或非空目录，这一组停下，原文件不动。
@@ -82,7 +84,7 @@ MSYS2 不放 PowerShell 和 Nushell 的入口。
 
 引用了还不存在的变量，初始化会报错。
 WSL 共享开发盘没挂上时，数据目录留在本机。挂上之后才用盘上的目录。
-Debian 装 Nushell 时会写下 `env.nu` 和 `config.nu`。
+Debian Testing 装 Nushell 时会写下 `env.nu` 和 `config.nu`。
 和这台机器上的 `nu` 生成的默认文件一样，`full` 会换成入口。改过的文件让这一组停下。
 
 ## 开发检查

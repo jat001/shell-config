@@ -68,9 +68,9 @@ if "$debian_testing_upgrade"; then
 fi
 
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.
-# A clean Debian image has no CA bundle. Ansible then downloads signing keys over HTTPS.
-# A clean Fedora image has no sshd or btrfs tools, and Ansible's dnf5 module needs the libdnf5 bindings.
-# A clean openSUSE image has no Python, sshd or btrfs tools.
+# A clean Debian Testing image has no CA bundle. Ansible then downloads signing keys over HTTPS.
+# A clean Fedora Linux image has no sshd or btrfs tools, and Ansible's dnf5 module needs the libdnf5 bindings.
+# A clean openSUSE Tumbleweed image has no Python, sshd or btrfs tools.
 if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
     ! command -v python3 >/dev/null 2>&1 ||
     { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; } ||
@@ -104,7 +104,7 @@ mkdir -p -m 700 "$directory" /run/sshd
 printf '%s\n' "$key" >"$directory/authorized_keys"
 chmod 600 "$directory/authorized_keys"
 
-# Fedora's OpenSSH build rejects "UsePAM no", and its root account is shadow-locked.
+# Fedora Linux's OpenSSH build rejects "UsePAM no", and its root account is shadow-locked.
 # The PAM account check accepts the key login that the non-PAM path refuses.
 usepam=no
 command -v dnf >/dev/null 2>&1 && usepam=yes
@@ -148,7 +148,7 @@ fi
 sshd=$(command -v sshd || printf /usr/sbin/sshd)
 "$sshd" -t -f "$directory/sshd_config"
 # The next Windows process is a new distribution instance, so /run may already be gone.
-# OpenSSH 10.6 on openSUSE does not write PidFile with -D; the script records the process it execs instead.
+# OpenSSH 10.6 on openSUSE Tumbleweed does not write PidFile with -D; the script records the process it execs instead.
 cat >"$directory/start-sshd.sh" <<EOF
 #!/bin/sh
 mkdir -p -m 700 /run/sshd

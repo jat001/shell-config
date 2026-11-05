@@ -20,7 +20,7 @@
         - "'needs-ca' in shell_repo_prerequisites.stdout_lines"
       changed_when: false
 
-    - name: Stage controller CA certificates for minimal Debian
+    - name: Stage controller CA certificates for minimal Debian Testing
       ansible.builtin.script:
         cmd: /etc/ssl/certs/ca-certificates.crt {{ (shell_repo_ca_directory.stdout | trim ~ '/bundle.pem') | quote }}
         executable: install -m 0600 -T

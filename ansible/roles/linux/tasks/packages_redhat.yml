@@ -1,4 +1,4 @@
-- name: Refresh Fedora package metadata
+- name: Refresh Fedora Linux package metadata
   ansible.builtin.command:
     argv: [dnf, --quiet, makecache]
   register: shell_dnf_refresh
@@ -8,13 +8,13 @@
   retries: 3
   delay: 10
 
-- name: Resolve Fedora package probe
+- name: Resolve Fedora Linux package probe
   ansible.builtin.set_fact:
     shell_dnf_probe: "{{ (shell_redhat_packages + (shell_releases | map(attribute='name') | list)
       + ['ble.sh', 'zsh-antidote']) | unique }}"
 
 # DNF5 reports an unknown name with a non-zero status, which selects the archive or release fallback.
-- name: Inspect available Fedora packages
+- name: Inspect available Fedora Linux packages
   ansible.builtin.command:
     argv: "{{ ['dnf', '--quiet', 'info', item] }}"
   loop: "{{ shell_dnf_probe }}"
@@ -25,7 +25,7 @@
   check_mode: false
   failed_when: false
 
-- name: Resolve available Fedora packages
+- name: Resolve available Fedora Linux packages
   ansible.builtin.set_fact:
     shell_package_available: "{{ shell_dnf_probe_result.results
       | selectattr('rc', 'equalto', 0) | rejectattr('stdout', 'equalto', '')
@@ -35,7 +35,7 @@
         | selectattr('rc', 'equalto', 0) | rejectattr('stdout', 'equalto', '')
         | map(attribute='item') | list) | list }}"
 
-- name: Require nonoptional Fedora packages
+- name: Require nonoptional Fedora Linux packages
   ansible.builtin.assert:
     that: shell_redhat_packages | difference(shell_package_available)
       | difference(['ble.sh', 'zsh-antidote'])
@@ -43,7 +43,7 @@
     fail_msg: "Packages unavailable: {{ shell_redhat_packages | difference(shell_package_available) }}"
     quiet: true
 
-- name: Install or update Fedora packages
+- name: Install or update Fedora Linux packages
   ansible.builtin.dnf5:
     name: "{{ shell_package_available }}"
     state: "{{ 'latest' if shell_mode == 'update' else 'present' }}"
@@ -57,5 +57,5 @@
 - name: Manage remaining release packages and their update timer
   ansible.builtin.import_tasks: release_updates.yml
 
-- name: Install unavailable Fedora shell dependencies
+- name: Install unavailable Fedora Linux shell dependencies
   ansible.builtin.import_tasks: fallbacks.yml

@@ -96,7 +96,7 @@ shell_apt_packages:
 shell_microsoft_debian_versions:
   bookworm: "12"
   trixie: "13"
-  # forky and sid have no Microsoft repository of their own. The Debian 13 packages are the ones verified to install.
+  # forky and sid have no Microsoft repository of their own. The packages for version 13 are verified to install.
   forky: "13"
   sid: "13"
 shell_microsoft_debian_suites:
@@ -144,7 +144,7 @@ shell_redhat_packages:
   - zsh-autosuggestions
   - zsh-syntax-highlighting
 
-# glibc-locale ships every compiled locale; Tumbleweed has no locale.gen or locale-gen.
+# glibc-locale ships every compiled locale; openSUSE Tumbleweed has no locale.gen or locale-gen.
 # icu is the runtime the PowerShell archive links against.
 shell_zypper_packages:
   - bash-completion

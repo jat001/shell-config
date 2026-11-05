@@ -58,7 +58,7 @@ def evaluate(item):
             existing = None
         if existing != item["content"]:
             # A file that still matches a distro skeleton is unmodified, so it can become the managed link.
-            # SUSE ships its samples readable only by their owner, so an unreadable default cannot match.
+            # openSUSE Tumbleweed ships its samples readable only by their owner, so an unreadable default cannot match.
             def matches_default(default):
                 try:
                     return os.path.isfile(default) and read(default) == existing
