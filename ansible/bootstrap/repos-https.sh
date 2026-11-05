@@ -53,12 +53,6 @@ elif command -v apt-get >/dev/null 2>&1; then
         /^([[:blank:]]|#)/b uris
         b line
     ' /etc/apt/sources.list.d/*.sources
-elif command -v zypper >/dev/null 2>&1; then
-    # RIS recreates the .repo files from this index when the service refreshes.
-    rewrite '/^[[:blank:]]*<!--/!s@((disturl|url|gpgkey)=")http://@\1https://@g' \
-        /usr/share/zypp/local/service/openSUSE/repo/repoindex.xml
-    rewrite '/^[[:blank:]]*(baseurl|mirrorlist|metalink|gpgkey|url)[[:blank:]]*=/s@([=[:blank:]])http://@\1https://@g' \
-        /etc/zypp/repos.d/*.repo /etc/zypp/services.d/*.service
 elif command -v dnf >/dev/null 2>&1; then
     rewrite '
         /^[[:blank:]]*(baseurl|mirrorlist|metalink|gpgkey)[[:blank:]]*=/s@([=[:blank:]])http://@\1https://@g
@@ -71,6 +65,12 @@ elif command -v dnf >/dev/null 2>&1; then
     if "$changed" && ! "$check"; then
         dnf --quiet clean expire-cache >&2
     fi
+elif command -v zypper >/dev/null 2>&1; then
+    # RIS recreates the .repo files from this index when the service refreshes.
+    rewrite '/^[[:blank:]]*<!--/!s@((disturl|url|gpgkey)=")http://@\1https://@g' \
+        /usr/share/zypp/local/service/openSUSE/repo/repoindex.xml
+    rewrite '/^[[:blank:]]*(baseurl|mirrorlist|metalink|gpgkey|url)[[:blank:]]*=/s@([=[:blank:]])http://@\1https://@g' \
+        /etc/zypp/repos.d/*.repo /etc/zypp/services.d/*.service
 fi
 
 if command -v apt-get >/dev/null 2>&1 && [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then

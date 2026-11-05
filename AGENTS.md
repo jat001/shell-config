@@ -19,7 +19,7 @@ Playbook 用 `strategy: free`，Windows/MSYS2 和各 Linux 主机一起配。
 入口和链接先检查再改。相同的留下。内容和入口不同的普通文件，或非空目录，整组失败，原文件留着。
 模块不递归删目录，也不做备份。能换掉的只有：和入口内容相同的文件、空目录、指向别处的链接、和发行版模板完全相同的默认 dotfile。
 
-和 `/etc/skel`、openSUSE `/usr/etc/skel`、Debian `dot.*`、Fedora `/usr/share/rootfiles`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。读不到的默认文件按不匹配处理。路径里有 `/` 的不比。
+和 `/etc/skel`、Debian `dot.*`、Fedora `/usr/share/rootfiles`、openSUSE `/usr/etc/skel`、MSYS2 `etc/skel` 的比较只看用户主目录顶层的 dotfile。读不到的默认文件按不匹配处理。路径里有 `/` 的不比。
 openSUSE 的 `/usr/etc/skel` 是 `0640 root:root`。新建 WSL 账户时由 playbook 建空主目录，`useradd` 不复制模板，否则新账户读不到这些模板也无法比较。
 Debian 的 Nushell 包在 postinst 里跑 `config reset -w`，留下 `/root/.config/nushell/env.nu` 和 `config.nu`。
 部署前用同一支 `nu`，在临时家目录生成 scaffold，内容完全一致才按 `defaults` 换。这两个文件不能无条件覆盖。
@@ -106,14 +106,14 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 - `tests/docker_completions.ps1` 用本机现有的 Docker、WSL 和 MSYS2。
 - `tests/dev_drives.ps1` 和 `tests/hyperv.ps1` 要管理员，会创建虚拟磁盘或 Hyper-V 虚拟机。
 
-`tests/run.ps1` 的 Windows 目标是 Windows Sandbox，Linux 目标是 `archlinux:latest`、`debian:testing`、`opensuse/tumbleweed:latest` 和 `fedora:45`。
+`tests/run.ps1` 的 Windows 目标是 Windows Sandbox，Linux 目标是 `archlinux:latest`、`debian:testing`、`fedora:45` 和 `opensuse/tumbleweed:latest`。
 容器里没有 systemd，用户单元只链接，不启动。
 `shell-test` 网络固定 `10.77.90.0/24`。wslc 默认的下一个地址池可能是 `172.18.0.0/16`，这台机器的 Hyper-V 默认交换机是 `172.18.144.0/20`。重叠时沙盒 IP 像在本地网桥上，连接报 `No route to host`。
 沙盒执行策略是 Restricted。写进模块参数的脚本能跑，磁盘上的 `.ps1` 不行。调用 `system_setup.ps1`、`download.ps1`、`clink.ps1` 之前，把当前进程的执行策略设成 Bypass。
 `wsb exec -c` 会把命令字符串里的 PowerShell 开关当成自己的参数。启动命令放进映射进去的 `launch.cmd`，传给 `wsb` 的只是这个文件的路径。
 普通用户读不到计划任务服务。CIM 可能把内层 AccessDenied 包成 ResourceUnavailable，按内层错误码判断，别匹配本地化文本。ObjectNotFound 才是任务没注册。
 
-容器和沙盒（`-Target arch,debian,suse,fedora,sandbox`，沙盒用完已停）：Arch、Debian、openSUSE、Fedora、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
+容器和沙盒（`-Target arch,debian,fedora,suse,sandbox`，沙盒用完已停）：Arch、Debian、Fedora、openSUSE、Windows Sandbox 的 `init`、`prepare`、`full`、重复 `full`（`changed=0`）、`update`、`verify` 都是 failed=0。
 无提权账户的第二次 `full` 也是 `changed=0`，随后只跑 `user` 标签里的入口、链接、HOME、Culture 和 `.wslconfig` 检查，不套用管理员的软件矩阵。
 Debian 上 WSL 用户 `shell` 加载 PowerShell 通过。发布目录原先是 `0700`，非 root 的 PowerShell 把 `/usr/local/bin/oh-my-posh` 当成不能放进管道的文件。
 

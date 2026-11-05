@@ -275,9 +275,9 @@ class ShellPathTests(unittest.TestCase):
             by_path["/home/shell/.bashrc"]["defaults"],
             [
                 "/etc/skel/.bashrc",
-                "/usr/etc/skel/.bashrc",
                 "/usr/share/base-files/dot.bashrc",
                 "/usr/share/rootfiles/.bashrc",
+                "/usr/etc/skel/.bashrc",
             ],
         )
         self.assertNotIn("defaults", by_path["/home/shell/.config/nushell/env.nu"])

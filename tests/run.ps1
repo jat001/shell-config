@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('arch', 'debian', 'suse', 'fedora', 'sandbox')]
-    [string[]]$Target = @('arch', 'debian', 'suse', 'fedora', 'sandbox'),
+    [ValidateSet('arch', 'debian', 'fedora', 'suse', 'sandbox')]
+    [string[]]$Target = @('arch', 'debian', 'fedora', 'suse', 'sandbox'),
     [ValidateSet('init', 'prepare', 'full', 'idempotence', 'update', 'verify', 'unprivileged')]
     [string[]]$Step,
     [ValidateSet('fast', 'standard', 'full')]
@@ -28,8 +28,8 @@ $repository = Split-Path $PSScriptRoot
 $installer = Join-Path $repository 'install.ps1'
 $network = 'shell-test'
 $images = @{
-    arch = 'archlinux:latest'; debian = 'debian:testing'; suse = 'opensuse/tumbleweed:latest'
-    fedora = 'fedora:45'
+    arch = 'archlinux:latest'; debian = 'debian:testing'; fedora = 'fedora:45'
+    suse = 'opensuse/tumbleweed:latest'
 }
 $utf8 = [Text.UTF8Encoding]::new($false)
 $linux = @($Target | Where-Object { $_ -ne 'sandbox' })
@@ -62,8 +62,8 @@ $null = [IO.Directory]::CreateDirectory((Join-Path $cache 'scoop'))
 $volumes = @{
     arch   = @('-v', 'shell-test-pacman:/var/cache/pacman/pkg', '-v', 'shell-test-aur:/var/cache/shell-aur')
     debian = @('-v', 'shell-test-apt:/var/cache/apt/archives', '-v', 'shell-test-releases:/var/cache/shell-releases')
-    suse   = @('-v', 'shell-test-zypp:/var/cache/zypp', '-v', 'shell-test-suse-releases:/var/cache/shell-releases')
     fedora = @('-v', 'shell-test-dnf:/var/cache/dnf', '-v', 'shell-test-fedora-releases:/var/cache/shell-releases')
+    suse   = @('-v', 'shell-test-zypp:/var/cache/zypp', '-v', 'shell-test-suse-releases:/var/cache/shell-releases')
 }
 $timings = [ordered]@{}
 $clock = [Diagnostics.Stopwatch]::StartNew()
@@ -108,7 +108,7 @@ function Get-TestNetworkSubnet {
 
 if ((Get-TestNetworkSubnet $network) -ne $networkSubnet) {
     $ErrorActionPreference = 'Continue'
-    foreach ($name in @('arch', 'debian', 'suse', 'fedora')) { & wslc.exe remove -f "shell-test-$name" *> $null }
+    foreach ($name in @('arch', 'debian', 'fedora', 'suse')) { & wslc.exe remove -f "shell-test-$name" *> $null }
     & wslc.exe network remove $network *> $null
     $ErrorActionPreference = 'Stop'
     Invoke-Native wslc.exe @(

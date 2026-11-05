@@ -93,56 +93,6 @@ shell_apt_packages:
   - zsh-autosuggestions
   - zsh-syntax-highlighting
 
-# glibc-locale ships every compiled locale; Tumbleweed has no locale.gen or locale-gen.
-# icu is the runtime the PowerShell archive links against.
-shell_zypper_packages:
-  - bash-completion
-  - ca-certificates
-  - fish
-  - gawk
-  - git
-  - glibc-locale
-  - gzip
-  - icu
-  - jq
-  - nushell
-  - openssh
-  - sudo
-  - tar
-  - timezone
-  - util-linux-systemd
-  - xz
-  - zsh
-
-# DNF5 is the default package manager. The release PowerShell archive links against ICU and OpenSSL 3.
-shell_redhat_packages:
-  - bash-completion
-  - fish
-  - gawk
-  - git
-  - gzip
-  - jq
-  - libicu
-  - nushell
-  - openssl-libs
-  - openssl3-libs
-  - procps-ng
-  - sudo
-  - tar
-  - tzdata
-  - xz
-  - zsh
-  - zsh-autosuggestions
-  - zsh-syntax-highlighting
-
-shell_release_root: /opt/shell-releases
-shell_release_cache: /var/cache/shell-releases
-shell_release_bin: /usr/local/bin
-shell_release_manifest: /etc/shell-releases.json
-shell_release_updater: /usr/local/libexec/shell-releases-update
-shell_release_update_calendar: daily
-shell_release_update_delay: 1h
-
 shell_microsoft_debian_versions:
   bookworm: "12"
   trixie: "13"
@@ -172,6 +122,56 @@ shell_debian_apt_sources:
     key_sha256: "{{ 'd45224d594d969f084232deaaf97c58ca502a9d964c362d7aaef5a76e16b3dd1'
       if shell_microsoft_debian_version == '13' else '2fa9c05d591a1582a9aba276272478c262e95ad00acf60eaee1644d93941e3c6' }}"
     packages: [powershell]
+
+# DNF5 is the default package manager. The release PowerShell archive links against ICU and OpenSSL 3.
+shell_redhat_packages:
+  - bash-completion
+  - fish
+  - gawk
+  - git
+  - gzip
+  - jq
+  - libicu
+  - nushell
+  - openssl-libs
+  - openssl3-libs
+  - procps-ng
+  - sudo
+  - tar
+  - tzdata
+  - xz
+  - zsh
+  - zsh-autosuggestions
+  - zsh-syntax-highlighting
+
+# glibc-locale ships every compiled locale; Tumbleweed has no locale.gen or locale-gen.
+# icu is the runtime the PowerShell archive links against.
+shell_zypper_packages:
+  - bash-completion
+  - ca-certificates
+  - fish
+  - gawk
+  - git
+  - glibc-locale
+  - gzip
+  - icu
+  - jq
+  - nushell
+  - openssh
+  - sudo
+  - tar
+  - timezone
+  - util-linux-systemd
+  - xz
+  - zsh
+
+shell_release_root: /opt/shell-releases
+shell_release_cache: /var/cache/shell-releases
+shell_release_bin: /usr/local/bin
+shell_release_manifest: /etc/shell-releases.json
+shell_release_updater: /usr/local/libexec/shell-releases-update
+shell_release_update_calendar: daily
+shell_release_update_delay: 1h
 
 shell_releases:
   - name: oh-my-posh

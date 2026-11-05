@@ -83,9 +83,9 @@ def shell_unix_items(entries, home, source_home, repository, fish, plugins, msys
             else:
                 item["defaults"] = [
                     _join("/etc/skel", unix),
-                    _join("/usr/etc/skel", unix),
                     _join("/usr/share/base-files", "dot" + unix),
                     _join("/usr/share/rootfiles", unix),
+                    _join("/usr/etc/skel", unix),
                 ]
         items.append(item)
 

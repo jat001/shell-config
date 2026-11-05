@@ -56,11 +56,11 @@ try {
         $null = Invoke-Linux @'
 set -eu
 if ! command -v mkfs.btrfs >/dev/null; then
-    if command -v apt-get >/dev/null; then
+    if command -v pacman >/dev/null; then
+        pacman -Syu --needed --noconfirm btrfs-progs >&2
+    elif command -v apt-get >/dev/null; then
         apt-get update >&2
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends btrfs-progs >&2
-    elif command -v pacman >/dev/null; then
-        pacman -Syu --needed --noconfirm btrfs-progs >&2
     else
         echo 'Install btrfs-progs before provisioning the shared disk.' >&2
         exit 1

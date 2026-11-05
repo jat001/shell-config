@@ -69,8 +69,8 @@ fi
 
 # python3-apt lets the apt module run in check mode, which cannot install it on demand.
 # A clean Debian image has no CA bundle. Ansible then downloads signing keys over HTTPS.
-# A clean openSUSE image has no Python, sshd or btrfs tools.
 # A clean Fedora image has no sshd or btrfs tools, and Ansible's dnf5 module needs the libdnf5 bindings.
+# A clean openSUSE image has no Python, sshd or btrfs tools.
 if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
     ! command -v python3 >/dev/null 2>&1 ||
     { ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; } ||
@@ -85,13 +85,13 @@ if ! command -v mkfs.btrfs >/dev/null 2>&1 ||
         retry apt-get update >&2
         DEBIAN_FRONTEND=noninteractive retry apt-get install -y --no-install-recommends \
             ca-certificates openssh-server python3 python3-apt btrfs-progs >&2
+    elif command -v dnf >/dev/null 2>&1; then
+        retry dnf --assumeyes --setopt=install_weak_deps=False install \
+            ca-certificates openssh-server python3 python3-libdnf5 btrfs-progs >&2
     elif command -v zypper >/dev/null 2>&1; then
         retry zypper --non-interactive refresh >&2
         retry zypper --non-interactive install --no-recommends \
             ca-certificates openssh python3 btrfsprogs >&2
-    elif command -v dnf >/dev/null 2>&1; then
-        retry dnf --assumeyes --setopt=install_weak_deps=False install \
-            ca-certificates openssh-server python3 python3-libdnf5 btrfs-progs >&2
     else
         printf 'Unsupported distribution.\n' >&2
         exit 1

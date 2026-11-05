@@ -93,7 +93,7 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("create_home: \"{{ ansible_facts.os_family != 'Suse' }}\"", user)
         self.assertIn("Create SUSE WSL user home", user)
         regional = (root / "ansible/roles/linux/tasks/regional.yml").read_text(encoding="utf-8")
-        self.assertIn("ansible_facts.os_family not in ['Suse', 'RedHat']", regional)
+        self.assertIn("ansible_facts.os_family not in ['RedHat', 'Suse']", regional)
         self.assertIn("Require host locale support on SUSE", regional)
 
     def test_debian_testing_is_test_only_and_sandbox_cache_stays_in_guest(self):
