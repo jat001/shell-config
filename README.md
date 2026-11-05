@@ -40,8 +40,9 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 `-SkipMsys2`、`-SkipWsl` 跳过对应环境。`-SkipWsl` 仍留下一个发行版来连 Windows。
 `-WslDistribution`、`-Msys2Root` 改发行版或 MSYS2 位置。
 `-WslDevDriveOnly` 只处理 WSL 共享开发盘。
-`-WslStartMenuOnly` 只同步已注册发行版的开始菜单快捷方式和 WSLg 目录显示名称，不构建控制容器或运行 playbook。
-WSLg 目录保留实际注册名，通过 `desktop.ini` 显示友好名称；已有不同内容的 `desktop.ini` 或占用目录的文件、链接会使整组检查失败。
+`-WslStartMenuOnly` 只同步已注册发行版的开始菜单快捷方式和 WSLg 目录显示名称、图标，不构建控制容器或运行 playbook。
+WSLg 目录保留实际注册名，通过 `desktop.ini` 显示友好名称，并复用注册目录的 `shortcut.ico`。已有的 `docker-desktop` 目录显示为 Docker Desktop，图标取自现有 Docker Desktop 快捷方式；Docker 的启动快捷方式仍由 Docker 管理。
+上一版生成的纯名称 `desktop.ini` 可以原子升级；其他不同内容的 `desktop.ini` 或占用目录的文件、链接会使整组检查失败。
 `-WindowsHome` 把配置部署到另一个 Windows 用户目录。目标就是当前账户时，才设置这个账户的 `HOME`。
 `-CacheDirectory` 指定 WSL 和 Windows 的下载缓存，默认 `%LOCALAPPDATA%\shell-ansible\cache`。下完的文件下次直接用。下载中断会再试。
 

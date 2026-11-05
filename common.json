@@ -25,6 +25,7 @@
       "distribution_names": {
         "archlinux": "Arch Linux",
         "Debian": "Debian Testing",
+        "docker-desktop": "Docker Desktop",
         "FedoraLinux-45": "Fedora Linux",
         "openSUSE-Tumbleweed": "openSUSE Tumbleweed"
       },

@@ -100,7 +100,7 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 - `tests/wsl_cache.ps1 -CacheDirectory <临时目录>`：下载并复用 WSL 缓存，不安装 WSL。
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
 - `tests/download_metrics.ps1`：用临时 `file://` 文件检查缓存命中和下载记录，脚本只返回路径，不访问网络。
-- `tests/wsl_start_menu.ps1`：只用临时目录检查 WSLg 友好显示名、WhatIf、重复执行和冲突保护。PowerShell 5.1 和 7 都能跑。
+- `tests/wsl_start_menu.ps1`：只用临时目录检查 WSLg 友好显示名、图标、旧版元数据升级、WhatIf、重复执行和冲突保护。PowerShell 5.1 和 7 都能跑。
 
 `tests/verify.yml` 还会对 root 和 WSL 用户分别调用 `tests/shell_startup.py`，在伪终端里启动 bash、zsh、fish、pwsh、nu，检查初始化、提示符和补全器。测试清掉继承的配置变量，明确断言 ble.sh 已加载，不能只看退出码或环境变量。
 
@@ -170,7 +170,7 @@ openSUSE Tumbleweed 的 WSL 镜像还缺 `tar`、`gzip` 和 `findmnt`。`package
 openSUSE Tumbleweed 的普通用户读不到块设备 UUID，`findmnt -o UUID` 为空。`wsl-dev-drive.sh` 在 UUID 为空时用 `sudo -n blkid` 补查；WSL 账户有免密 sudo。
 openSUSE Tumbleweed 的 `/etc/profile` 对登录 bash 先 source `~/.bashrc`，随后 bash 再读 `~/.bash_profile`，`common.bash` 会执行两次。用 `_shell_bash_loaded` 防重入；否则 ble.sh 会打印 `[ble: reload]` 并重建缓存。
 WSL 把发行版快捷方式写在 `%APPDATA%\Microsoft\Windows\Start Menu\<名>.lnk` 根目录；Windows 的 All apps 只枚举 `Programs`。`install.ps1` 对每个已注册发行版把它移到 `Programs`，按 `--distribution-id` 去重，不覆盖指向其他发行版的同名文件。
-WSLg 在 `Programs` 下按实际注册名管理图形应用目录。目录不能直接改名；用 `desktop.ini` 的 `LocalizedResourceName` 设置友好显示名，标记文件为 Hidden/System、目录为 ReadOnly，再通知 Windows Shell 刷新。整组先检查，已有不同内容的 `desktop.ini`、普通文件或重解析点要失败并保留原物。只部署开始菜单用 `install.ps1 -WslStartMenuOnly`。
+WSLg 在 `Programs` 下按实际注册名管理图形应用目录。目录不能直接改名；用 `desktop.ini` 的 `LocalizedResourceName` 设置友好显示名，`IconFile`/`IconIndex` 复用发行版注册目录的 `shortcut.ico`，标记文件为 Hidden/System、目录为 ReadOnly，再通知 Windows Shell 刷新。已有的 `docker-desktop` 目录用 Docker Desktop 友好名及现有 Docker Desktop 快捷方式的图标，不创建 Docker 的 WSL 启动入口。整组先检查，只有上一版生成的纯名称元数据可以原子升级；其他不同内容的 `desktop.ini`、普通文件或重解析点要失败并保留原物。只部署开始菜单用 `install.ps1 -WslStartMenuOnly`。
 
 Arch Linux 的 `farseerfc` 在官方 keyring 里，但 `pacman-key --init` 不导入它。先 `pacman-key --populate archlinux`，再 `--lsign-key`，然后才能同步带 archlinuxcn 的库。
 

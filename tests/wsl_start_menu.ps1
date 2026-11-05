@@ -24,8 +24,10 @@ $null = [IO.Directory]::CreateDirectory($temporary)
 $utf8 = [Text.UTF8Encoding]::new($false)
 try {
     $names = [ordered]@{}
-    foreach ($name in $configuration.environments.wsl.distributions) { $names[$name] = Get-WslDisplayName $name }
-    $expected = @('Arch Linux', 'Debian Testing', 'Fedora Linux', 'openSUSE Tumbleweed')
+    foreach ($name in @($configuration.environments.wsl.distributions + 'docker-desktop' | Sort-Object -Unique)) {
+        $names[$name] = Get-WslDisplayName $name
+    }
+    $expected = @('Arch Linux', 'Debian Testing', 'Docker Desktop', 'Fedora Linux', 'openSUSE Tumbleweed')
     if (($names.Values -join '|') -cne ($expected -join '|')) { throw 'The display name mapping is incorrect.' }
     if ((Get-WslDisplayName 'Custom-WSL') -cne 'Custom-WSL') { throw 'The custom distribution fallback failed.' }
 
@@ -71,8 +73,36 @@ try {
     if (-not ([IO.File]::GetAttributes($populated) -band [IO.FileAttributes]::Archive) -or
         [IO.File]::GetLastWriteTimeUtc($ini) -ne $stamps['archlinux']) { throw 'Attribute repair changed unrelated metadata.' }
 
+    # Upgrade only the exact name-only metadata from the previous installer version, using existing icon files.
+    $icons = @{}
+    foreach ($name in $names.Keys) { $icons[$name] = @{ File = (Join-Path $env:SystemRoot 'System32/shell32.dll'); Index = 0 } }
+    $icons['docker-desktop'].Index = 1
+    $null = Set-WslStartMenuFolderNames -Programs $programs -Names $names -Icons $icons -WhatIf
+    if ([IO.File]::GetLastWriteTimeUtc($ini) -ne $stamps['archlinux']) { throw 'WhatIf rewrote previous metadata.' }
+    if (-not (Set-WslStartMenuFolderNames -Programs $programs -Names $names -Icons $icons)) {
+        throw 'The icon upgrade reported no change.'
+    }
+    foreach ($name in $names.Keys) {
+        $ini = Join-Path (Join-Path $programs $name) 'desktop.ini'
+        $content = "[.ShellClassInfo]`nLocalizedResourceName=$($names[$name])`n" +
+        "IconFile=$($icons[$name].File)`nIconIndex=$($icons[$name].Index)`n"
+        if ($utf8.GetString([IO.File]::ReadAllBytes($ini)) -cne $content) { throw "The folder icon is incorrect: $name" }
+        $stamps[$name] = [IO.File]::GetLastWriteTimeUtc($ini)
+    }
+    if (Set-WslStartMenuFolderNames -Programs $programs -Names $names -Icons $icons) { throw 'The icon upgrade is not idempotent.' }
+    foreach ($name in $names.Keys) {
+        if ([IO.File]::GetLastWriteTimeUtc((Join-Path (Join-Path $programs $name) 'desktop.ini')) -ne $stamps[$name]) {
+            throw "The icon upgrade rewrote metadata on repeat: $name"
+        }
+    }
+    $missingIcons = @{ archlinux = @{ File = (Join-Path $temporary 'missing.ico'); Index = 0 } }
+    $rejected = $false
+    try { $null = Set-WslStartMenuFolderNames -Programs $programs -Names $names -Icons $missingIcons } catch { $rejected = $true }
+    if (-not $rejected) { throw 'A missing icon file was accepted.' }
+    if ((Get-FileHash -LiteralPath $kept).Hash -ne $keptHash) { throw 'The icon upgrade changed an application shortcut.' }
+
     # A conflict late in the group must leave the earlier missing directory and every existing file untouched.
-    foreach ($conflict in @('metadata', 'directory-file', 'metadata-directory')) {
+    foreach ($conflict in @('metadata', 'custom-icon', 'directory-file', 'metadata-directory')) {
         $root = Join-Path $temporary $conflict
         $debian = Join-Path $root 'Debian'
         $null = [IO.Directory]::CreateDirectory($root)
@@ -84,6 +114,10 @@ try {
             $null = [IO.Directory]::CreateDirectory($debian)
             $original = Join-Path $debian 'desktop.ini'
             if ($conflict -eq 'metadata-directory') { $null = [IO.Directory]::CreateDirectory($original) }
+            elseif ($conflict -eq 'custom-icon') {
+                [IO.File]::WriteAllText($original,
+                    "[.ShellClassInfo]`nLocalizedResourceName=Debian Testing`nIconFile=user.ico`nIconIndex=0`n", $utf8)
+            }
             else { [IO.File]::WriteAllText($original, '[.ShellClassInfo]' + "`nLocalizedResourceName=My Debian`n", $utf8) }
         }
         $hash = if ([IO.File]::Exists($original)) { (Get-FileHash -LiteralPath $original).Hash } else { '' }
@@ -101,7 +135,7 @@ try {
         try { $null = Set-WslStartMenuFolderNames -Programs $programs -Names @{ $invalid = 'invalid' } } catch { $rejected = $true }
         if (-not $rejected) { throw "An invalid directory name was accepted: $invalid" }
     }
-    "PowerShell $($PSVersionTable.PSVersion): WSLg folder display names, WhatIf, idempotence, attribute repair and conflict preservation passed."
+    "PowerShell $($PSVersionTable.PSVersion): WSLg names, icons, metadata upgrade, WhatIf, idempotence and conflict preservation passed."
 }
 finally {
     $resolved = [IO.Path]::GetFullPath($temporary)

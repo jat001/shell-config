@@ -214,7 +214,11 @@ function Get-CachedDistribution {
 
 function Set-WslStartMenuFolderNames {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Programs, [System.Collections.IDictionary]$Names)
+    param(
+        [string]$Programs,
+        [System.Collections.IDictionary]$Names,
+        [System.Collections.IDictionary]$Icons = @{}
+    )
 
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
     $plans = [Collections.Generic.List[object]]::new()
@@ -233,28 +237,44 @@ function Set-WslStartMenuFolderNames {
             throw "A file or link occupies the WSL Start Menu directory: $path"
         }
         $ini = Join-Path $path 'desktop.ini'
-        $content = "[.ShellClassInfo]`nLocalizedResourceName=$display`n"
+        $previous = "[.ShellClassInfo]`nLocalizedResourceName=$display`n"
+        $content = $previous
+        if ($Icons.Contains($name)) {
+            $icon = $Icons[$name]
+            if (-not [IO.File]::Exists($icon.File) -or $icon.File -match '[\r\n]') {
+                throw "The WSL Start Menu folder icon is unavailable: $($icon.File)"
+            }
+            $content += "IconFile=$($icon.File)`nIconIndex=$([int]$icon.Index)`n"
+        }
         $file = Get-Item -LiteralPath $ini -Force -ErrorAction SilentlyContinue
-        if ($file -and ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
-                $utf8.GetString([IO.File]::ReadAllBytes($ini)) -cne $content)) {
-            throw "A different desktop.ini occupies the WSL Start Menu directory: $ini"
+        $current = ''
+        if ($file) {
+            if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "A different desktop.ini occupies the WSL Start Menu directory: $ini"
+            }
+            $current = $utf8.GetString([IO.File]::ReadAllBytes($ini))
+            if ($current -cne $content -and $current -cne $previous) {
+                throw "A different desktop.ini occupies the WSL Start Menu directory: $ini"
+            }
         }
         $attributes = [IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System
-        $changed = -not $file -or -not ($directory.Attributes -band [IO.FileAttributes]::ReadOnly) -or
+        $write = $current -cne $content
+        $changed = $write -or -not ($directory.Attributes -band [IO.FileAttributes]::ReadOnly) -or
         ($file.Attributes -band $attributes) -ne $attributes
-        $plans.Add(@{ Path = $path; Ini = $ini; Content = $content; Create = -not $file; Changed = $changed })
+        $plans.Add(@{ Path = $path; Ini = $ini; Content = $content; Create = -not $file; Write = $write; Changed = $changed })
     }
 
-    # WSLg keeps using the registered directory name. Only the Windows Shell display name changes.
+    # WSLg keeps using the registered directory name. Only the Windows Shell display name and icon change.
     # Validate every directory first; a foreign desktop.ini or link leaves the entire group untouched.
     foreach ($plan in $plans) {
-        if (-not $plan.Changed -or -not $PSCmdlet.ShouldProcess($plan.Path, 'Set WSLg folder display name')) { continue }
+        if (-not $plan.Changed -or -not $PSCmdlet.ShouldProcess($plan.Path, 'Set WSLg folder display name and icon')) { continue }
         $null = [IO.Directory]::CreateDirectory($plan.Path)
-        if ($plan.Create) {
+        if ($plan.Write) {
             $temporary = Join-Path $plan.Path ('.desktop-' + [guid]::NewGuid().ToString('N') + '.tmp')
             try {
                 [IO.File]::WriteAllText($temporary, $plan.Content, $utf8)
-                [IO.File]::Move($temporary, $plan.Ini)
+                if ($plan.Create) { [IO.File]::Move($temporary, $plan.Ini) }
+                else { [IO.File]::Replace($temporary, $plan.Ini, [NullString]::Value) }
             }
             finally {
                 if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
@@ -324,11 +344,40 @@ function Set-WslStartMenu {
     $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
     $registrations = @(Get-WslRegistration)
     $names = [ordered]@{}
-    foreach ($name in $Distribution) {
-        if ($registrations.DistributionName -contains $name) { $names[$name] = Get-WslDisplayName $name }
+    $icons = @{}
+    foreach ($name in @($Distribution + 'docker-desktop' | Sort-Object -Unique)) {
+        $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
+        if (-not $registration) { continue }
+        if ($name -eq 'docker-desktop') {
+            if (-not [IO.Directory]::Exists((Join-Path $programs $name))) { continue }
+            $shell = New-Object -ComObject WScript.Shell
+            foreach ($directory in @($programs, [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms))) {
+                $shortcutPath = Join-Path $directory 'Docker Desktop.lnk'
+                if (-not [IO.File]::Exists($shortcutPath)) { continue }
+                $shortcut = $shell.CreateShortcut($shortcutPath)
+                $iconFile = $shortcut.TargetPath
+                $iconIndex = 0
+                if ($shortcut.IconLocation -match '^(.*),(-?\d+)$' -and $Matches[1]) {
+                    $iconFile = [Environment]::ExpandEnvironmentVariables($Matches[1].Trim('"'))
+                    $iconIndex = [int]$Matches[2]
+                }
+                if ([IO.File]::Exists($iconFile)) {
+                    $icons[$name] = @{ File = $iconFile; Index = $iconIndex }
+                    break
+                }
+            }
+        }
+        else {
+            $base = [string]$registration.BasePath
+            if ($base.StartsWith('\\?\')) { $base = $base.Substring(4) }
+            $iconFile = Join-Path $base 'shortcut.ico'
+            if ([IO.File]::Exists($iconFile)) { $icons[$name] = @{ File = $iconFile; Index = 0 } }
+        }
+        $names[$name] = Get-WslDisplayName $name
     }
-    $null = Set-WslStartMenuFolderNames -Programs $programs -Names $names
+    $null = Set-WslStartMenuFolderNames -Programs $programs -Names $names -Icons $icons
     foreach ($name in $names.Keys) {
+        if ($name -eq 'docker-desktop') { continue }
         $registration = $registrations | Where-Object DistributionName -EQ $name | Select-Object -First 1
         $display = $names[$name]
         if ($PSCmdlet.ShouldProcess($display, 'Create Start Menu shortcut')) {
