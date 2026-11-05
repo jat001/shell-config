@@ -8,7 +8,7 @@ Windows、WSL 和 MSYS2 用同一套配置。
 在 Windows 上运行安装器。
 需要能提供 `wslc.exe` 的 WSL。Ansible 跑在 WSL 容器里，连 Windows 也走第一个发行版，所以不能一个发行版都不留。
 要开开发人员模式，否则普通权限建不了符号链接。
-发行版列表在 `common.json`，按字母序为 Arch Linux、Debian Testing、Fedora Linux 和 openSUSE Tumbleweed。第一项会设成默认发行版。
+发行版列表在 `common.json`，按字母序为 Arch Linux、Debian Testing、Fedora Linux 和 openSUSE Tumbleweed。默认全装，也可用 `-WslDistribution` 选择其中一个或多个；所选项按字母序排列，第一项会设成默认发行版并承载 Windows 连接。
 对应的 WSL 注册名是 `archlinux`、`Debian`、`FedoraLinux-45` 和 `openSUSE-Tumbleweed`；友好名称单独配置在 `distribution_names`。
 Debian Testing 是展示名称；普通安装仍使用 `Debian` 镜像的 stable，隔离回归使用 testing。
 安装器从 Microsoft 的 WSL 发行版索引 `DistributionInfo.json` 获取 Fedora Linux 45 的镜像地址和 SHA256。
@@ -38,7 +38,22 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 ```
 
 `-SkipMsys2`、`-SkipWsl` 跳过对应环境。`-SkipWsl` 仍留下一个发行版来连 Windows。
-`-WslDistribution`、`-Msys2Root` 改发行版或 MSYS2 位置。
+`-WslDistribution` 指定要安装和配置的发行版，最少一个。缺少的所选发行版会安装，已有的直接使用；未选中的已安装发行版保留。也可以指定已注册的自定义发行版。
+MSYS2 默认安装和配置，传 `-SkipMsys2` 可以跳过，`-Msys2Root` 修改安装位置。安装器不增加选择提示。
+
+例如，只装 Debian Testing 和 Fedora Linux，并跳过 MSYS2：
+
+```powershell
+& "$HOME/.config/shell/install.ps1" -Mode full -WslDistribution Debian,FedoraLinux-45 -SkipMsys2
+```
+
+只装一个发行版并保留默认 MSYS2 安装：
+
+```powershell
+& "$HOME/.config/shell/install.ps1" -Mode full -WslDistribution Debian
+```
+
+普通部署中，显式传空列表（例如 `-WslDistribution @()`）、空名称或未知名称会在准备 WSL 和构建容器前报错。每次调用指定本次要处理的列表；不传时恢复默认全选。
 `-WslDevDriveOnly` 只处理 WSL 共享开发盘。
 `-WslStartMenuOnly` 只同步已注册发行版的开始菜单快捷方式和 WSLg 目录显示名称、图标，不构建控制容器或运行 playbook。
 WSLg 目录保留实际注册名，通过 `desktop.ini` 显示友好名称，并复用注册目录的 `shortcut.ico`。已有的 `docker-desktop` 目录显示为 Docker Desktop，图标取自现有 Docker Desktop 快捷方式；Docker 的启动快捷方式仍由 Docker 管理。

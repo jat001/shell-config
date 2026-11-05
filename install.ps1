@@ -86,6 +86,19 @@ function Get-WslDisplayName {
     $Name
 }
 
+function Resolve-WslDistributionSelection {
+    param([string[]]$Distribution, [string[]]$Available)
+
+    if (-not $Distribution.Count) { throw 'Select at least one WSL distribution.' }
+    $selected = foreach ($name in $Distribution) {
+        if ([string]::IsNullOrWhiteSpace($name)) { throw 'Select at least one WSL distribution; empty names are not allowed.' }
+        $canonical = $Available | Where-Object { $_ -ieq $name.Trim() } | Select-Object -First 1
+        if (-not $canonical) { throw "Unknown WSL distribution: $name. Choose a configured or already registered distribution." }
+        $canonical
+    }
+    $selected | Sort-Object -Unique
+}
+
 function Invoke-Wsl {
     param([string]$Distribution, [string[]]$Arguments, [switch]$Root)
 
@@ -210,6 +223,45 @@ function Get-CachedDistribution {
         throw "The cached $display image does not match its published SHA256: $path"
     }
     $path
+}
+
+function Initialize-WslDistributions {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([string[]]$Distribution, [string[]]$Registered)
+
+    foreach ($name in $Distribution) {
+        if ($Registered -contains $name) { continue }
+        $display = Get-WslDisplayName $name
+        if (-not $PSCmdlet.ShouldProcess($display, 'Install WSL distribution')) { continue }
+        $global:LASTEXITCODE = 0
+        $package = Get-CachedDistribution $name
+        $installArguments = if ($package) {
+            @('--install', '--from-file', $package, '--name', $name, '--no-launch')
+        }
+        else { @('--install', '--distribution', $name, '--no-launch') }
+        $preference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & $wsl @installArguments 2>&1 | ForEach-Object { $_.ToString() } | Out-Host
+        }
+        finally { $ErrorActionPreference = $preference }
+        if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $display failed ($LASTEXITCODE)." }
+        # The playbook prepares accounts and packages, so the distribution's first-run setup is skipped.
+        Get-WslRegistration | Where-Object { $_.DistributionName -eq $name } |
+            ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name RunOOBE -Value 0 }
+        $Registered += $name
+    }
+    $selected = @($Distribution | Where-Object { $Registered -contains $_ })
+    if (-not $selected.Count) { throw 'At least one selected WSL distribution must be installed; it also carries the Windows connection.' }
+    $default = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultDistribution
+    $current = (Get-WslRegistration | Where-Object { $_.PSChildName -eq $default }).DistributionName
+    if ($current -ne $selected[0] -and
+        $PSCmdlet.ShouldProcess((Get-WslDisplayName $selected[0]), 'Set the default WSL distribution')) {
+        $global:LASTEXITCODE = 0
+        & $wsl --set-default $selected[0] | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Setting the default WSL distribution failed ($LASTEXITCODE)." }
+    }
+    $selected
 }
 
 function Set-WslStartMenuFolderNames {
@@ -388,12 +440,17 @@ function Set-WslStartMenu {
 
 $configuration = [IO.File]::ReadAllText((Join-Path $repository 'common.json')) | ConvertFrom-Json
 $distributions = @($configuration.environments.wsl.distributions | Where-Object { $_ })
+if (-not $Inventory -and -not $PrepareOnly) {
+    $requestedDistributions = if ($PSBoundParameters.ContainsKey('WslDistribution')) { $WslDistribution } else { $distributions }
+    $availableDistributions = @($distributions) + @((Get-WslRegistration).DistributionName |
+            Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
+    $WslDistribution = @(Resolve-WslDistributionSelection -Distribution $requestedDistributions -Available $availableDistributions)
+}
 
 if ($WslStartMenuOnly) {
     if ($SkipWsl -or $Inventory -or $WslDevDriveOnly -or $PrepareOnly) {
         throw '-WslStartMenuOnly cannot be combined with -SkipWsl, -Inventory, -WslDevDriveOnly or -PrepareOnly.'
     }
-    if (-not $WslDistribution) { $WslDistribution = $distributions }
     Set-WslStartMenu -Distribution $WslDistribution
     return
 }
@@ -487,42 +544,15 @@ try {
         $env:WSL_UTF8 = '1'
         $registered = @(& $wsl --list --quiet | ForEach-Object { $_.Replace([string][char]0, '').Trim() } |
                 Where-Object { $_ -and $_ -notlike 'docker-desktop*' })
-        if (-not $SkipWsl -and -not $WslDistribution) {
-            foreach ($name in $distributions) {
-                if ($registered -contains $name) { continue }
-                $display = Get-WslDisplayName $name
-                if (-not $PSCmdlet.ShouldProcess($display, 'Install WSL distribution')) { continue }
-                $global:LASTEXITCODE = 0
-                $package = Get-CachedDistribution $name
-                $installArguments = if ($package) {
-                    @('--install', '--from-file', $package, '--name', $name, '--no-launch')
-                }
-                else { @('--install', '--distribution', $name, '--no-launch') }
-                $preference = $ErrorActionPreference
-                try {
-                    $ErrorActionPreference = 'Continue'
-                    & $wsl @installArguments 2>&1 | ForEach-Object { $_.ToString() }
-                }
-                finally { $ErrorActionPreference = $preference }
-                if ($LASTEXITCODE -ne 0) { throw "Installing the WSL distribution $display failed ($LASTEXITCODE)." }
-                # The playbook prepares accounts and packages, so the distribution's first-run setup is skipped.
-                Get-WslRegistration | Where-Object { $_.DistributionName -eq $name } |
-                    ForEach-Object { Set-ItemProperty -LiteralPath $_.PSPath -Name RunOOBE -Value 0 }
-                $registered += $name
-            }
-            if ($distributions -and $registered -contains $distributions[0]) {
-                $default = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss').DefaultDistribution
-                $current = (Get-WslRegistration | Where-Object { $_.PSChildName -eq $default }).DistributionName
-                if ($current -ne $distributions[0] -and
-                    $PSCmdlet.ShouldProcess((Get-WslDisplayName $distributions[0]), 'Set the default WSL distribution')) {
-                    $global:LASTEXITCODE = 0
-                    & $wsl --set-default $distributions[0]
-                    if ($LASTEXITCODE -ne 0) { throw "Setting the default WSL distribution failed ($LASTEXITCODE)." }
-                }
-            }
+        if (-not $SkipWsl) {
+            $WslDistribution = @(Initialize-WslDistributions -Distribution $WslDistribution -Registered $registered)
         }
-        if (-not $WslDistribution -and $distributions) {
-            $WslDistribution = @($distributions | Where-Object { $registered -contains $_ })
+        else {
+            if ($PSBoundParameters.ContainsKey('WslDistribution') -and
+                @($WslDistribution | Where-Object { $registered -notcontains $_ }).Count) {
+                throw '-SkipWsl requires an already installed distribution for the Windows connection.'
+            }
+            $WslDistribution = @($WslDistribution | Where-Object { $registered -contains $_ })
         }
         if (-not $WslDistribution) {
             if ($registered.Count) {

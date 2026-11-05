@@ -70,6 +70,7 @@ $clock = [Diagnostics.Stopwatch]::StartNew()
 & (Join-Path $PSScriptRoot 'regional.ps1')
 & (Join-Path $PSScriptRoot 'system_setup.ps1')
 & (Join-Path $PSScriptRoot 'wsl_start_menu.ps1')
+& (Join-Path $PSScriptRoot 'install_selection.ps1')
 $image = & $installer -PrepareOnly -StateDirectory $StateDirectory -CacheDirectory $CacheDirectory |
     Select-Object -Last 1
 foreach ($test in @(

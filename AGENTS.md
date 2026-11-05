@@ -7,6 +7,7 @@
 Windows 不开 WinRM，也不开 Windows OpenSSH。
 第一个 WSL 发行版上的 sshd 同时连 Windows。库存里的 Windows 主机用 `ansible_shell_type: powershell`，`/etc/shell-ansible/bin/PowerShell` 经 WSL interop 启动 Windows PowerShell。这些进程用的是当前用户的普通令牌。
 `-SkipWsl` 也得留下这个发行版。
+安装选项只走命令行，不增加交互选择。`-WslDistribution` 默认全选四个，显式列表至少一个；只安装和配置所选项，已有的未选项不删除。所选项按字母序，第一项设为默认发行版并承载 Windows 连接。已注册的自定义发行版仍可指定。MSYS2 默认安装和配置，`-SkipMsys2` 跳过。`-SkipWsl` 只使用已安装的发行版，不安装缺少的所选项。自定义库存和 `-PrepareOnly` 不要求选择宿主 WSL 发行版。
 
 Playbook 用 `strategy: free`，Windows/MSYS2 和各 Linux 主机一起配。
 入口在 `ansible/group_vars/all/main.yml` 的 `shell_entries`，软件在 `packages.yml`。
@@ -101,6 +102,7 @@ openSUSE Tumbleweed 的 locale 在 `glibc-locale` 里预先编译，没有 `/etc
 - `tests/common_plan.ps1`：用本机 `jq` 看空参数、没挂上的开发盘和平台判断。
 - `tests/download_metrics.ps1`：用临时 `file://` 文件检查缓存命中和下载记录，脚本只返回路径，不访问网络。
 - `tests/wsl_start_menu.ps1`：只用临时目录检查 WSLg 友好显示名、图标、旧版元数据升级、WhatIf、重复执行和冲突保护。PowerShell 5.1 和 7 都能跑。
+- `tests/install_selection.ps1`：用命令和注册表替身检查四个发行版的 15 种非空子集、最少选择一个、默认发行版、缓存、WhatIf 和失败处理，不运行 WSL 或安装软件。PowerShell 5.1 和 7 都能跑。
 
 `tests/verify.yml` 还会对 root 和 WSL 用户分别调用 `tests/shell_startup.py`，在伪终端里启动 bash、zsh、fish、pwsh、nu，检查初始化、提示符和补全器。测试清掉继承的配置变量，明确断言 ble.sh 已加载，不能只看退出码或环境变量。
 
