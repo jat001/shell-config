@@ -115,22 +115,9 @@ class InvariantTests(unittest.TestCase):
         self.assertIn("-TestDebianTesting", guest)
         self.assertIn("shell_download_cache = 'C:\\shell-cache'", runner)
 
-    def test_unindexed_distribution_images_are_pinned_and_hashed(self):
-        pinned = json.loads((root / "ansible/data/wsl_distributions.json").read_text(encoding="utf-8"))
-        entries = pinned["ModernDistributions"]
-        self.assertIn("FedoraLinux-45", entries)
-        for entry in entries.values():
-            for field in ("Amd64Url", "Arm64Url"):
-                asset = entry[field]
-                self.assertRegex(asset["Url"], r"^https://download\.fedoraproject\.org/")
-                self.assertRegex(asset["Sha256"], r"^0x[0-9a-f]{64}$")
-        installer = (root / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("ansible/data/wsl_distributions.json", installer)
-        self.assertIn("$pinned.ModernDistributions", installer)
+    def test_fedora_uses_dnf5_bindings_and_language_packs(self):
         configuration = json.loads((root / "common.json").read_text(encoding="utf-8"))
         self.assertIn("FedoraLinux-45", configuration["environments"]["wsl"]["distributions"])
-
-    def test_fedora_uses_dnf5_bindings_and_language_packs(self):
         bootstrap = (root / "ansible/bootstrap/wsl.sh").read_text(encoding="utf-8")
         self.assertIn("python3-libdnf5", bootstrap)
         self.assertNotIn("python3.14", bootstrap)

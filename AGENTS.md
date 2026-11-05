@@ -178,7 +178,7 @@ Windows PowerShell 在 `ErrorActionPreference = Stop` 时，输出被重定向�
 
 Nushell 的 scaffold 用目标上的 `nu -c 'config reset -w'` 现生成。配置目录要先建好。
 
-`DistributionInfo.json` 还没有 FedoraLinux-45。官方镜像的 URL 和两个架构的 SHA256 固定在 `ansible/data/wsl_distributions.json`；安装器在 Microsoft 索引里找不到名字时回退到它，并用同一套 `--from-file` 注册。更新镜像时同时改文件名、URL 和 SHA256。
+`FedoraLinux-45` 从 Microsoft 的 `DistributionInfo.json` 读取对应架构的镜像 URL 和 SHA256，校验后用 `--from-file` 注册。
 Fedora 没有 `/etc/locale.gen` 和 `locale-gen`，locale 由 `glibc-langpack-<语言>` 提供。区域任务按语言安装语言包，再从 `locale -a` 确认，不写 locale 定义文件。
 Fedora 45 默认 Python 3.15 和 DNF5，ansible-core 2.22 已支持目标端 3.15。`wsl.sh` 和 `main.yml` 装 `python3-libdnf5`，`packages_redhat.yml` 和区域任务用 `ansible.builtin.dnf5`。`blesh` 和 `zsh-antidote` 不在 Fedora 仓库，走 `fallbacks.yml`。
 Fedora 45 默认 OpenSSL 4，PowerShell/.NET 仍要找 `libssl.so.3`；`shell_redhat_packages` 同时装 `openssl3-libs`，否则 `Save-PSResource` 报 `No usable version of libssl was found`。

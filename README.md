@@ -9,7 +9,7 @@ Windows、WSL 和 MSYS2 用同一套配置。
 需要能提供 `wslc.exe` 的 WSL。Ansible 跑在 WSL 容器里，连 Windows 也走第一个发行版，所以不能一个发行版都不留。
 要开开发人员模式，否则普通权限建不了符号链接。
 发行版列表在 `common.json`，当前是 `archlinux`、`Debian`、`openSUSE-Tumbleweed` 和 `FedoraLinux-45`。第一项会设成默认发行版。
-Fedora 45 的 WSL 镜像还没有进入 Microsoft 的发行版索引 `DistributionInfo.json`；安装器从仓库里固定的官方下载地址和 SHA256 取镜像，见 `ansible/data/wsl_distributions.json`。
+安装器从 Microsoft 的 WSL 发行版索引 `DistributionInfo.json` 获取 Fedora 45 的镜像地址和 SHA256。
 Fedora 45 默认 Python 3.15，当前 ansible-core 2.22 直接支持，不需要另装解释器。
 MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用户环境变量 `DEV_DRIVE`。
 

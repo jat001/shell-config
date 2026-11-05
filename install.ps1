@@ -165,13 +165,6 @@ function Get-CachedDistribution {
     $metadata = [IO.File]::ReadAllText($metadataPath) | ConvertFrom-Json
     $distribution = $metadata.ModernDistributions.PSObject.Properties |
         ForEach-Object { $_.Value } | Where-Object Name -EQ $Name | Select-Object -First 1
-    # Microsoft has not indexed every published distribution. Official images pinned in the repository fill the gap.
-    if (-not $distribution) {
-        $pinnedPath = Join-Path $repository 'ansible/data/wsl_distributions.json'
-        $pinned = [IO.File]::ReadAllText($pinnedPath) | ConvertFrom-Json
-        $distribution = $pinned.ModernDistributions.PSObject.Properties |
-            ForEach-Object { $_.Value } | Where-Object Name -EQ $Name | Select-Object -First 1
-    }
     if (-not $distribution) { return }
     $nativeArchitecture = if ($env:PROCESSOR_ARCHITEW6432) {
         $env:PROCESSOR_ARCHITEW6432
