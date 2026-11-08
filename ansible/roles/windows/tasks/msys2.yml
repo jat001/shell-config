@@ -24,6 +24,7 @@
       Packages: "{{ shell_msys2_packages }}"
       Cache: "{{ shell_msys2_cache }}"
       Downloader: "{{ shell_repository }}\\ansible\\roles\\windows\\files\\download.ps1"
+      UseCernet: "{{ shell_use_cernet | default(false) | bool }}"
   tags: [packages]
 
 - name: Inspect MSYS2 tools

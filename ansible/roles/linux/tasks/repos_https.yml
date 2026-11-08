@@ -32,6 +32,7 @@
         cmd: >-
           {{ (playbook_dir ~ '/bootstrap/repos-https.sh') | quote }}
           {{ '--check' if ansible_check_mode else '' }}
+          {{ '--cernet' if shell_use_cernet | default(false) | bool else '--official' }}
           {{ (shell_repo_ca_directory.stdout | trim ~ '/bundle.pem') | quote if shell_repo_ca_directory is not skipped else '' }}
         executable: /bin/sh
       register: shell_repo_https

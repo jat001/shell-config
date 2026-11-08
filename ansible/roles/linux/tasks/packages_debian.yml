@@ -4,7 +4,8 @@
 - name: Refresh Debian Testing package metadata
   ansible.builtin.apt:
     update_cache: true
-    cache_valid_time: "{{ 0 if shell_apt_keys is changed or shell_apt_source_files is changed else 3600 }}"
+    cache_valid_time: "{{ 0 if shell_apt_keys is changed or shell_apt_source_files is changed
+      or shell_repo_https is changed or shell_bootstrap_repos_changed | default(false) | bool else 3600 }}"
   when: not ansible_check_mode or not (shell_apt_keys is changed or shell_apt_source_files is changed)
 
 - name: Inspect available Debian Testing packages

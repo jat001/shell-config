@@ -7,6 +7,7 @@ param(
     [string[]]$WslDistribution,
     [switch]$SkipMsys2,
     [switch]$SkipWsl,
+    [switch]$UseCernet,
     [switch]$TestDebianTesting,
     [switch]$WslDevDriveOnly,
     [switch]$WslStartMenuOnly,
@@ -611,10 +612,14 @@ try {
                 )
             }
             $caPath = Invoke-Wsl $distribution @('wslpath', '-a', '-u', $bootstrapCa)
-            $bootstrapEnvironment = @('env', "SHELL_BOOTSTRAP_CA=$caPath")
+            $bootstrapEnvironment = @(
+                'env', "SHELL_BOOTSTRAP_CA=$caPath", "SHELL_USE_CERNET=$([int][bool]$UseCernet)"
+            )
+            if ($SkipWsl) { $bootstrapEnvironment += 'SHELL_CERNET_KEEP=1' }
             if ($TestDebianTesting) { $bootstrapEnvironment += 'SHELL_DEBIAN_TESTING=1' }
             if ($WhatIfPreference) { $bootstrapEnvironment += 'SHELL_REPOS_CHECK=1' }
-            $sshd = ((Invoke-Wsl $distribution ($bootstrapEnvironment + $bootstrap) -Root) -split "`n" |
+            $bootstrapOutput = Invoke-Wsl $distribution ($bootstrapEnvironment + $bootstrap) -Root
+            $sshd = ($bootstrapOutput -split "`n" |
                     Select-Object -Last 1).Trim()
             if ($sshd -notmatch '^/[\w./+-]+$') { throw "Unexpected sshd path: $sshd" }
             # wsl.exe splits a multi-word --exec command, so the launcher is a file with no arguments.
@@ -631,10 +636,11 @@ try {
             Wait-Port $port -Process $process -Distribution $distribution -Log $serverLog
 
             $connection = [ordered]@{
-                ansible_host                 = 'host.wslc.internal'
-                ansible_port                 = $port
-                ansible_user                 = 'root'
-                ansible_ssh_private_key_file = '/root/.ssh/shell-ansible'
+                shell_bootstrap_repos_changed = $bootstrapOutput.Contains('repos-https-changed')
+                ansible_host                  = 'host.wslc.internal'
+                ansible_port                  = $port
+                ansible_user                  = 'root'
+                ansible_ssh_private_key_file  = '/root/.ssh/shell-ansible'
             }
             if ($transport) {
                 $windows = [ordered]@{}
@@ -663,7 +669,7 @@ try {
     }
 
     $regional = Get-HostRegionalSetting -MappingPath (Join-Path $repository 'ansible/data/windows_timezones.json')
-    $variables = @{ shell_mode = $Mode }
+    $variables = @{ shell_mode = $Mode; shell_use_cernet = [bool]$UseCernet }
     foreach ($entry in $regional.GetEnumerator()) { $variables[$entry.Key] = $entry.Value }
     if ($PSBoundParameters.ContainsKey('CacheDirectory') -and -not $Inventory) {
         $variables.shell_download_cache = $CacheDirectory

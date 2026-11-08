@@ -17,6 +17,10 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 
 部署在刷新软件包索引前，将 APT、pacman（含 MSYS2）、Zypper 和 DNF 源里的 HTTP 地址切换为 HTTPS。Fedora Linux 官方 metalink 也只请求 HTTPS 镜像。精简 Debian Testing 缺少 CA 证书包时，首次 APT 刷新临时使用控制容器的 CA 证书。
 
+加 `-UseCernet` 使用教育网联合镜像站。Arch Linux（含 Arch Linux CN）和 MSYS2 用原生 `CacheServer` 优先下载 CERNET 的包，数据库使用原来的官方服务器；Debian Testing 用 CERNET 的 APT mirrorlist，安全源带 `official_index=1`；Fedora Linux 和 openSUSE Tumbleweed 用 CERNET 的 RPM mirrorlist。镜像选择和下载回退由 CERNET 与包管理器处理。普通 Debian Testing 源、Fedora Linux 和 openSUSE Tumbleweed 的索引来自候选镜像；Debian Testing 安全源优先读取官方索引，官方不可达时 APT 仍可能尝试镜像索引。
+
+`-UseCernet` 作用于本次所选发行版和启用的 MSYS2。每次调用按本次参数配置，省略开关会恢复本项目管理的 CERNET 配置到官方源；`-SkipWsl` 保留传输发行版的镜像选择。可用 `install.ps1 -Mode full -UseCernet -WhatIf` 预览。隔离回归也支持 `tests/run.ps1 -UseCernet`。
+
 ## 安装和更新
 
 ```powershell

@@ -21,6 +21,13 @@ $definition = $ast.Find({
 if (-not $definition) { throw 'The MSYS2 repository migration is missing.' }
 . ([scriptblock]::Create($definition.Extent.Text))
 
+$definition = $ast.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Assert-MsysCernetSupport'
+    }, $true)
+if (-not $definition) { throw 'The MSYS2 CacheServer probe is missing.' }
+. ([scriptblock]::Create($definition.Extent.Text))
+
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('shell-msys-update-' + [guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($temporary)
 $bash = Join-Path $temporary 'fake-bash.cmd'
@@ -73,6 +80,53 @@ try {
     $Ansible.Changed = $false
     Set-MsysHttpsSources
     if ($Ansible.Changed) { throw 'The mirror migration changed an already migrated file.' }
+    $script:UseCernet = $true
+    $Ansible.CheckMode = $true
+    Set-MsysHttpsSources
+    if (-not $Ansible.Changed -or [IO.File]::ReadAllText($mirrorlist) -cne $after) {
+        throw 'CERNET preview changed the existing mirror list.'
+    }
+    $Ansible.CheckMode = $false
+    $Ansible.Changed = $false
+    Set-MsysHttpsSources
+    if (-not $Ansible.Changed -or [IO.File]::ReadAllText($mirrorlist) -notmatch
+        'CacheServer = https://mirrors.cernet.edu.cn/msys2/mingw/\$repo/') {
+        throw 'CERNET CacheServer was not installed.'
+    }
+    $Ansible.Changed = $false
+    Set-MsysHttpsSources
+    if ($Ansible.Changed) { throw 'CERNET configuration is not idempotent.' }
+    $script:UseCernet = $false
+    Set-MsysHttpsSources
+    if (-not $Ansible.Changed -or [IO.File]::ReadAllText($mirrorlist) -cne $after) {
+        throw 'Disabling CERNET did not restore the original server list.'
+    }
+    $msysList = Join-Path $Root 'etc/pacman.d/mirrorlist.msys'
+    [IO.File]::WriteAllText($msysList, "# BEGIN shell-ansible CERNET`nuser data`n")
+    $config = Join-Path $Root 'etc/pacman.conf'
+    $configBefore = "[custom]`nServer = http://example.invalid/`n"
+    [IO.File]::WriteAllText($config, $configBefore)
+    $script:UseCernet = $true
+    $rejected = $false
+    try { Set-MsysHttpsSources } catch {
+        if ($_.Exception.Message -notlike 'Unrecognized CERNET block*') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected -or [IO.File]::ReadAllText($mirrorlist) -cne $after -or
+        [IO.File]::ReadAllText($config) -cne $configBefore) {
+        throw 'A conflicting CERNET file did not fail the whole source group.'
+    }
+    # The first MSYS2 login prints setup output before the parser result.
+    $nativeOutput = "@echo off`r`necho Initial setup complete.`r`necho https://mirrors.cernet.edu.cn/`r`nexit /b 0`r`n"
+    [IO.File]::WriteAllText($bash, $nativeOutput, [Text.Encoding]::ASCII)
+    Assert-MsysCernetSupport
+    [IO.File]::WriteAllText($bash, $nativeOutput.Replace('https://mirrors.cernet.edu.cn/', 'unsupported'), [Text.Encoding]::ASCII)
+    $rejected = $false
+    try { Assert-MsysCernetSupport } catch {
+        if ($_.Exception.Message -ne 'This MSYS2 pacman does not support CacheServer.') { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'An unsupported CacheServer parser was accepted.' }
     "PowerShell $($PSVersionTable.PSVersion): MSYS2 update and HTTPS mirror checks passed."
 }
 finally {

@@ -8,6 +8,7 @@ param(
     [string]$Profile = 'full',
     [string]$StateDirectory = (Join-Path $env:TEMP 'shell-ansible-test'),
     [string]$CacheDirectory,
+    [switch]$UseCernet,
     [switch]$Reuse,
     [switch]$Keep
 )
@@ -82,6 +83,14 @@ foreach ($test in @(
         'python', '-B', "/work/tests/$test"
     )
 }
+foreach ($name in $linux) {
+    Invoke-Native wslc.exe @(
+        'run', '--rm', '--network', 'none'
+        '-v', "${repository}:/work:ro"
+        '-v', "${StateDirectory}/bootstrap-ca:/bootstrap-ca:ro"
+        $images[$name], 'sh', '/work/tests/cernet.sh'
+    )
+}
 $windowsUser = 'shelltest'
 $adminUser = 'WDAGUtilityAccount'
 $unprivileged = [ordered]@{}
@@ -119,7 +128,7 @@ if ((Get-TestNetworkSubnet $network) -ne $networkSubnet) {
 }
 
 $linuxSetup = {
-    param($Name, $Image, $Network, $Repository, $StateDirectory, $Volumes, $Key, $Reuse, $Log)
+    param($Name, $Image, $Network, $Repository, $StateDirectory, $Volumes, $Key, $Reuse, $Log, $UseCernet)
 
     $ErrorActionPreference = 'Stop'
     $PSNativeCommandUseErrorActionPreference = $false
@@ -153,7 +162,7 @@ $linuxSetup = {
     # Bootstrap logs package installation on stderr. In a job, Stop would fail the job on that progress.
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
-    $null = & wslc.exe exec $container env SHELL_BOOTSTRAP_CA=/bootstrap-ca/bundle.pem `
+    $null = & wslc.exe exec $container env SHELL_BOOTSTRAP_CA=/bootstrap-ca/bundle.pem "SHELL_USE_CERNET=$([int]$UseCernet)" `
         sh /mnt/c/Users/shell/.config/shell/ansible/bootstrap/wsl.sh 22 0.0.0.0 $Key 2>> $Log |
         Select-Object -Last 1
     if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed in $container; see $Log" }
@@ -170,7 +179,7 @@ foreach ($name in $linux) {
     $log = Join-Path $StateDirectory "setup-$name.log"
     [IO.File]::WriteAllText($log, '')
     $jobs[$name] = Start-Job -ScriptBlock $linuxSetup -ArgumentList @(
-        $name, $images[$name], $network, $repository, $StateDirectory, $volumes[$name], $key, [bool]$Reuse, $log
+        $name, $images[$name], $network, $repository, $StateDirectory, $volumes[$name], $key, [bool]$Reuse, $log, [bool]$UseCernet
     )
     $wsl[$name] = [ordered]@{
         ansible_host                 = "shell-test-$name"
@@ -372,6 +381,7 @@ $env:ANSIBLE_CALLBACKS_ENABLED = 'ansible.posix.profile_tasks'
 $env:PROFILE_TASKS_TASK_OUTPUT_LIMIT = '15'
 
 $common = @{
+    UseCernet      = [bool]$UseCernet
     Inventory      = $inventoryPath
     StateDirectory = $StateDirectory
     CacheDirectory = $CacheDirectory
@@ -395,6 +405,7 @@ try {
             'unprivileged' {
                 if ($unprivileged.Count) {
                     $user = @{
+                        UseCernet       = [bool]$UseCernet
                         Mode            = 'full'
                         Inventory       = $userInventory
                         StateDirectory  = $StateDirectory
@@ -406,6 +417,7 @@ try {
                     & $installer @user 2>&1 | Tee-Object -Variable output | Out-Host
                     Assert-Unchanged $output 'Second unprivileged run' -ExpectedHost @($unprivileged.Keys)
                     $userVerify = @{
+                        UseCernet       = [bool]$UseCernet
                         Playbook        = '../tests/verify.yml'
                         Inventory       = $userInventory
                         StateDirectory  = $StateDirectory

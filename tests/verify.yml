@@ -30,7 +30,8 @@
   tasks:
     - name: Check that package sources already use HTTPS
       ansible.builtin.command:
-        argv: [sh, "{{ windows_home }}/.config/shell/ansible/bootstrap/repos-https.sh", --check]
+        argv: "{{ ['sh', windows_home ~ '/.config/shell/ansible/bootstrap/repos-https.sh', '--check']
+          + (['--cernet'] if shell_use_cernet | default(false) | bool else ['--official']) }}"
       register: repo_https
       changed_when: false
       failed_when: repo_https.rc != 0 or 'repos-https-changed' in repo_https.stdout_lines

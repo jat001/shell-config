@@ -12,6 +12,11 @@
     marker: "# {mark} shell configuration archlinuxcn"
     block: |
       [archlinuxcn]
+      {% if shell_use_cernet | default(false) | bool %}
+      # BEGIN shell-ansible CERNET
+      CacheServer = https://mirrors.cernet.edu.cn/archlinuxcn/$arch
+      # END shell-ansible CERNET
+      {% endif %}
       Server = {{ shell_archlinuxcn_server }}
   when:
     - shell_archlinuxcn.rc == 1

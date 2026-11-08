@@ -5,7 +5,8 @@ param(
     [string]$Installer,
     [string[]]$Packages,
     [string]$Cache,
-    [string]$Downloader
+    [string]$Downloader,
+    [bool]$UseCernet = $false
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,21 +54,47 @@ function Update-System {
 
 function Set-MsysHttpsSources {
     $utf8 = [Text.UTF8Encoding]::new($false)
+    $plans = [Collections.Generic.List[object]]::new()
     foreach ($name in 'etc/pacman.conf', 'etc/pacman.d/mirrorlist.msys', 'etc/pacman.d/mirrorlist.mingw') {
         $file = Join-Path $Root $name
         if (-not [IO.File]::Exists($file)) { continue }
         $original = [IO.File]::ReadAllText($file, $utf8)
-        $updated = $original -creplace '(?m)^([ \t]*(?:Server|CacheServer)[ \t]*=[ \t]*)http://', '${1}https://'
+        $updated = $original
+        if ($name -ne 'etc/pacman.conf') {
+            $block = '(?m)^# BEGIN shell-ansible CERNET\r?\nCacheServer = https://mirrors\.cernet\.edu\.cn/msys2/[^\r\n]+\r?\n# END shell-ansible CERNET(?:\r?\n|$)'
+            $updated = $updated -creplace $block, ''
+            if ($updated -cmatch '(?m)^# (?:BEGIN|END) shell-ansible CERNET') {
+                throw "Unrecognized CERNET block in $file"
+            }
+            if ($UseCernet) {
+                $path = if ($name.EndsWith('.msys')) { 'msys/$arch/' } else { 'mingw/$repo/' }
+                $updated = "# BEGIN shell-ansible CERNET`nCacheServer = https://mirrors.cernet.edu.cn/msys2/$path`n# END shell-ansible CERNET`n" + $updated
+            }
+        }
+        $updated = $updated -creplace '(?m)^([ \t]*(?:Server|CacheServer)[ \t]*=[ \t]*)http://', '${1}https://'
         if ($updated -ceq $original) { continue }
+        $plans.Add(@{ Path = $file; Content = $updated })
+    }
+    foreach ($plan in $plans) {
         $Ansible.Changed = $true
         if ($Ansible.CheckMode) { continue }
 
-        $temporary = $file + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+        $temporary = $plan.Path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
         try {
-            [IO.File]::WriteAllText($temporary, $updated, $utf8)
-            [IO.File]::Replace($temporary, $file, [NullString]::Value)
+            [IO.File]::WriteAllText($temporary, $plan.Content, $utf8)
+            [IO.File]::Replace($temporary, $plan.Path, [NullString]::Value)
         }
         finally { [IO.File]::Delete($temporary) }
+    }
+}
+
+function Assert-MsysCernetSupport {
+    if (-not $UseCernet) { return }
+    $probe = "printf '[shell-probe]\nCacheServer = https://mirrors.cernet.edu.cn/\n' | pacman-conf --config /dev/stdin --repo shell-probe CacheServer"
+    $output = (Invoke-Msys $probe).Output
+    $value = ($output -split '\r?\n')[-1].Trim()
+    if ($value -ne 'https://mirrors.cernet.edu.cn/') {
+        throw 'This MSYS2 pacman does not support CacheServer.'
     }
 }
 
@@ -78,6 +105,7 @@ if ($Ansible.CheckMode) {
     elseif ($Mode -ne 'update') {
         $Ansible.Changed = (Invoke-Msys ('pacman -T ' + ($Packages -join ' ')) @(0, 127)).Code -eq 127
     }
+    if ([IO.File]::Exists($bash)) { Assert-MsysCernetSupport }
     Set-MsysHttpsSources
     return
 }
@@ -105,9 +133,10 @@ if ($freshInstall) {
     if ($leaf -ne 'msys64') { Rename-Item -LiteralPath $extracted -NewName $leaf }
 }
 
+if ($freshInstall) { $null = Invoke-Msys 'true' }
+Assert-MsysCernetSupport
 Set-MsysHttpsSources
 if ($freshInstall) {
-    $null = Invoke-Msys 'true'
     $null = Invoke-Msys 'pacman-key --init && pacman-key --populate msys2'
     Update-System
     $Ansible.Changed = $true
