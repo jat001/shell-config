@@ -21,6 +21,8 @@ MSYS2 默认装到开发盘的 `msys2`。盘符不写死，挂上之后记在用
 
 `-UseCernet` 作用于本次所选发行版和启用的 MSYS2。每次调用按本次参数配置，省略开关会恢复本项目管理的 CERNET 配置到官方源；`-SkipWsl` 保留传输发行版的镜像选择。可用 `install.ps1 -Mode full -UseCernet -WhatIf` 预览。隔离回归也支持 `tests/run.ps1 -UseCernet`。
 
+Arch Linux CN 首次用主站引导并导入 keyring，随后安装 `archlinuxcn-mirrorlist-git`，切换到 `Include = /etc/pacman.d/archlinuxcn-mirrorlist`。列表尚未选定服务器时启用官方主站，CERNET 的 `CacheServer` 配置在仓库段中管理。
+
 ## 安装和更新
 
 ```powershell

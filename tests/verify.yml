@@ -36,6 +36,23 @@
       changed_when: false
       failed_when: repo_https.rc != 0 or 'repos-https-changed' in repo_https.stdout_lines
 
+    - name: Check the installed Arch Linux CN mirrorlist
+      ansible.builtin.shell: |
+        set -e
+        pacman -Q archlinuxcn-keyring archlinuxcn-mirrorlist-git
+        python3 - <<'PY'
+        import configparser
+        config = configparser.ConfigParser(interpolation=None, strict=False, allow_no_value=True)
+        config.optionxform = str
+        config.read('/etc/pacman.conf')
+        repository = config['archlinuxcn']
+        assert repository['Include'] == '/etc/pacman.d/archlinuxcn-mirrorlist'
+        assert 'Server' not in repository
+        PY
+        pacman-conf --repo archlinuxcn Server | grep -q '^https://'
+      changed_when: false
+      when: ansible_facts.os_family == 'Archlinux'
+
     - name: Inspect links
       ansible.builtin.stat:
         path: "{{ home }}/{{ item.key }}"

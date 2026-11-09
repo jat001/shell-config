@@ -197,7 +197,7 @@ fi
 
 if command -v pacman >/dev/null 2>&1; then
     rewrite 's@^([[:blank:]]*(Server|CacheServer)[[:blank:]]*=[[:blank:]]*)http://@\1https://@' \
-        /etc/pacman.conf /etc/pacman.d/mirrorlist
+        /etc/pacman.conf /etc/pacman.d/mirrorlist /etc/pacman.d/archlinuxcn-mirrorlist
 elif command -v apt-get >/dev/null 2>&1; then
     rewrite 's@^([[:blank:]]*deb(-src)?[[:blank:]]+(\[[^]]*\][[:blank:]]+)?)http://@\1https://@' \
         /etc/apt/sources.list /etc/apt/sources.list.d/*.list

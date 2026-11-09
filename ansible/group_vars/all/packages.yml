@@ -46,6 +46,7 @@ shell_blesh_archive: https://github.com/akinomyoga/ble.sh/releases/download/nigh
 shell_antidote_repository: https://github.com/mattmc3/antidote.git
 
 shell_archlinuxcn_server: https://repo.archlinuxcn.org/$arch
+shell_archlinuxcn_mirrorlist_package: archlinuxcn-mirrorlist-git
 # Empty uses yay's default, ~/.cache/yay of the WSL user.
 shell_aur_cache: ""
 

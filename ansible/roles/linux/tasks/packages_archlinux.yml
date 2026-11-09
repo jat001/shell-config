@@ -1,4 +1,4 @@
-- name: Inspect archlinuxcn repository
+- name: Inspect Arch Linux CN repository
   ansible.builtin.command:
     argv: [grep, -q, '^\[archlinuxcn\]', /etc/pacman.conf]
   register: shell_archlinuxcn
@@ -6,7 +6,15 @@
   check_mode: false
   failed_when: shell_archlinuxcn.rc > 1
 
-- name: Add archlinuxcn repository
+- name: Inspect managed Arch Linux CN configuration
+  ansible.builtin.command:
+    argv: [grep, -q, '^# BEGIN shell configuration archlinuxcn$', /etc/pacman.conf]
+  register: shell_archlinuxcn_managed
+  changed_when: false
+  check_mode: false
+  failed_when: shell_archlinuxcn_managed.rc > 1
+
+- name: Add Arch Linux CN bootstrap repository
   ansible.builtin.blockinfile:
     path: /etc/pacman.conf
     marker: "# {mark} shell configuration archlinuxcn"
@@ -24,7 +32,8 @@
 
 - name: Inspect missing repository packages
   ansible.builtin.command:
-    argv: "{{ ['pacman', '-T', 'archlinuxcn-keyring'] + shell_pacman_packages + shell_archlinuxcn_packages }}"
+    argv: "{{ ['pacman', '-T', 'archlinuxcn-keyring', shell_archlinuxcn_mirrorlist_package]
+      + shell_pacman_packages + shell_archlinuxcn_packages }}"
   register: shell_pacman_missing
   changed_when: false
   check_mode: false
@@ -42,7 +51,7 @@
     argv: [pacman-key, --populate, archlinux]
   when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
 
-- name: Trust archlinuxcn packager key
+- name: Trust Arch Linux CN packager key
   ansible.builtin.command:
     argv: [pacman-key, --lsign-key, farseerfc@archlinux.org]
   when: "'archlinuxcn-keyring' in shell_pacman_missing.stdout_lines"
@@ -58,7 +67,7 @@
   delay: 10
   when: shell_mode == 'update' or shell_pacman_missing.rc == 127
 
-- name: Install archlinuxcn keyring
+- name: Install Arch Linux CN keyring
   community.general.pacman:
     name: archlinuxcn-keyring
     state: present
@@ -66,6 +75,50 @@
   until: shell_network_result is succeeded
   retries: 3
   delay: 10
+
+- name: Install Arch Linux CN mirrorlist
+  community.general.pacman:
+    name: "{{ shell_archlinuxcn_mirrorlist_package }}"
+    state: present
+  register: shell_archlinuxcn_mirrorlist
+  until: shell_archlinuxcn_mirrorlist is succeeded
+  retries: 3
+  delay: 10
+
+# The packaged list comments out every server. An existing selection remains usable.
+- name: Inspect active Arch Linux CN mirrors
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Eq
+      - '^[[:space:]]*Server[[:space:]]*=[[:space:]]*[^[:space:]#]'
+      - /etc/pacman.d/archlinuxcn-mirrorlist
+  register: shell_archlinuxcn_mirrors
+  changed_when: false
+  check_mode: false
+  failed_when: shell_archlinuxcn_mirrors.rc > 1
+  when: not ansible_check_mode or shell_archlinuxcn_mirrorlist is not changed
+
+- name: Enable the main Arch Linux CN server in an unconfigured mirrorlist
+  ansible.builtin.lineinfile:
+    path: /etc/pacman.d/archlinuxcn-mirrorlist
+    regexp: '^#?\s*Server\s*=\s*{{ shell_archlinuxcn_server | regex_escape }}\s*$'
+    line: "Server = {{ shell_archlinuxcn_server }}"
+  when: shell_archlinuxcn_mirrors.rc | default(0) == 1
+
+- name: Use the installed Arch Linux CN mirrorlist
+  ansible.builtin.blockinfile:
+    path: /etc/pacman.conf
+    marker: "# {mark} shell configuration archlinuxcn"
+    block: |
+      [archlinuxcn]
+      {% if shell_use_cernet | default(false) | bool %}
+      # BEGIN shell-ansible CERNET
+      CacheServer = https://mirrors.cernet.edu.cn/archlinuxcn/$arch
+      # END shell-ansible CERNET
+      {% endif %}
+      Include = /etc/pacman.d/archlinuxcn-mirrorlist
+  when: shell_archlinuxcn_managed.rc == 0 or (shell_archlinuxcn.rc == 1 and shell_mode != 'update')
 
 - name: Install repository packages
   community.general.pacman:

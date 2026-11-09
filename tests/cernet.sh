@@ -10,6 +10,13 @@ fi
 
 if command -v pacman >/dev/null 2>&1; then
     source=/etc/pacman.conf
+    cat >>"$source" <<'EOF'
+
+[archlinuxcn]
+Include = /etc/pacman.d/archlinuxcn-mirrorlist
+EOF
+    # shellcheck disable=SC2016
+    printf 'Server = http://repo.archlinuxcn.org/$arch\n' >/etc/pacman.d/archlinuxcn-mirrorlist
 elif command -v apt-get >/dev/null 2>&1; then
     source=/etc/apt/sources.list.d/shell-cernet-test.sources
     cat >"$source" <<'EOF'
@@ -66,6 +73,8 @@ test -z "$(SHELL_CERNET_KEEP=1 sh "$script")"
 if command -v pacman >/dev/null 2>&1; then
     pacman-conf --repo core CacheServer | grep -q '^https://mirrors.cernet.edu.cn/archlinux/'
     pacman-conf --repo core Server | grep -q '^https://'
+    pacman-conf --repo archlinuxcn CacheServer | grep -q '^https://mirrors.cernet.edu.cn/archlinuxcn/'
+    test "$(pacman-conf --repo archlinuxcn Server)" = 'https://repo.archlinuxcn.org/x86_64'
 elif command -v apt-get >/dev/null 2>&1; then
     grep -q '^URIs: mirror+https://mirrors.cernet.edu.cn/api/apt/mirrorlist/debian$' "$source"
     grep -q '^ mirror+https://mirrors.cernet.edu.cn/api/apt/mirrorlist/debian-security?official_index=1$' "$source"
@@ -101,6 +110,10 @@ if [ "$original" = absent ]; then
     test ! -e "$source"
 else
     test "$original" = "$(sha256sum <"$source")"
+fi
+
+if command -v pacman >/dev/null 2>&1; then
+    test "$(pacman-conf --repo archlinuxcn Server)" = 'https://repo.archlinuxcn.org/x86_64'
 fi
 
 if command -v dnf >/dev/null 2>&1; then
