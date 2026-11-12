@@ -40,11 +40,20 @@ if ($_shared_platform -eq 'wsl') {
             }
         }
     }
+    # A one-shot command can inherit a terminal. Wait only for a console launch without a script or command.
+    $_shared_launch_options = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
+    $_shared_mounts = if ($Host.Name -eq 'ConsoleHost' -and -not [Console]::IsInputRedirected -and
+        -not ($_shared_launch_options -notmatch '^--?(l|lo|log|logi|login|nol|nolo|nolog|nologo|noe|noex|noexi|noexit|i|interactive)$')) {
+        (sh "$PSScriptRoot/wsl-mounts.sh") -join "`n"
+    }
+    else {
+        [IO.File]::ReadAllText('/proc/self/mounts')
+    }
     # The repository is always <Windows home>/.config/shell, whether this path is the link or its target.
     $_shared_arguments = @(
         '--arg', 'windows_home',
         (Split-Path -Parent (Split-Path -Parent (Get-Item -LiteralPath $PSScriptRoot).ResolvedTarget)),
-        '--arg', 'mounts', [IO.File]::ReadAllText('/proc/self/mounts'),
+        '--arg', 'mounts', $_shared_mounts,
         '--arg', 'lc_all', $_shared_lc_all
     )
 }
@@ -58,7 +67,7 @@ jq -r `
     "$PSScriptRoot/common.json" |
     Invoke-Expression
 
-Remove-Variable '_shared_arguments', '_shared_lc_all' -ErrorAction SilentlyContinue
+Remove-Variable '_shared_arguments', '_shared_lc_all', '_shared_launch_options', '_shared_mounts' -ErrorAction SilentlyContinue
 
 if ($_shared_platform -eq 'windows') {
     Set-PSReadLineOption -EditMode Emacs

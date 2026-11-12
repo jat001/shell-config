@@ -146,6 +146,11 @@
         label: "{{ item }}"
       changed_when: false
 
+    - name: Wait for the development drive with a bounded timeout
+      ansible.builtin.command:
+        argv: [sh, "{{ home }}/.config/shell/tests/wsl_mounts.sh"]
+      changed_when: false
+
     - name: Resolve XDG directories with and without the development drive
       ansible.builtin.command:
         argv: [jq, -c, --arg, platform, wsl, --arg, home, "{{ home }}", --arg, windows_home, "{{ windows_home }}",

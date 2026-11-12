@@ -1,6 +1,11 @@
 [[ ${1-} == environment || -o interactive ]] || return
 
-source "$HOME/.config/shell/common.sh" || return
+# The interactive .zshenv already waited before .zshrc runs.
+if [[ ${1-} == environment && -o interactive ]]; then
+    source "$HOME/.config/shell/common.sh" wait || return
+else
+    source "$HOME/.config/shell/common.sh" now || return
+fi
 
 if [[ ${1-} == environment ]]; then
     unset _shell_environment _shell_theme

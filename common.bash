@@ -29,7 +29,7 @@ fi
 # openSUSE Tumbleweed's /etc/profile sources ~/.bashrc for login shells and then bash reads ~/.bash_profile,
 # so this file runs twice; a second ble.sh source would report "[ble: reload]".
 [ -n "${_shell_bash_loaded-}" ] && return 0
-source "$HOME/.config/shell/common.sh" || return
+source "$HOME/.config/shell/common.sh" wait || return
 _shell_bash_loaded=1
 
 if ! declare -F _init_completion >/dev/null; then

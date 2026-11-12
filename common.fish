@@ -22,7 +22,12 @@ set _shell_mounts
 set _shell_lc_all ''
 if test "$_shell_environment" = wsl
     set _shell_windows_home (path dirname (path dirname (path resolve $HOME/.config/shell)))
-    set _shell_mounts (string collect < /proc/self/mounts)
+    if status is-interactive; and test "$_shell_fish_restart_pid" != "$fish_pid"
+        set _shell_mounts (sh "$HOME/.config/shell/wsl-mounts.sh" | string collect)
+    else
+        set _shell_mounts (string collect < /proc/self/mounts)
+    end
+    set -e _shell_fish_restart_pid
     if set -q LC_ALL
         set _shell_lc_all "$LC_ALL"
     end
@@ -76,6 +81,7 @@ if test "$_shell_environment" = wsl; and status is-interactive; and set -q XDG_D
     set -l fish (status fish-path)
     set -l arguments (string split0 < /proc/$fish_pid/cmdline)[2..]
     status is-login; and set -p arguments --login
+    set -lx _shell_fish_restart_pid $fish_pid
     exec $fish $arguments
 end
 

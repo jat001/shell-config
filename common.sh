@@ -22,7 +22,11 @@ _shell_lc_all=
 if [ "$_shell_environment" = wsl ]; then
     # cd -P resolves the symlink; two parents up is the Windows profile because the repo lives at <profile>/.config/shell.
     _shell_windows_home="$(cd -P "$HOME/.config/shell" && cd ../.. && pwd)"
-    _shell_mounts="$(</proc/self/mounts)"
+    if [ "${1-}" = wait ]; then
+        _shell_mounts="$(sh "$HOME/.config/shell/wsl-mounts.sh")"
+    else
+        _shell_mounts="$(</proc/self/mounts)"
+    fi
     _shell_lc_all="${LC_ALL-}"
     if [ -z "$_shell_lc_all" ]; then
         for _shell_locale_file in /etc/locale.conf /etc/default/locale; do

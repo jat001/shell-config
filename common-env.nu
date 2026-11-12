@@ -20,7 +20,13 @@ let windows_home = if $platform == 'wsl' {
 } else {
     ''
 }
-let mounts = if $platform == 'wsl' { open --raw /proc/self/mounts } else { '' }
+let mounts = if $platform != 'wsl' {
+    ''
+} else if $nu.is-interactive {
+    ^sh ($shared_directory | path join 'wsl-mounts.sh')
+} else {
+    open --raw /proc/self/mounts
+}
 let inherited_lc_all = $env.LC_ALL? | default ''
 let lc_all = if $platform == 'wsl' and ($inherited_lc_all | is-empty) {
     ^sh -c 'for file in /etc/locale.conf /etc/default/locale; do [ -r "$file" ] || continue; value=$(. "$file"; printf %s "${LC_ALL-}"); [ -n "$value" ] && { printf %s "$value"; break; }; done' | str trim
