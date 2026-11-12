@@ -19,7 +19,7 @@ source ($nu.default-config-dir | path join 'common-aliases.nu')
 source ($nu.default-config-dir | path join 'oh-my-posh.nu')
 
 $env.config = ($env.config? | default {})
-let previous_completer = ($env.config | get -i completions.external.completer)
+let previous_completer = ($env.config | get completions?.external?.completer?)
 $env.config.completions.external.completer = {|place|
     let spans = if ($place | describe | str starts-with 'record') { $place.command } else { $place }
     let command = $spans.0
